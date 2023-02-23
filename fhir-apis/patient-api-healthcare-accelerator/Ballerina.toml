@@ -1,0 +1,12 @@
+[package]
+org = "wso2healthcare"
+name = "PatientAPI"
+version = "1.0.2"
+export = ["PatientAPI"]
+distribution = "2201.4.1"
+authors = ["Ballerina"]
+keywords = ["Healthcare","FHIR","Patient","r4","international"]
+repository = "https://github.com/ballerina-platform/module-ballerinax-health.fhir.templates"
+
+[build-options]
+observabilityIncluded = true

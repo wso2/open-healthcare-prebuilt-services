@@ -1,0 +1,12 @@
+[package]
+org = "wso2healthcare"
+name = "MetadataAPI"
+version = "1.0.0"
+export = ["MetadataAPI.config","MetadataAPI.constants","MetadataAPI.handlers","MetadataAPI.models","MetadataAPI.samples"]
+distribution = "2201.4.1"
+authors = ["Ballerina"]
+keywords = ["Healthcare","FHIR","Metadata"]
+repository = "https://github.com/ballerina-platform/module-ballerinax-health.fhir.templates"
+
+[build-options]
+observabilityIncluded = true
