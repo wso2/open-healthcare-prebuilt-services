@@ -242,6 +242,9 @@ dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"}
 ]
+modules = [
+	{org = "ballerina", packageName = "os", moduleName = "os"}
+]
 
 [[package]]
 org = "ballerina"
@@ -250,6 +253,9 @@ version = "1.3.2"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.string"}
+]
+modules = [
+	{org = "ballerina", packageName = "regex", moduleName = "regex"}
 ]
 
 [[package]]
@@ -338,6 +344,8 @@ name = "CernerConnect"
 version = "1.0.0"
 dependencies = [
 	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "os"},
+	{org = "ballerina", name = "regex"},
 	{org = "ballerinai", name = "observe"},
 	{org = "ballerinax", name = "health.clients.fhir"}
 ]

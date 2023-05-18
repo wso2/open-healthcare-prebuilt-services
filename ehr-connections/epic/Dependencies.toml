@@ -242,6 +242,9 @@ dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"}
 ]
+modules = [
+	{org = "ballerina", packageName = "os", moduleName = "os"}
+]
 
 [[package]]
 org = "ballerina"
@@ -303,19 +306,6 @@ modules = [
 
 [[package]]
 org = "ballerinax"
-name = "EpicConnect"
-version = "1.0.0"
-dependencies = [
-	{org = "ballerina", name = "http"},
-	{org = "ballerinai", name = "observe"},
-	{org = "ballerinax", name = "health.clients.fhir"}
-]
-modules = [
-	{org = "ballerinax", packageName = "EpicConnect", moduleName = "EpicConnect"}
-]
-
-[[package]]
-org = "ballerinax"
 name = "health.base"
 version = "1.0.1"
 dependencies = [
@@ -343,5 +333,19 @@ dependencies = [
 ]
 modules = [
 	{org = "ballerinax", packageName = "health.clients.fhir", moduleName = "health.clients.fhir"}
+]
+
+[[package]]
+org = "wso2healthcare"
+name = "EpicConnect"
+version = "1.0.0"
+dependencies = [
+	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "os"},
+	{org = "ballerinai", name = "observe"},
+	{org = "ballerinax", name = "health.clients.fhir"}
+]
+modules = [
+	{org = "wso2healthcare", packageName = "EpicConnect", moduleName = "EpicConnect"}
 ]
 
