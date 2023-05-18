@@ -15,13 +15,15 @@
 // under the License.
 
 import ballerina/http;
+import ballerina/os;
+import ballerina/regex;
 import ballerinax/health.clients.fhir;
 
-configurable string base = ?;
-configurable string tokenUrl = ?;
-configurable string clientId = ?;
-configurable string clientSecret = ?;
-configurable string[] scopes = ?;
+configurable string base = os:getEnv("BASE_URL");
+configurable string tokenUrl = os:getEnv("TOKEN_URL");
+configurable string clientId = os:getEnv("CLIENT_ID");
+configurable string clientSecret = os:getEnv("CLIENT_SECRET");
+configurable string[] scopes = regex:split(os:getEnv("SCOPES"), ",").cloneReadOnly();
 
 http:OAuth2ClientCredentialsGrantConfig cernerOauth = {
     tokenUrl: tokenUrl,

@@ -15,12 +15,13 @@
 // under the License.
 
 import ballerina/http;
+import ballerina/os;
 import ballerinax/health.clients.fhir;
 
-configurable string base = ?;
-configurable string tokenUrl = ?;
-configurable string clientId = ?;
-configurable string keyFile = ?;
+configurable string base = os:getEnv("BASE_URL");
+configurable string tokenUrl = os:getEnv("TOKEN_URL");
+configurable string clientId = os:getEnv("CLIENT_ID");
+configurable string keyFile = os:getEnv("KEY_FILE");
 
 fhir:FHIRConnectorConfig epicConfig = {
     baseURL: base,
