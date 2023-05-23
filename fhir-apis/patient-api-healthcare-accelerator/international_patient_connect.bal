@@ -20,9 +20,10 @@
 // Developers are allowed modify this file as per the requirement.
 
 import ballerina/http ;
+import ballerina/os;
 import ballerinax/health.fhir.r4 ;
 
-configurable string sourceSystem = "http://localhost:9091";
+configurable string sourceSystem = os:getEnv("SOURCE_SYSTEM");
 
 final string READ = sourceSystem.endsWith("/") ? "read/" : "/read/";
 final string SEARCH = sourceSystem.endsWith("/") ? "search" : "/search";
