@@ -78,10 +78,10 @@ isolated function patientReadImpl(string id, http:RequestContext ctx) returns r4
         PatientSourceConnect sourceConnect = profileImpl.get(defaultProfile);
         r4:FHIRContext fhirContext = check r4:getFHIRContext(ctx);
 
-        Patient patient = check sourceConnect.read(id, fhirContext);
-        log:printDebug(string `[ReadImpl] Retrieved resource:  ${patient.toJsonString()}`);
+        Patient|r4:FHIRError resourceResult = sourceConnect.read(id, fhirContext);
 
-        return new (patient);
+        r4:FHIRResourceEntity entity = new (check resourceResult);
+        return entity;
     }
 }
 
@@ -89,12 +89,12 @@ isolated function patientCreateImpl(r4:FHIRResourceEntity resourceEntity, http:R
 
     lock {
         PatientSourceConnect sourceConnect = profileImpl.get(defaultProfile);
+        r4:FHIRContext fhirContext = check r4:getFHIRContext(ctx);
 
         value:Cloneable resourceRecord = resourceEntity.unwrap();
 
         if resourceRecord is Patient {
             log:printDebug(string `[CreateImpl] Request payload: ${resourceRecord.toString()}`);
-            r4:FHIRContext fhirContext = check r4:getFHIRContext(ctx);
             string|r4:FHIRError createResponse = check sourceConnect.create(resourceEntity, fhirContext);
             return createResponse;
         } else {
