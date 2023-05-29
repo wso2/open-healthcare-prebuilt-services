@@ -41,9 +41,9 @@ isolated final map<PatientSourceConnect> profileImpl = {
         new r4:FHIRReadRequestInterceptor(apiConfig),
         new r4:FHIRCreateRequestInterceptor(apiConfig),
         new r4:FHIRSearchRequestInterceptor(apiConfig),
+        new r4:FHIRResponseErrorInterceptor(),
         new r4:FHIRRequestErrorInterceptor(),
-        new r4:FHIRResponseInterceptor(apiConfig),
-        new r4:FHIRResponseErrorInterceptor()
+        new r4:FHIRResponseInterceptor(apiConfig)
     ]
 }
 service / on new http:Listener(9090) {
@@ -63,6 +63,7 @@ service / on new http:Listener(9090) {
 
         if process is error {
             log:printError("Error in source connection processing");
+            return process;
         }
         log:printDebug("[END]FHIR interaction : search");
         return {};
@@ -81,6 +82,7 @@ service / on new http:Listener(9090) {
 
         if process is error {
             log:printError("Error in source connection processing");
+            return process;
         }
         log:printDebug("[END]FHIR interaction : read");
         return {};
@@ -100,6 +102,7 @@ service / on new http:Listener(9090) {
 
         if process is error {
             log:printError("Error in source connection processing");
+            return process;
         }
         log:printDebug("[END]FHIR interaction : create");
         return {};
