@@ -1,9 +1,9 @@
 [package]
 org = "wso2healthcare"
 name = "EpicConnect"
-version = "1.0.0"
+version = "1.0.1"
 export = ["EpicConnect"]
-distribution = "2201.4.1"
+distribution = "2201.5.0"
 authors = ["Ballerina"]
 keywords = ["Healthcare","FHIR","Epic"]
 
