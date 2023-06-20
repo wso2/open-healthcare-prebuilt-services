@@ -1,11 +1,11 @@
 [package]
 org = "wso2healthcare"
-name = "USCorePatientAPI"
-version = "1.0.2"
-export = ["USCorePatientAPI"]
-distribution = "2201.4.1"
+name = "PatientAPI"
+version = "1.0.3"
+export = ["PatientAPI"]
+distribution = "2201.5.0"
 authors = ["Ballerina"]
-keywords = ["Healthcare","FHIR","Patient","r4","uscore"]
+keywords = ["Healthcare","FHIR","Patient","r4","international"]
 repository = "https://github.com/ballerina-platform/module-ballerinax-health.fhir.templates"
 
 [build-options]
