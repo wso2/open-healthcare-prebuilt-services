@@ -1,2 +1,3 @@
-# open-healthcare-choreo-accelerators
-Open Healthcare Choreo Accelerators
+# FHIR R4 Smart Config API Accelerator
+
+A component in Choreo can be created by pointing the Smart Config API accelerator's [smart-config-fhir-r4-api-1.0.1](https://github.com/wso2/open-healthcare-choreo-accelerators/tree/smart-config-fhir-r4-api-1.0.1) branch. For more details on creating components using Github, please refer [https://wso2.com/choreo/docs/develop-components/develop-components-with-git/](https://wso2.com/choreo/docs/develop-components/develop-components-with-git/).

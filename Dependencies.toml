@@ -5,24 +5,24 @@
 
 [ballerina]
 dependencies-toml-version = "2"
+distribution-version = "2201.5.0"
 
 [[package]]
 org = "ballerina"
 name = "auth"
-version = "2.6.0"
+version = "2.8.0"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.array"},
 	{org = "ballerina", name = "lang.string"},
-	{org = "ballerina", name = "log"},
-	{org = "ballerina", name = "regex"}
+	{org = "ballerina", name = "log"}
 ]
 
 [[package]]
 org = "ballerina"
 name = "cache"
-version = "3.4.0"
+version = "3.5.0"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -33,7 +33,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "constraint"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
@@ -41,7 +41,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "crypto"
-version = "2.3.0"
+version = "2.3.1"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "time"}
@@ -50,20 +50,18 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "file"
-version = "1.6.0"
+version = "1.7.1"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
-	{org = "ballerina", name = "log"},
 	{org = "ballerina", name = "os"},
-	{org = "ballerina", name = "regex"},
 	{org = "ballerina", name = "time"}
 ]
 
 [[package]]
 org = "ballerina"
 name = "http"
-version = "2.6.1"
+version = "2.8.0"
 dependencies = [
 	{org = "ballerina", name = "auth"},
 	{org = "ballerina", name = "cache"},
@@ -76,6 +74,7 @@ dependencies = [
 	{org = "ballerina", name = "lang.array"},
 	{org = "ballerina", name = "lang.decimal"},
 	{org = "ballerina", name = "lang.int"},
+	{org = "ballerina", name = "lang.regexp"},
 	{org = "ballerina", name = "lang.runtime"},
 	{org = "ballerina", name = "lang.string"},
 	{org = "ballerina", name = "lang.value"},
@@ -83,7 +82,6 @@ dependencies = [
 	{org = "ballerina", name = "mime"},
 	{org = "ballerina", name = "oauth2"},
 	{org = "ballerina", name = "observe"},
-	{org = "ballerina", name = "regex"},
 	{org = "ballerina", name = "time"},
 	{org = "ballerina", name = "url"}
 ]
@@ -108,7 +106,7 @@ version = "0.0.0"
 [[package]]
 org = "ballerina"
 name = "jwt"
-version = "2.6.0"
+version = "2.8.0"
 dependencies = [
 	{org = "ballerina", name = "cache"},
 	{org = "ballerina", name = "crypto"},
@@ -116,7 +114,6 @@ dependencies = [
 	{org = "ballerina", name = "lang.int"},
 	{org = "ballerina", name = "lang.string"},
 	{org = "ballerina", name = "log"},
-	{org = "ballerina", name = "regex"},
 	{org = "ballerina", name = "time"}
 ]
 
@@ -151,7 +148,9 @@ org = "ballerina"
 name = "lang.int"
 version = "0.0.0"
 dependencies = [
-	{org = "ballerina", name = "jballerina.java"}
+	{org = "ballerina", name = "jballerina.java"},
+	{org = "ballerina", name = "lang.__internal"},
+	{org = "ballerina", name = "lang.object"}
 ]
 
 [[package]]
@@ -191,14 +190,11 @@ version = "0.0.0"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
-modules = [
-	{org = "ballerina", packageName = "lang.value", moduleName = "lang.value"}
-]
 
 [[package]]
 org = "ballerina"
 name = "log"
-version = "2.6.0"
+version = "2.7.1"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -212,7 +208,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "mime"
-version = "2.6.0"
+version = "2.7.1"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -222,7 +218,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "oauth2"
-version = "2.6.1"
+version = "2.8.0"
 dependencies = [
 	{org = "ballerina", name = "cache"},
 	{org = "ballerina", name = "crypto"},
@@ -248,18 +244,6 @@ dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"}
 ]
-modules = [
-	{org = "ballerina", packageName = "os", moduleName = "os"}
-]
-
-[[package]]
-org = "ballerina"
-name = "regex"
-version = "1.3.2"
-dependencies = [
-	{org = "ballerina", name = "jballerina.java"},
-	{org = "ballerina", name = "lang.string"}
-]
 
 [[package]]
 org = "ballerina"
@@ -273,29 +257,20 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "time"
-version = "2.2.4"
+version = "2.2.5"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
+]
+modules = [
+	{org = "ballerina", packageName = "time", moduleName = "time"}
 ]
 
 [[package]]
 org = "ballerina"
 name = "url"
-version = "2.2.3"
+version = "2.2.4"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
-]
-
-[[package]]
-org = "ballerina"
-name = "uuid"
-version = "1.4.0"
-dependencies = [
-	{org = "ballerina", name = "crypto"},
-	{org = "ballerina", name = "jballerina.java"},
-	{org = "ballerina", name = "lang.int"},
-	{org = "ballerina", name = "regex"},
-	{org = "ballerina", name = "time"}
 ]
 
 [[package]]
@@ -311,54 +286,20 @@ modules = [
 ]
 
 [[package]]
-org = "ballerinax"
-name = "health.base"
+org = "wso2healthcare"
+name = "SmartConfigAPI"
 version = "1.0.1"
 dependencies = [
 	{org = "ballerina", name = "http"},
-	{org = "ballerina", name = "io"},
-	{org = "ballerina", name = "jwt"},
 	{org = "ballerina", name = "log"},
-	{org = "ballerina", name = "mime"},
 	{org = "ballerina", name = "time"},
-	{org = "ballerina", name = "uuid"}
-]
-
-[[package]]
-org = "ballerinax"
-name = "health.fhir.r4"
-version = "1.0.2"
-dependencies = [
-	{org = "ballerina", name = "constraint"},
-	{org = "ballerina", name = "http"},
-	{org = "ballerina", name = "jwt"},
-	{org = "ballerina", name = "lang.value"},
-	{org = "ballerina", name = "log"},
-	{org = "ballerina", name = "regex"},
-	{org = "ballerina", name = "time"},
-	{org = "ballerina", name = "uuid"},
-	{org = "ballerinax", name = "health.base"}
+	{org = "ballerinai", name = "observe"}
 ]
 modules = [
-	{org = "ballerinax", packageName = "health.fhir.r4", moduleName = "health.fhir.r4"},
-	{org = "ballerinax", packageName = "health.fhir.r4", moduleName = "health.fhir.r4.parser"},
-	{org = "ballerinax", packageName = "health.fhir.r4", moduleName = "health.fhir.r4.terminology"},
-	{org = "ballerinax", packageName = "health.fhir.r4", moduleName = "health.fhir.r4.validator"}
-]
-
-[[package]]
-org = "wso2healthcare"
-name = "PatientAPI"
-version = "1.0.2"
-dependencies = [
-	{org = "ballerina", name = "http"},
-	{org = "ballerina", name = "lang.value"},
-	{org = "ballerina", name = "log"},
-	{org = "ballerina", name = "os"},
-	{org = "ballerinai", name = "observe"},
-	{org = "ballerinax", name = "health.fhir.r4"}
-]
-modules = [
-	{org = "wso2healthcare", packageName = "PatientAPI", moduleName = "PatientAPI"}
+	{org = "wso2healthcare", packageName = "SmartConfigAPI", moduleName = "SmartConfigAPI"},
+	{org = "wso2healthcare", packageName = "SmartConfigAPI", moduleName = "SmartConfigAPI.config"},
+	{org = "wso2healthcare", packageName = "SmartConfigAPI", moduleName = "SmartConfigAPI.constants"},
+	{org = "wso2healthcare", packageName = "SmartConfigAPI", moduleName = "SmartConfigAPI.handlers"},
+	{org = "wso2healthcare", packageName = "SmartConfigAPI", moduleName = "SmartConfigAPI.models"}
 ]
 
