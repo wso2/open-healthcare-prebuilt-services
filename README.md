@@ -1,2 +1,3 @@
-# open-healthcare-choreo-accelerators
-Open Healthcare Choreo Accelerators
+# FHIR R4 Patient API Accelerator
+
+A component in Choreo can be created by pointing the Patient API accelerator's [patient-fhir-r4-api-1.0.3](https://github.com/wso2/open-healthcare-choreo-accelerators/tree/patient-fhir-r4-api-1.0.3) branch. For more details on creating components using Github, please refer [https://wso2.com/choreo/docs/develop-components/develop-components-with-git/](https://wso2.com/choreo/docs/develop-components/develop-components-with-git/).
