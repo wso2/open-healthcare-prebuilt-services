@@ -33,11 +33,11 @@ This project can be used for exposing Cerner as managed API. The project uses th
 
 Create a file `Config.toml` in the project's root directory and add the following configurations.
 
-| Configuration     | Description                                                                                             |
-|-------------------|---------------------------------------------------------------------------------------------------------|
-| `base`            | Cerner base URL                                                                                         |
-| `tokenUrl`        | Cerner's token endpoint                                                                                 |
-| `clientId`        | Client ID of the system account registered with Cerner                                                  |
-| `clientSecret`    | Client secret of the system account registered with Cerner                                              |
-| `scopes`          | Comma-seperated list of scopes                                                                          |
-| `customDomain`    | URL that should replace the Cerner base URL in the responses, if URL-rewrite interceptor is engaged     |
+| Configuration     | Description                                                                                 |
+|-------------------|---------------------------------------------------------------------------------------------|
+| `base`            | Cerner base URL                                                                             |
+| `tokenUrl`        | Cerner's token endpoint                                                                     |
+| `clientId`        | Client ID of the system account registered with Cerner                                      |
+| `clientSecret`    | Client secret of the system account registered with Cerner                                  |
+| `scopes`          | Comma-seperated list of scopes                                                              |
+| `customDomain`    | URL that should replace the Cerner base URL in the responses, if URL-rewrite is enabled     |
