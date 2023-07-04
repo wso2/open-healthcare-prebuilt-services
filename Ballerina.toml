@@ -1,0 +1,11 @@
+[package]
+org = "wso2healthcare"
+name = "Hl7v2ToFhirR4"
+version = "1.0.0"
+export = ["Hl7v2ToFhirR4"]
+distribution = "2201.6.0"
+authors = ["Ballerina"]
+keywords = ["Healthcare","FHIR","HL7V2", "Transform"]
+
+[build-options]
+observabilityIncluded = true
