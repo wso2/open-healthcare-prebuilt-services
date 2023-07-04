@@ -1,9 +1,9 @@
 [package]
 org = "wso2healthcare"
 name = "AthenaConnect"
-version = "1.0.1"
+version = "1.0.2"
 export = ["AthenaConnect"]
-distribution = "2201.5.0"
+distribution = "2201.6.0"
 authors = ["Ballerina"]
 keywords = ["Healthcare","FHIR","AthenaHealth"]
 

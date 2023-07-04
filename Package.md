@@ -33,11 +33,11 @@ This project can be used for exposing Athena as managed API. The project uses th
 
 Create a file `Config.toml` in the project's root directory and add the following configurations.
 
-| Configuration     | Description                                                                                             |
-|-------------------|---------------------------------------------------------------------------------------------------------|
-| `base`            | Athena base URL                                                                                         |
-| `tokenUrl`        | Athena's token endpoint                                                                                 |
-| `clientId`        | Client ID of the application registered with Athena                                                     |
-| `clientSecret`    | Client secret of the application registered with Athena                                                 |
-| `scopes`          | Comma-seperated list of scopes                                                                          |
-| `customDomain`    | URL that should replace the Athena base URL in the responses, if URL-rewrite interceptor is engaged     |
+| Configuration     | Description                                                                                       |
+|-------------------|---------------------------------------------------------------------------------------------------|
+| `base`            | AthenaHealth base URL                                                                             |
+| `tokenUrl`        | AthenaHealth's token endpoint                                                                     |
+| `clientId`        | Client ID of the application registered with AthenaHealth                                         |
+| `clientSecret`    | Client secret of the application registered with AthenaHealth                                     |
+| `scopes`          | Comma-seperated list of scopes                                                                    |
+| `customDomain`    | URL that should replace the AthenaHealth base URL in the responses, if URL-rewrite is enabled     |
