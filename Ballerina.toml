@@ -1,7 +1,7 @@
 [package]
 org = "wso2healthcare"
 name = "AUBasePatientAPI"
-version = "1.0.0"
+version = "1.0.1"
 distribution = "2201.6.0"
 authors = ["WSO2 Healthcare"]
 keywords = ["Healthcare", "FHIR", "Patient", "r4", "aubase"]

@@ -322,7 +322,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "http"},
@@ -333,7 +333,8 @@ dependencies = [
 	{org = "ballerina", name = "time"},
 	{org = "ballerina", name = "url"},
 	{org = "ballerina", name = "uuid"},
-	{org = "ballerinax", name = "health.base"}
+	{org = "ballerinax", name = "health.base"},
+	{org = "ballerinax", name = "health.fhir.r4utils"}
 ]
 modules = [
 	{org = "ballerinax", packageName = "health.fhir.r4", moduleName = "health.fhir.r4"},
@@ -357,6 +358,15 @@ modules = [
 
 [[package]]
 org = "ballerinax"
+name = "health.fhir.r4utils"
+version = "1.0.2"
+dependencies = [
+	{org = "ballerina", name = "lang.int"},
+	{org = "ballerina", name = "regex"}
+]
+
+[[package]]
+org = "ballerinax"
 name = "health.fhirr4"
 version = "1.0.6"
 dependencies = [
@@ -373,7 +383,7 @@ modules = [
 [[package]]
 org = "wso2healthcare"
 name = "AUBasePatientAPI"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
 	{org = "ballerina", name = "http"},
 	{org = "ballerina", name = "log"},
