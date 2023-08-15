@@ -1,0 +1,14 @@
+name: Get current branch
+
+on:
+  workflow_dispatch
+
+jobs:
+  branch:
+    runs-on: ubuntu-latest
+
+    steps:
+     - name: Get current branch
+       run: |
+          branch=$(git rev-parse --abbrev-ref HEAD)
+          echo "The current branch is $branch"
