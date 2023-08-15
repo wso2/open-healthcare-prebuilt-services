@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "http"
-version = "2.9.0"
+version = "2.9.2"
 dependencies = [
 	{org = "ballerina", name = "auth"},
 	{org = "ballerina", name = "cache"},
@@ -211,6 +211,9 @@ dependencies = [
 	{org = "ballerina", name = "lang.value"},
 	{org = "ballerina", name = "observe"}
 ]
+modules = [
+	{org = "ballerina", packageName = "log", moduleName = "log"}
+]
 
 [[package]]
 org = "ballerina"
@@ -339,7 +342,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4"
-version = "3.0.1"
+version = "4.1.0"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "http"},
@@ -350,31 +353,19 @@ dependencies = [
 	{org = "ballerina", name = "time"},
 	{org = "ballerina", name = "url"},
 	{org = "ballerina", name = "uuid"},
-	{org = "ballerinax", name = "health.base"},
-	{org = "ballerinax", name = "health.fhir.r4utils"}
+	{org = "ballerinax", name = "health.base"}
 ]
 modules = [
-	{org = "ballerinax", packageName = "health.fhir.r4", moduleName = "health.fhir.r4"},
-	{org = "ballerinax", packageName = "health.fhir.r4", moduleName = "health.fhir.r4.parser"},
-	{org = "ballerinax", packageName = "health.fhir.r4", moduleName = "health.fhir.r4.terminology"},
-	{org = "ballerinax", packageName = "health.fhir.r4", moduleName = "health.fhir.r4.validator"}
-]
-
-[[package]]
-org = "ballerinax"
-name = "health.fhir.r4utils"
-version = "1.0.2"
-dependencies = [
-	{org = "ballerina", name = "lang.int"},
-	{org = "ballerina", name = "regex"}
+	{org = "ballerinax", packageName = "health.fhir.r4", moduleName = "health.fhir.r4"}
 ]
 
 [[package]]
 org = "wso2healthcare"
 name = "FHIRAuthzService"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
 	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "log"},
 	{org = "ballerina", name = "test"},
 	{org = "ballerinai", name = "observe"},
 	{org = "ballerinax", name = "health.fhir.r4"}
