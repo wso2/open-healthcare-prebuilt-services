@@ -18,36 +18,15 @@ import ballerina/http;
 import ballerinax/health.fhir.r4;
 
 // Implement this function type if you want to customize the default authorization logic for practitioners.
-type AuthorizePractitionersType isolated function (string patientId, string practitionerId) returns AuthzResponse;
+type AuthorizePractitionersType isolated function (string patientId, string practitionerId) returns r4:AuthzResponse;
 
 // Implement this function type if you want to customize the default authorization logic for privileged users.
-type AuthorizePrivilegeUsersType isolated function (AuthzRequest & readonly authzRequest) returns AuthzResponse;
+type AuthorizePrivilegeUsersType isolated function (r4:AuthzRequest & readonly authzRequest) returns r4:AuthzResponse;
 
 // Default authorization logic for practitioners.
 AuthorizePractitionersType authzPractitioner = authorizePractitioners;
 // Default authorization logic for privileged users.
 AuthorizePrivilegeUsersType authzPrivilegeUsers = authorizePrivilegeUsers;
-
-// start of - records related to the API 
-type AuthzRequest record {
-    // This is coming from the health.fhir.r4 modules.
-    r4:FHIRSecurity fhirSecurity;
-    // Set this, if the user is trying to access data of a specific patient.
-    string patientId?;
-    // Set this, if there's a privilege user concept.
-    string privilegedClaimUrl?;
-};
-
-enum AuthzScope {
-    PATIENT, PRACTITIONER, PRIVILEGED
-};
-
-type AuthzResponse record {
-    boolean isAuthorized;
-    AuthzScope scope?;
-};
-
-// end of - records related to the API
 
 configurable string PATIENT_ID_CLAIM = "patient";
 configurable string PRACTITIONER_ID_CLAIM = "practitioner";
@@ -56,7 +35,7 @@ configurable string PRACTITIONER_ID_CLAIM = "practitioner";
 // However, there is no restriction to use this service with any other FHIR API implementation.
 service / on new http:Listener(9090) {
 
-    isolated resource function post authorize(AuthzRequest & readonly authzRequest) returns AuthzResponse {
+    isolated resource function post authorize(r4:AuthzRequest & readonly authzRequest) returns r4:AuthzResponse {
         string? pid = authzRequest.patientId;
         if (pid is ()) {
             // Trying to retrieve data of more than one patient requires privileged access.
@@ -67,7 +46,7 @@ service / on new http:Listener(9090) {
             // When the user is authenticated as a patient.
             if (pid == authenticatedPatientId) {
                 // Patient is authorized to access ONLY his/her own data.
-                return {isAuthorized: true, scope: PATIENT};
+                return {isAuthorized: true, scope: r4:PATIENT};
             }
             // A patient can be a practitioner or a privilged user as well, hence letting the flow to continue
         }
@@ -76,7 +55,7 @@ service / on new http:Listener(9090) {
             // When the user is authenticated as a practitioner
             if (authzPractitioner(pid, authenticatedPractitionerId).isAuthorized) {
                 // Practitioner is authorized to access data of the patient he/she is associated with
-                return {isAuthorized: true, scope: PRACTITIONER};
+                return {isAuthorized: true, scope: r4:PRACTITIONER};
             }
         }
         // Lastly, check whether the user is a privileged user

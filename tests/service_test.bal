@@ -1,12 +1,13 @@
 import ballerina/http;
 import ballerina/test;
+import ballerinax/health.fhir.r4;
 
 http:Client testClient = check new ("http://localhost:9090");
 
 // Test functions
 @test:Config {}
 function testAuthorizingWithAPatient() {
-    AuthzRequest authzRequest = {
+    r4:AuthzRequest authzRequest = {
         "fhirSecurity": {
             "securedAPICall": true,
             "fhirUser": null,
@@ -34,13 +35,13 @@ function testAuthorizingWithAPatient() {
         "patientId": "123",
         privilegedClaimUrl: "http://wso2.org/claims/privileged"
     };
-    AuthzResponse|error response = testClient->/authorize.post(authzRequest);
-    test:assertEquals(response, {isAuthorized: true, scope: PATIENT});
+    r4:AuthzResponse|error response = testClient->/authorize.post(authzRequest);
+    test:assertEquals(response, {isAuthorized: true, scope: r4:PATIENT});
 }
 
 @test:Config {}
 function testAuthorizingWithAPrivilegedUser() {
-    AuthzRequest authzRequest = {
+    r4:AuthzRequest authzRequest = {
         "fhirSecurity": {
             "securedAPICall": true,
             "fhirUser": null,
@@ -68,13 +69,13 @@ function testAuthorizingWithAPrivilegedUser() {
         "patientId": "123",
         privilegedClaimUrl: "privileged"
     };
-    AuthzResponse|error response = testClient->/authorize.post(authzRequest);
-    test:assertEquals(response, {isAuthorized: true, scope: PRIVILEGED});
+    r4:AuthzResponse|error response = testClient->/authorize.post(authzRequest);
+    test:assertEquals(response, {isAuthorized: true, scope: r4:PRIVILEGED});
 }
 
 @test:Config {}
 function testAuthorizingWithAPrivilegedUserForAllPatientData() {
-    AuthzRequest authzRequest = {
+    r4:AuthzRequest authzRequest = {
         "fhirSecurity": {
             "securedAPICall": true,
             "fhirUser": null,
@@ -101,14 +102,14 @@ function testAuthorizingWithAPrivilegedUserForAllPatientData() {
         },
         privilegedClaimUrl: "http://abc.org/claims/privileged"
     };
-    AuthzResponse|error response = testClient->/authorize.post(authzRequest);
-    test:assertEquals(response, {isAuthorized: true, scope: PRIVILEGED});
+    r4:AuthzResponse|error response = testClient->/authorize.post(authzRequest);
+    test:assertEquals(response, {isAuthorized: true, scope: r4:PRIVILEGED});
 }
 
 // Negative test function
 @test:Config {}
 function testAuthorizingWithADifferentPatient() {
-    AuthzRequest authzRequest = {
+    r4:AuthzRequest authzRequest = {
         "fhirSecurity": {
             "securedAPICall": true,
             "fhirUser": null,
@@ -136,13 +137,13 @@ function testAuthorizingWithADifferentPatient() {
         "patientId": "123",
         privilegedClaimUrl: "http://wso2.org/claims/privileged"
     };
-    AuthzResponse|error response = testClient->/authorize.post(authzRequest);
+    r4:AuthzResponse|error response = testClient->/authorize.post(authzRequest);
     test:assertEquals(response, {isAuthorized: false});
 }
 
 @test:Config {}
 function testAuthorizingWithAnUnprivilegedUser() {
-    AuthzRequest authzRequest = {
+    r4:AuthzRequest authzRequest = {
         "fhirSecurity": {
             "securedAPICall": true,
             "fhirUser": null,
@@ -169,7 +170,7 @@ function testAuthorizingWithAnUnprivilegedUser() {
         "patientId": "123",
         privilegedClaimUrl: "http://wso2.org/claims/privileged"
     };
-    AuthzResponse|error response = testClient->/authorize.post(authzRequest);
+    r4:AuthzResponse|error response = testClient->/authorize.post(authzRequest);
     test:assertEquals(response, {isAuthorized: false});
 
     authzRequest = {
@@ -206,7 +207,7 @@ function testAuthorizingWithAnUnprivilegedUser() {
 
 @test:Config {}
 function testAuthorizingWithAnUnprivilegedUserForAllPatientData() {
-    AuthzRequest authzRequest = {
+    r4:AuthzRequest authzRequest = {
         "fhirSecurity": {
             "securedAPICall": true,
             "fhirUser": null,
@@ -233,6 +234,6 @@ function testAuthorizingWithAnUnprivilegedUserForAllPatientData() {
         },
         privilegedClaimUrl: "http://wso2.org/claims/privileged"
     };
-    AuthzResponse|error response = testClient->/authorize.post(authzRequest);
+    r4:AuthzResponse|error response = testClient->/authorize.post(authzRequest);
     test:assertEquals(response, {isAuthorized: false});
 }
