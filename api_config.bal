@@ -21,6 +21,10 @@
 // Developers are allowed modify this file as per the requirement.
 
 import ballerinax/health.fhir.r4;
+import ballerina/os;
+
+configurable string authzServiceUrl = os:getEnv("AUTHZ_SERVICE_URL");
+configurable string priviledgedClaimUrl = os:getEnv("PRIVILEDGED_CLAIM_URL");
 
 final r4:ResourceAPIConfig apiConfig = {
     resourceType: "Patient",
@@ -240,5 +244,9 @@ final r4:ResourceAPIConfig apiConfig = {
     operations: [
 
     ],
-    serverConfig: ()
+    serverConfig: (),
+    authzConfig: authzServiceUrl.length() > 0 ? {
+            authzServiceUrl: authzServiceUrl,
+            privilegedClaimUrl: priviledgedClaimUrl.length() > 0 ? priviledgedClaimUrl : ()
+        } : ()
 };
