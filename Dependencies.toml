@@ -98,6 +98,9 @@ dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.value"}
 ]
+modules = [
+	{org = "ballerina", packageName = "io", moduleName = "io"}
+]
 
 [[package]]
 org = "ballerina"
@@ -360,17 +363,42 @@ modules = [
 ]
 
 [[package]]
-org = "wso2healthcare"
-name = "FHIRAuthzService"
+org = "ballerinax"
+name = "health.fhir.r4.international401"
 version = "1.0.0"
 dependencies = [
+	{org = "ballerina", name = "constraint"},
+	{org = "ballerina", name = "log"},
+	{org = "ballerinax", name = "health.fhir.r4"}
+]
+
+[[package]]
+org = "ballerinax"
+name = "health.fhir.r4utils.ccdatofhir"
+version = "1.0.0"
+dependencies = [
+	{org = "ballerina", name = "log"},
+	{org = "ballerinax", name = "health.fhir.r4"},
+	{org = "ballerinax", name = "health.fhir.r4.international401"}
+]
+modules = [
+	{org = "ballerinax", packageName = "health.fhir.r4utils.ccdatofhir", moduleName = "health.fhir.r4utils.ccdatofhir"}
+]
+
+[[package]]
+org = "wso2healthcare"
+name = "CcdaToFhirService"
+version = "0.9.0"
+dependencies = [
 	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "log"},
 	{org = "ballerina", name = "test"},
 	{org = "ballerinai", name = "observe"},
-	{org = "ballerinax", name = "health.fhir.r4"}
+	{org = "ballerinax", name = "health.fhir.r4"},
+	{org = "ballerinax", name = "health.fhir.r4utils.ccdatofhir"}
 ]
 modules = [
-	{org = "wso2healthcare", packageName = "FHIRAuthzService", moduleName = "FHIRAuthzService"}
+	{org = "wso2healthcare", packageName = "CcdaToFhirService", moduleName = "CcdaToFhirService"}
 ]
 

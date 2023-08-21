@@ -15,61 +15,46 @@
 // under the License.
 
 import ballerina/http;
-import ballerinax/health.fhir.r4;
 import ballerina/log;
+import ballerinax/health.fhir.r4;
+import ballerinax/health.fhir.r4utils.ccdatofhir;
 
-// Implement this function type if you want to customize the default authorization logic for practitioners.
-type AuthorizePractitionersType isolated function (string patientId, string practitionerId) returns r4:AuthzResponse;
-
-// Implement this function type if you want to customize the default authorization logic for privileged users.
-type AuthorizePrivilegeUsersType isolated function (r4:AuthzRequest & readonly authzRequest) returns r4:AuthzResponse;
-
-// Default authorization logic for practitioners.
-AuthorizePractitionersType authzPractitioner = authorizePractitioners;
-// Default authorization logic for privileged users.
-AuthorizePrivilegeUsersType authzPrivilegeUsers = authorizePrivilegeUsers;
-
-configurable string PATIENT_ID_CLAIM = "patient";
-configurable string PRACTITIONER_ID_CLAIM = "practitioner";
-
-// This service is intended to be called by FHIR API templates released by the WSO2.
-// However, there is no restriction to use this service with any other FHIR API implementation.
+# This service supports transform CCDA documents to FHIR based on the CCDA to FHIR mapping Implementation Guide.
+# Link to the IG: http://hl7.org/fhir/us/ccda/2023May/CF-index.html
+# The service is exposed at `/transform` path and the service is listening to HTTP requests at port `9090`.
 service / on new http:Listener(9090) {
 
-    isolated resource function post authorize(r4:AuthzRequest & readonly authzRequest) returns r4:AuthzResponse {
-        string? pid = authzRequest.patientId;
-        if (pid is ()) {
-            log:printDebug("[Request Type] All patient data access.");
-            // Trying to retrieve data of more than one patient requires privileged access.
-            return authzPrivilegeUsers(authzRequest);
-        }
-        log:printDebug("[Request Type] Single patient data access.", patient_id = pid);
-        log:printDebug("[Authorize Patient] Checking whether the user is authorized as a patient.");
-        anydata|error authenticatedPatientId = getClaimValue(PATIENT_ID_CLAIM, authzRequest);
-        if (authenticatedPatientId is string) {
-            // When the user is authenticated as a patient.
-            log:printDebug("[Authorize Patient] Patient id is present.", patient_id = authenticatedPatientId);
-            if (pid == authenticatedPatientId) {
-                // Patient is authorized to access ONLY his/her own data.
-                return {isAuthorized: true, scope: r4:PATIENT};
+    # CCDA to FHIR transform service
+    # + return - Transformed FHIR bundle for the given CCDA document.
+    resource function post transform(http:RequestContext ctx, http:Request request) returns http:Response {
+
+        xml|error xmlPayload = request.getXmlPayload();
+        http:Response response = new;
+        if xmlPayload is error {
+            response.statusCode = http:STATUS_BAD_REQUEST;
+            string diagnosticMsg = xmlPayload.message();
+            error? cause = xmlPayload.cause();
+            if cause is error {
+                diagnosticMsg = cause.message();
             }
-            log:printDebug("[Authorize Patient] User is not authorized as a patient.", data_of_patient_id = pid,
-            authenticated_user_patient_id = authenticatedPatientId);
-            // A patient can be a practitioner or a privilged user as well, hence letting the flow to continue
+            r4:OperationOutcome operationOutcome = r4:errorToOperationOutcome(r4:createFHIRError(
+                "Invalid xml document.", r4:CODE_SEVERITY_ERROR, r4:TRANSIENT_EXCEPTION, diagnostic = diagnosticMsg));
+            log:printError(string `Invalid xml document.`, diagnosic = diagnosticMsg);
+            response.setJsonPayload(operationOutcome.toJson());
+            return response;
         }
-        log:printDebug("[Authorize Practitioner] Checking whether the user is authorized as a practitioner.");
-        anydata|error authenticatedPractitionerId = getClaimValue(PRACTITIONER_ID_CLAIM, authzRequest);
-        if (authenticatedPractitionerId is string) {
-            // When the user is authenticated as a practitioner
-            log:printDebug("[Authorize Practitioner] Practitioner id is present.", practitioner_id = authenticatedPractitionerId);
-            if (authzPractitioner(pid, authenticatedPractitionerId).isAuthorized) {
-                // Practitioner is authorized to access data of the patient he/she is associated with
-                return {isAuthorized: true, scope: r4:PRACTITIONER};
-            }
+        // Pass the xml payload to the CCDA to FHIR transform util function in the FHIR R4 utils package.
+        r4:Bundle|r4:FHIRError ccdaToFhir = ccdatofhir:ccdaToFhir(xmlPayload);
+        // If the success scenario, return the transformed FHIR bundle.
+        if ccdaToFhir is r4:Bundle {
+            response.statusCode = http:STATUS_OK;
+            log:printDebug(string`Transformed message: ${ccdaToFhir.toJsonString()}`);
+            response.setJsonPayload(ccdaToFhir.toJson());
+            return response;
         }
-        // Lastly, check whether the user is a privileged user
-        // This is done lastly in patient access case to determine the correct fine-grained scope.
-        log:printDebug("[Authorize Privilege User] Checking whether the user is authorized as a privileged user.");
-        return authzPrivilegeUsers(authzRequest);
+        log:printError("Error occurred in CCDA to FHIR transformation.", ccdaToFhir);
+        response.statusCode = http:STATUS_INTERNAL_SERVER_ERROR;
+        response.setJsonPayload(r4:errorToOperationOutcome(ccdaToFhir).toJson());
+        return response;
     }
 }

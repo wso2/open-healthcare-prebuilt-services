@@ -1,11 +1,11 @@
 [package]
 org = "wso2healthcare"
-name = "FHIRAuthzService"
-version = "1.0.0"
-export = ["FHIRAuthzService"]
+name = "CcdaToFhirService"
+version = "0.9.0"
 distribution = "2201.7.0"
 authors = ["Ballerina"]
-keywords = ["Healthcare", "FHIR", "Authorization", "Service"]
+keywords = ["Healthcare", "CCDA to FHIR", "FHIR", "CCDA"]
+template = true
 
 [build-options]
 observabilityIncluded = true
