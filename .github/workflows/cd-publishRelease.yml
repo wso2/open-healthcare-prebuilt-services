@@ -17,18 +17,12 @@ jobs:
        with:
         ref: ${{ github.event.inputs.target-branch }}
         token: ${{ secrets.TAG_TOKEN }}
-       
-     - name: Get current branch
-       run: |
-          branch=$(git rev-parse --abbrev-ref HEAD)
-          echo "branch=$branch" >> $GITHUB_ENV
-          echo "${{ github.workspace }}"
 
      - name: Run ballerina build
        uses: ballerina-platform/ballerina-action@2201.7.0
        with:
         args:
-          pack
+          build
        env:
           WORKING_DIR: ${{ github.workspace }}
           JAVA_HOME: /usr/lib/jvm/default-jvm   
@@ -69,7 +63,7 @@ jobs:
             https://api.github.com/repos/${{ github.repository }}/releases \
             -d '{
               "tag_name": "'"$VERSION"'",
-              "target_commitish": "'"$branch"'",
+              "target_commitish": "${{ github.event.inputs.target-branch }}",
               "name": "'"$VERSION"'",
               "body": "Releases",
               "draft": false,
