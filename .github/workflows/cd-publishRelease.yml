@@ -30,7 +30,7 @@ jobs:
      - name: Find JAR file
        id: find-jars
        run: |
-          jar_files=$(find "${{ github.workspace }}" -name "*.jar" -path "*/target/bin")
+          jar_files=$(find "${{ github.workspace }}" -name "*.jar" -path "*/target/bin/*")
           echo "JAR_FILES=$jar_files" >> $GITHUB_ENV
 
      - name: JAR file Info
