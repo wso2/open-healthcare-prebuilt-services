@@ -64,7 +64,7 @@ jobs:
               "generate_release_notes": false
             }'
 
-     - name: Make HTTP GET request
+     - name: Extract release ID
        run: |
           response=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/$VERSION)
           echo "$response"
