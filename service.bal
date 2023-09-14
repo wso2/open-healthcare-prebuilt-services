@@ -39,10 +39,7 @@ ServiceErrorInterceptor serviceErrorInterceptor = new ();
 
 # The service representing well known API
 # Bound to port defined by configs
-@http:ServiceConfig {
-    interceptors: [serviceErrorInterceptor]
-}
-service / on new http:Listener(9090) {
+service http:InterceptableService / on new http:Listener(9090) {
 
     # The authorization endpoints accepted by a FHIR resource server are exposed as a Well-Known Uniform Resource Identifiers (URIs) (RFC5785) JSON document.
     # Reference: https://build.fhir.org/ig/HL7/smart-app-launch/conformance.html#using-well-known
@@ -60,5 +57,9 @@ service / on new http:Listener(9090) {
             issueHandler.addServiceError(createServiceError(constants:FATAL, constants:PROCESSING, response, constants:INTERNAL_SERVER_ERROR));
             return handleServiceErrors(issueHandler);
         }
+    }
+
+    public function createInterceptors() returns ServiceErrorInterceptor {
+        return new ServiceErrorInterceptor();
     }
 }
