@@ -1,0 +1,27 @@
+## server related configurables
+[configFHIRServer]
+version = "1.2.0"
+name = "WSO2 Open Healthcare FHIR"
+title = "FHIR Server"
+status = "active"
+experimental = true
+date = "2022-11-24"
+kind = "instance"
+fhirVersion = "4.0.1"
+format = ["json"]
+patchFormat = ["application/json-patch+json"]
+implementationUrl = "<FHIR_BASE_URL>"
+implementationDescription = "WSO2 Open Healthcare FHIR"
+
+## server security related configurables
+[configRest]
+mode = "server"
+resourceFilePath = "resources/fhir_resources.json"
+interaction = ["search-system"]
+[configRest.security]
+cors = false
+discoveryEndpoint = "https://api.asgardeo.io/t/bifrost/oauth2/token/.well-known/openid-configuration"
+managementEndpoint = "<MANAGE_ENDPOINT>"
+
+[ballerina.log]
+level = "DEBUG"
