@@ -1,0 +1,11 @@
+[package]
+org = "wso2"
+name = "FHIRAuthzService"
+version = "1.0.0"
+export = ["FHIRAuthzService"]
+distribution = "2201.7.0"
+authors = ["Ballerina"]
+keywords = ["Healthcare", "FHIR", "Authorization", "Service"]
+
+[build-options]
+observabilityIncluded = true
