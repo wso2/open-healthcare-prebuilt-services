@@ -1,0 +1,19 @@
+[package]
+authors = ["Ballerina"]
+distribution = "2201.7.0"
+export = ["HealthAudit"]
+keywords = ["Healthcare", "Audit", "Prebuilt", "Service"]
+name = "HealthAudit"
+org = "ballerinax"
+version = "1.0.0"
+
+[build-options]
+observabilityIncluded = true
+
+[[dependency]]
+org = "ballerinax"
+name = "health.fhir.r4.terminology"
+version = "1.0.0"
+repository="local"
+
+
