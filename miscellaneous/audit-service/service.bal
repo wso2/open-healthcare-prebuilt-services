@@ -1,7 +1,7 @@
 import ballerina/http;
-import ballerinax/health.fhir.r4.international401;
-import ballerinax/health.fhir.r4.terminology;
-import ballerinax/health.fhir.r4;
+import thishani/health.fhir.r4.international401;
+import nirmalfernando/health.fhir.r4.terminology;
+import thishani/health.fhir.r4;
 import ballerina/io;
 
 service / on new http:Listener(9090) {
