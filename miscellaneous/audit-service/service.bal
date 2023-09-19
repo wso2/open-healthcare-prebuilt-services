@@ -19,8 +19,8 @@ service / on new http:Listener(9090) {
 }
 
 function toFhirAuditEvent(InternalAuditEvent internalAuditEvent) returns international401:AuditEvent => {
-    'type: getCoding("http://hl7.org/fhir/ValueSet/audit-event-type", internalAuditEvent.typeCode),
-    subtype: [getCoding("http://hl7.org/fhir/ValueSet/audit-event-sub-type", internalAuditEvent.subTypeCode)],
+    'type: getCoding("http://hl7.org/fhir/resource-types", internalAuditEvent.typeCode),
+    subtype: [getCoding("http://hl7.org/fhir/restful-interaction", internalAuditEvent.subTypeCode)],
     action: internalAuditEvent.actionCode,
     outcome: internalAuditEvent.outcomeCode,
     recorded: internalAuditEvent.recordedTime,
@@ -62,8 +62,8 @@ function getAgent(string 'type, string name, boolean isRequestor) returns intern
 
 function getEntity(string 'type, string role, string whatReference) returns international401:AuditEventEntity {
     international401:AuditEventEntity entity = {
-        'type: getCoding("http://hl7.org/fhir/ValueSet/audit-entity-type", 'type),
-        role: getCoding("http://hl7.org/fhir/ValueSet/object-role", role),
+        'type: getCoding("http://terminology.hl7.org/CodeSystem/audit-entity-type", 'type),
+        role: getCoding("http://terminology.hl7.org/CodeSystem/object-role", role),
         what: {
             reference: whatReference
         }
