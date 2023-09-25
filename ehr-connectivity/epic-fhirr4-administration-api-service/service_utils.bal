@@ -16,7 +16,6 @@ import ballerinax/health.clients.fhir;
 import ballerinax/health.fhir.r4.parser as fhirParser;
 import ballerina/log;
 import ballerinax/health.fhir.r4;
-import ballerinax/health.fhir.r4.uscore501;
 
 
 # This util function is used to execute the FHIR interaction based on the interaction type.
@@ -40,7 +39,7 @@ isolated function executeFhirInteraction(string resourceType, r4:FHIRContext fhi
             }
             fhir:FHIRResponse|fhir:FHIRError fhirResponse = fhirConnectorObj->getById(resourceType, id);
             if fhirResponse is fhir:FHIRResponse {
-                anydata|error parsedResponse = parseFhirResponse(fhirResponse, uscore501:USCorePatientProfile).ensureType(targetModelType);
+                anydata|error parsedResponse = parseFhirResponse(fhirResponse, targetModelType);
                 if parsedResponse is anydata {
                     return parsedResponse;
                 }
@@ -56,7 +55,7 @@ isolated function executeFhirInteraction(string resourceType, r4:FHIRContext fhi
             fhir:FHIRResponse|fhir:FHIRError response = fhirConnectorObj->search(resourceType, getQueryParamsMap(
                 fhirContext.getRequestSearchParameters()));
             if response is fhir:FHIRResponse {
-                return <r4:Bundle>check parseFhirResponse(response, uscore501:USCorePatientProfile);
+                return <r4:Bundle>check parseFhirResponse(response, targetModelType);
             }
             log:printError("Error occurred while retrieving the response from Epic.");
             return r4:createFHIRError("Error occurred while retrieving the response from Epic.", r4:CODE_SEVERITY_ERROR,
@@ -65,7 +64,7 @@ isolated function executeFhirInteraction(string resourceType, r4:FHIRContext fhi
         r4:CREATE => {
             fhir:FHIRResponse|fhir:FHIRError response = fhirConnectorObj->create(payload.toJson(), returnPreference = fhir:REPRESENTATION);
             if response is fhir:FHIRResponse {
-                anydata|error parsedResponse = parseFhirResponse(response, uscore501:USCorePatientProfile).ensureType(targetModelType);
+                anydata|error parsedResponse = parseFhirResponse(response, targetModelType);
                 if parsedResponse is anydata {
                     return parsedResponse;
                 }

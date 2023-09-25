@@ -23,7 +23,7 @@ import ballerinax/health.clients.fhir;
 configurable string base = os:getEnv("EPIC_FHIR_SERVER_URL");
 configurable string tokenUrl = os:getEnv("EPIC_FHIR_SERVER_TOKEN_URL");
 configurable string clientId = os:getEnv("EPIC_FHIR_APP_CLIENT_ID");
-configurable string keyFile = os:getEnv("EPIC_FHIR_APP_PRIVATE_KEY");
+configurable string keyFile = os:getEnv("EPIC_FHIR_APP_PRIVATE_KEY_FILE");
 
 fhir:FHIRConnectorConfig epicConfig = {
     baseURL: base,

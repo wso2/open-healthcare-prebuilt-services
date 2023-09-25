@@ -14,7 +14,7 @@ To get started with this service, you'll need to have Ballerina (Refer compatibi
     - `EPIC_FHIR_SERVER_URL` - The URL of the Epic FHIR server.
     - `EPIC_FHIR_SERVER_TOKEN_URL` - The URL of the Epic FHIR server token endpoint.
     - `EPIC_FHIR_APP_CLIENT_ID` - The client ID of the Epic FHIR application.
-    - `EPIC_FHIR_APP_PRIVATE_KEY` - The private key created for the Epic FHIR application.
+    - `EPIC_FHIR_APP_PRIVATE_KEY_FILE` - File path for the private key file created for the Epic FHIR application.
 
 3. Run the project.
 
