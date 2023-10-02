@@ -34,7 +34,7 @@ To get started with this service, you'll need to have Ballerina (Refer compatibi
 
 The following APIs are supported:
 
-- `/fhir/r4/Patient`: [Patient API](http://hl7.org/fhir/us/core/STU6.1/StructureDefinition-us-core-patient.html) : focuses on the demographic information necessary to support administrative, financial, or logistic purposes..
+- `/fhir/r4/Patient`: [Patient API](http://hl7.org/fhir/us/core/STU6.1/StructureDefinition-us-core-patient.html) : focuses on the demographic information necessary to support administrative, financial, or logistic purposes.
 - `/fhir/r4/Practitioner`: [Practitioner API](http://hl7.org/fhir/us/core/STU6.1/StructureDefinition-us-core-practitioner.html) : covers data about providers of care or other health-related services.
 - `/fhir/r4/PractitionerRole`: [PractitionerRole API](http://hl7.org/fhir/us/core/STU6.1/StructureDefinition-us-core-practitionerrole.html) : specific set of Roles/Locations/specialties/services that a practitioner may perform at an organization for a period of time.
 - `/fhir/r4/RelatedPerson`: [RelatedPerson API](http://hl7.org/fhir/us/core/STU6.1/StructureDefinition-us-core-relatedperson.html) : holds data on an entity with a personal or professional relationship to the patient.
