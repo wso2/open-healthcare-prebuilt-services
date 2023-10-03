@@ -1,6 +1,6 @@
 [package]
-org = "sameerag"
-name = "epic_fhirr4_diagnostics_api_service"
+org = "wso2"
+name = "EpicFhirR4DiagnosticsApiService"
 version = "0.1.0"
 distribution = "2201.7.0"
 

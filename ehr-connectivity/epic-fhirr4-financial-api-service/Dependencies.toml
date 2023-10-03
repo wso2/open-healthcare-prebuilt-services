@@ -85,10 +85,6 @@ dependencies = [
 	{org = "ballerina", name = "time"},
 	{org = "ballerina", name = "url"}
 ]
-modules = [
-	{org = "ballerina", packageName = "http", moduleName = "http"},
-	{org = "ballerina", packageName = "http", moduleName = "http.httpscerr"}
-]
 
 [[package]]
 org = "ballerina"
@@ -405,10 +401,9 @@ modules = [
 
 [[package]]
 org = "wso2"
-name = "EpicFhirR4DiagnosticsApiService"
+name = "EpicFhirR4FinancialApiService"
 version = "0.1.0"
 dependencies = [
-	{org = "ballerina", name = "http"},
 	{org = "ballerina", name = "log"},
 	{org = "ballerina", name = "os"},
 	{org = "ballerinai", name = "observe"},
@@ -419,6 +414,6 @@ dependencies = [
 	{org = "ballerinax", name = "health.fhirr4"}
 ]
 modules = [
-	{org = "wso2", packageName = "EpicFhirR4DiagnosticsApiService", moduleName = "EpicFhirR4DiagnosticsApiService"}
+	{org = "wso2", packageName = "EpicFhirR4FinancialApiService", moduleName = "EpicFhirR4FinancialApiService"}
 ]
 

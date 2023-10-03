@@ -417,8 +417,8 @@ modules = [
 ]
 
 [[package]]
-org = "sameerag"
-name = "epic_fhirr4_clinical_api_service"
+org = "wso2"
+name = "EpicFhirR4ClinicalApiService"
 version = "0.1.0"
 dependencies = [
 	{org = "ballerina", name = "http"},
@@ -433,6 +433,6 @@ dependencies = [
 	{org = "ballerinax", name = "health.fhirr4"}
 ]
 modules = [
-	{org = "sameerag", packageName = "epic_fhirr4_clinical_api_service", moduleName = "epic_fhirr4_clinical_api_service"}
+	{org = "wso2", packageName = "EpicFhirR4ClinicalApiService", moduleName = "EpicFhirR4ClinicalApiService"}
 ]
 
