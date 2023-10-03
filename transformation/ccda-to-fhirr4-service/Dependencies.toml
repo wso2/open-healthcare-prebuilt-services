@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "http"
-version = "2.9.3"
+version = "2.9.4"
 dependencies = [
 	{org = "ballerina", name = "auth"},
 	{org = "ballerina", name = "cache"},
@@ -374,12 +374,23 @@ dependencies = [
 
 [[package]]
 org = "ballerinax"
+name = "health.fhir.r4.uscore501"
+version = "1.0.7"
+dependencies = [
+	{org = "ballerina", name = "constraint"},
+	{org = "ballerina", name = "log"},
+	{org = "ballerinax", name = "health.fhir.r4"}
+]
+
+[[package]]
+org = "ballerinax"
 name = "health.fhir.r4utils.ccdatofhir"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
 	{org = "ballerina", name = "log"},
 	{org = "ballerinax", name = "health.fhir.r4"},
-	{org = "ballerinax", name = "health.fhir.r4.international401"}
+	{org = "ballerinax", name = "health.fhir.r4.international401"},
+	{org = "ballerinax", name = "health.fhir.r4.uscore501"}
 ]
 modules = [
 	{org = "ballerinax", packageName = "health.fhir.r4utils.ccdatofhir", moduleName = "health.fhir.r4utils.ccdatofhir"}
