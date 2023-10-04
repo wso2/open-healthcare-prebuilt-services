@@ -98,7 +98,7 @@ service / on new fhirr4:Listener(9091, immunizationApiConfig) {
     }
 }
 
-service / on new fhirr4:Listener(9092, immunizationApiConfig) {
+service / on new fhirr4:Listener(9092, medicationrequestApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/MedicationRequest/[string id](r4:FHIRContext fhirContext) returns MedicationRequest|r4:FHIRError {
