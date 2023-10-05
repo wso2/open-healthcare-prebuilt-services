@@ -12,13 +12,12 @@ version = "4.1.0"
 [[dependency]]
 org = "ballerinax"
 name = "health.fhirr4"
-version = "1.0.8"
+version = "1.1.0"
 
 [[dependency]]
 org = "ballerinax"
 name = "health.clients.fhir"
 version = "2.0.0"
-# repository="local"
 
 [build-options]
 observabilityIncluded = true
