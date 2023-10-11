@@ -13,25 +13,25 @@ observabilityIncluded = true
 [[dependency]]
 org = "nirmalfernando"
 name = "health.fhir.r4.terminology"
-version = "1.0.1"
+version = "1.0.4"
 
 [[dependency]]
-org = "thishani"
+org = "nirmalfernando"
 name = "health.fhir.r4"
 version = "4.1.1"
 
 [[dependency]]
-org = "thishani"
+org = "nirmalfernando"
 name = "health.fhir.r4.parser"
 version = "4.0.2"
 
 [[dependency]]
-org = "thishani"
+org = "nirmalfernando"
 name = "health.fhir.r4.international401"
 version = "1.0.1"
 
 [[dependency]]
-org="thishani"
+org="nirmalfernando"
 name="health.fhirr4"
-version="1.0.10"
+version="1.1.1"
 
