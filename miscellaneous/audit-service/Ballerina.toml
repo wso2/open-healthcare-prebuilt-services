@@ -1,37 +1,11 @@
 [package]
 authors = ["Ballerina"]
 distribution = "2201.7.0"
-export = ["HealthAudit"]
+export = ["FhirAuditService"]
 keywords = ["Healthcare", "Audit", "Prebuilt", "Service"]
-name = "HealthAudit"
-org = "ballerinax"
+name = "FhirAuditService"
+org = "wso2"
 version = "1.0.0"
 
 [build-options]
 observabilityIncluded = true
-
-[[dependency]]
-org = "nirmalfernando"
-name = "health.fhir.r4.terminology"
-version = "1.0.4"
-
-[[dependency]]
-org = "nirmalfernando"
-name = "health.fhir.r4"
-version = "4.1.1"
-
-[[dependency]]
-org = "nirmalfernando"
-name = "health.fhir.r4.parser"
-version = "4.0.2"
-
-[[dependency]]
-org = "nirmalfernando"
-name = "health.fhir.r4.international401"
-version = "1.0.1"
-
-[[dependency]]
-org="nirmalfernando"
-name="health.fhirr4"
-version="1.1.1"
-

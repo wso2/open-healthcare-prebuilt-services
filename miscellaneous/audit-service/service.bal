@@ -1,24 +1,98 @@
 import ballerina/http;
-import nirmalfernando/health.fhir.r4.international401;
-import nirmalfernando/health.fhir.r4.terminology;
-import nirmalfernando/health.fhir.r4;
+import ballerinax/health.fhir.r4.international401;
+import ballerinax/health.fhir.r4;
 import ballerina/io;
+import ballerina/log;
+import ballerina/cache;
+import ballerina/uuid;
+import ballerinax/health.fhir.r4.terminology;
+import ballerina/task;
 
-service / on new http:Listener(9090) {
-    isolated resource function post audits(@http:Payload InternalAuditEvent audit) returns InternalAuditEvent {
-        international401:AuditEvent auditEvent = toFhirAuditEvent(audit);
-        // todo: handle log rotation
-        io:println(auditEvent.toJson());
-        io:Error? result = io:fileWriteJson(string `./audit-logs/fhir-audit.log`, auditEvent.toJson());
-        if (result is io:Error) {
-            // todo: keep track of failed audit events in an inmemory buffer and retry to write
-            io:println("Error writing to audit log file.");
+// in Choreo context, this is expected to be a path in a file mount 
+configurable string auditLogPath = "/tmp/audit-logs/fhir-audit.log";
+// capacity of the cache used to store the failed audit events till they are retried
+configurable int cacheCapacity = 1000;
+// name of the fhir server. This is used as the source observer name in the FHIR audit event
+configurable string fhirServerName = "wso2fhirserver.com";
+// agent type of the audit event. This is used as the agent type in the FHIR audit event
+configurable string agentType = "humanuser";
+
+// This creates a new cache with the advanced configuration.
+final cache:Cache cache = new ({
+    capacity: cacheCapacity
+});
+
+// Retry failed audit events
+class RetryFailedAuditEvents {
+
+    *task:Job;
+
+    public function init() {
+        log:printDebug("Initialized the `retry failed audit events` task.");
+    }
+
+    // Executes this function when the scheduled trigger fires.
+    public function execute() {
+        int i = 0;
+        if cache.keys().length() > 0 {
+            log:printDebug("Retrying to write failed audit events to the log file.", numberOfFailedAuditEvents = cache.keys().length());
         }
-        return audit;
+        while i < cache.keys().length() {
+            // retry to write to the audit log file
+            international401:AuditEvent|error auditEvent = cache.get(cache.keys()[i]).ensureType();
+            if (auditEvent is international401:AuditEvent) {
+                io:Error? result = io:fileWriteLines(auditLogPath, [auditEvent.toJsonString()], option = io:APPEND);
+                if !(result is io:Error) {
+                    // if retrying is successful, remove from the cache
+                    check cache.invalidate(cache.keys()[i]);
+                    log:printDebug("Successfully wrote the audit event to the log file.", id = auditEvent.id);
+                } else {
+                    i += 1;
+                    log:printDebug("Failed to retry writing the audit event to the log file. Retrying...", id = auditEvent.id, 'error = result);
+                }
+            }
+
+        } on fail var e {
+            // keep retrying
+            log:printDebug("Failed to retry writing the audit event to the log file. Retrying...", e);
+        }
+    }
+}
+
+int port = 9093;
+
+service / on new http:Listener(port) {
+
+    function init() returns error? {
+        // this is an internal task, hence the interval does not needs to be a configurable. 
+        _ = check task:scheduleJobRecurByFrequency(
+                            new RetryFailedAuditEvents(), 30);
+        log:printInfo("FHIR Audit Service is started...", port = port);
+    }
+
+    isolated resource function post audits(InternalAuditEvent audit) returns international401:AuditEvent|http:STATUS_ACCEPTED|http:STATUS_INTERNAL_SERVER_ERROR {
+        international401:AuditEvent auditEvent = toFhirAuditEvent(audit);
+        io:Error? result = io:fileWriteLines(auditLogPath, [auditEvent.toJsonString()], option = io:APPEND);
+        if result is io:Error {
+            // keep track of failed audit events in an inmemory buffer and retry to write
+            log:printWarn("Failed to write the audit event to the log file. Trying to put to a cache and retry later.", result, id = auditEvent.id, auditEvent = auditEvent.toJson());
+            do {
+                check cache.put(check auditEvent.id.ensureType(), auditEvent);
+                return http:STATUS_ACCEPTED;
+            } on fail error e {
+                log:printError("[Critical] Failed to write to the log file and failed in adding it to the cache. Audit event will be lost.", 'error = e,
+                auditEvent = auditEvent.toJson());
+                return http:STATUS_INTERNAL_SERVER_ERROR;
+            }
+        } else {
+            log:printDebug("Successfully wrote the audit event to the log file.", id = auditEvent.id);
+        }
+        return auditEvent;
     }
 }
 
 isolated function toFhirAuditEvent(InternalAuditEvent internalAuditEvent) returns international401:AuditEvent => {
+    id: uuid:createType1AsString(),
     'type: getCoding("http://terminology.hl7.org/CodeSystem/audit-event-type", internalAuditEvent.typeCode),
     subtype: [getCoding("http://hl7.org/fhir/restful-interaction", internalAuditEvent.subTypeCode)],
     action: internalAuditEvent.actionCode,
@@ -28,7 +102,7 @@ isolated function toFhirAuditEvent(InternalAuditEvent internalAuditEvent) return
     entity: [getEntity(internalAuditEvent.entityType, internalAuditEvent.entityRole, internalAuditEvent.entityWhatReference)],
     'source: {
         observer: {
-            display: internalAuditEvent.sourceObserverName
+            display: internalAuditEvent.sourceObserverName == "" ? fhirServerName : internalAuditEvent.sourceObserverName
         },
         'type: [getCoding("http://terminology.hl7.org/CodeSystem/security-source-type", internalAuditEvent.sourceObserverType)]
     }
@@ -37,7 +111,8 @@ isolated function toFhirAuditEvent(InternalAuditEvent internalAuditEvent) return
 isolated function getCoding(string system, string code) returns r4:Coding {
     r4:Coding|r4:FHIRError fhirCode = terminology:createCoding(system, code);
     if (fhirCode is r4:FHIRError) {
-        io:println("Error creating coding: ", fhirCode);
+        // means the code system is not available in the terminology server
+        // skip the error and mark the value as unknown.
         return {
             system: system,
             code: code,
@@ -51,7 +126,7 @@ isolated function getAgent(string 'type, string name, boolean isRequestor) retur
     international401:AuditEventAgent agent = {
         'type: {
             coding:
-            [getCoding("http://terminology.hl7.org/CodeSystem/extra-security-role-type", 'type)]
+            [getCoding("http://terminology.hl7.org/CodeSystem/extra-security-role-type", 'type == "" ? agentType : 'type)]
         },
         who: {
             display: name
