@@ -1,0 +1,2 @@
+# Connect to EMR
+All well-known EMR systems can be integrated and exposed as FHIR APIs using our pre-built EMR connectors. The pre-built Ballerina service for EMR integration is publicly available GitHub.
