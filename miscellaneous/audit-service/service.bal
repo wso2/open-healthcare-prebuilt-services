@@ -34,10 +34,10 @@ class RetryFailedAuditEvents {
     // Executes this function when the scheduled trigger fires.
     public function execute() {
         int i = 0;
-        if cache.keys().length() > 0 {
-            log:printDebug("Retrying to write failed audit events to the log file.", numberOfFailedAuditEvents = cache.keys().length());
+        if cache.size() > 0 {
+            log:printDebug("Retrying to write failed audit events to the log file.", numberOfFailedAuditEvents = cache.size());
         }
-        while i < cache.keys().length() {
+        while i < cache.size() {
             // retry to write to the audit log file
             international401:AuditEvent|error auditEvent = cache.get(cache.keys()[i]).ensureType();
             if (auditEvent is international401:AuditEvent) {
