@@ -29,7 +29,7 @@ This creates the organization and opens the Project Home page of the default pro
     * Fork the pre-built Ballerina services repository (https://github.com/wso2/open-healthcare-prebuilt-services) to your Github organization.
     * Follow the official documentation to create and configure a service: https://wso2.com/choreo/docs/develop-components/develop-services/develop-a-ballerina-rest-api/#step-1-create-a-service-component. Use the following selections. 
 
-        ![Alt](/create-prebuilt-service-v2-fhir.png "Create a hl7v2 to FHIR service in Choreo")
+        ![Alt](create-prebuilt-service-v2-fhir.png "Create a hl7v2 to FHIR service in Choreo")
 
     * Click Create. Once the component creation is complete, you will see the component overview page.
 
