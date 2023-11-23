@@ -6,7 +6,7 @@ This service transforms HL7v2 messages to FHIR resources. Data transformation co
 
 You do not have to write code from scratch but reuse these existing services when implementing your FHIR services. You can deploy the pre-built service on your own environment or deploy on Choreo as a standard Ballerina service.
 
-```Supported HL7v2 message versions are 2.3, 2.3.1, 2.4, 2.5, 2.5.1,  2.6, 2.7, 2.7.1, 2.8.```
+```Supported HL7v2 message versions are 2.3, 2.3.1, 2.4, 2.5, 2.5.1, 2.6, 2.7, 2.7.1, 2.8.```
 
 ```Supported FHIR version is 4.0.1.```
 
