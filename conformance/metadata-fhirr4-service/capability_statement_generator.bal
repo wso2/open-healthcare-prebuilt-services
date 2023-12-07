@@ -14,8 +14,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-import ballerina/time;
 import ballerina/io;
+import ballerina/log;
+import ballerina/time;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.international401;
 
@@ -31,7 +32,7 @@ string resourcePath = "";
 # 
 # + return - capabilitity statement object
 isolated function generateCapabilityStatement() returns international401:CapabilityStatement|error {
-    LogDebug("Generating capability statement started");
+    log:printDebug("Generating capability statement started");
 
     international401:CapabilityStatementStatus capabilityStatementStatus = check configFHIRServer.status.ensureType(international401:CapabilityStatementStatus);
     international401:CapabilityStatementKind capabilityStatementKind = check configFHIRServer.kind.ensureType(international401:CapabilityStatementKind);
@@ -79,10 +80,10 @@ isolated function generateCapabilityStatement() returns international401:Capabil
     if capabilityStatementRest is international401:CapabilityStatementRest {
         capabilityStatement.rest = [capabilityStatementRest];
     } else {
-        LogDebug(string `${VALUE_NOT_FOUND}: capabilityStatementRest`);
+        log:printDebug(string `${VALUE_NOT_FOUND}: capabilityStatementRest`);
     }
 
-    LogDebug("Generating capability statement ended");
+    log:printDebug("Generating capability statement ended");
     return capabilityStatement;
 }
 
@@ -98,7 +99,7 @@ isolated function populateCapabilityStatementRest() returns international401:Cap
     if restSecurity is international401:CapabilityStatementRestSecurity {
         rest.security = restSecurity;
     } else {
-        LogDebug(string `${VALUE_NOT_FOUND}: restSecurity`);
+        log:printDebug(string `${VALUE_NOT_FOUND}: restSecurity`);
     }
 
     international401:CapabilityStatementRestInteraction[] restInteraction = [];
@@ -113,14 +114,14 @@ isolated function populateCapabilityStatementRest() returns international401:Cap
         }
         rest.interaction = restInteraction;
     } else {
-        LogDebug(VALUE_NOT_FOUND);
+        log:printDebug(VALUE_NOT_FOUND);
     }
 
     international401:CapabilityStatementRestResource[]? restResources = check populateCapabilityStatementRestResources(configRest.resourceFilePath);
     if restResources is international401:CapabilityStatementRestResource[] {
         rest.'resource = restResources;
     } else {
-        LogDebug(string `${VALUE_NOT_FOUND}: restResources`);
+        log:printDebug(string `${VALUE_NOT_FOUND}: restResources`);
     }
     return rest;
 }
@@ -135,7 +136,7 @@ isolated function populateCapabilityStatementRestSecurity() returns internationa
     if cors is boolean {
         restSecurity.cors = cors;
     } else {
-        LogDebug(string `${VALUE_NOT_FOUND}: cors`);
+        log:printDebug(string `${VALUE_NOT_FOUND}: cors`);
     }
 
     r4:Coding seviceCoding = {
@@ -160,7 +161,7 @@ isolated function populateCapabilityStatementRestSecurity() returns internationa
     if discoveryEndpoint is string && discoveryEndpoint != "" {
         openIdConfigurations = check getOpenidConfigurations(discoveryEndpoint).cloneReadOnly();
     } else {
-        LogDebug(string `${VALUE_NOT_FOUND}: discoveryEndpoint`);
+        log:printDebug(string `${VALUE_NOT_FOUND}: discoveryEndpoint`);
     }
 
     string? configTokenEndpoint = configRest.security?.tokenEndpoint;
@@ -193,11 +194,11 @@ isolated function populateSecurityExtensions(r4:Extension[] extensions, string e
     if endpointOpenid is string {
         endpoint = endpointOpenid;
     } else {
-        LogDebug(string `${VALUE_NOT_FOUND}: ${extensionUrl} in Openid configuration`);
+        log:printDebug(string `${VALUE_NOT_FOUND}: ${extensionUrl} in Openid configuration`);
         if configEndpoint is string {
             endpoint = configEndpoint;
         } else {
-            LogDebug(string `${VALUE_NOT_FOUND}: ${extensionUrl}`);
+            log:printDebug(string `${VALUE_NOT_FOUND}: ${extensionUrl}`);
         }
     }
 
@@ -215,7 +216,7 @@ isolated function populateSecurityExtensions(r4:Extension[] extensions, string e
 # + resourceFilePath - resource file path
 # + return - capability statement rest resources list
 isolated function populateCapabilityStatementRestResources(string? resourceFilePath = ()) returns international401:CapabilityStatementRestResource[]?|error {
-    LogDebug("Populating resources");
+    log:printDebug("Populating resources");
 
     international401:CapabilityStatementRestResource[] resources = [];
 
@@ -226,9 +227,9 @@ isolated function populateCapabilityStatementRestResources(string? resourceFileP
     if filePath is string {
         json resourcesJSON = check io:fileReadJson(filePath);
         configResources = check resourcesJSON.cloneWithType();
-        LogDebug(string `Resource file path: ${filePath}`);
+        log:printDebug(string `Resource file path: ${filePath}`);
     } else {
-        LogDebug(string `${VALUE_NOT_FOUND}: resourceFilePath`);
+        log:printDebug(string `${VALUE_NOT_FOUND}: resourceFilePath`);
         return;
     }
 
@@ -239,15 +240,15 @@ isolated function populateCapabilityStatementRestResources(string? resourceFileP
                 'type: configResource.'type
             };
 
-            string[]? supportedProfile = configResource.supportedProfile;
+            string[]? supportedProfile = configResource.supportedProfiles;
             if supportedProfile is string[] {
                 'resource.supportedProfile = supportedProfile;
             } else {
-                LogDebug(string `${VALUE_NOT_FOUND}: supportedProfile`);
+                log:printDebug(string `${VALUE_NOT_FOUND}: supportedProfile`);
             }
 
             international401:CapabilityStatementRestResourceInteraction[] resourceInteraction = [];
-            string[]? configInteraction = configResource.interaction;
+            string[]? configInteraction = configResource.interactions;
             if configInteraction is string[] {
                 foreach string configInteractionCode in configInteraction {
                     international401:CapabilityStatementRestResourceInteractionCode interactionCode = check configInteractionCode.ensureType(international401:CapabilityStatementRestResourceInteractionCode);
@@ -258,7 +259,7 @@ isolated function populateCapabilityStatementRestResources(string? resourceFileP
                 }
                 'resource.interaction = resourceInteraction;
             } else {
-                LogDebug(string `${VALUE_NOT_FOUND}: resourceInteraction`);
+                log:printDebug(string `${VALUE_NOT_FOUND}: resourceInteraction`);
             }
 
             string? configVersioning = configResource.versioning;
@@ -266,14 +267,14 @@ isolated function populateCapabilityStatementRestResources(string? resourceFileP
                 international401:CapabilityStatementRestResourceVersioning versioning = check configVersioning.ensureType(international401:CapabilityStatementRestResourceVersioning);
                 'resource.versioning = versioning;
             } else {
-                LogDebug(string `${VALUE_NOT_FOUND}: versioning`);
+                log:printDebug(string `${VALUE_NOT_FOUND}: versioning`);
             }
 
             boolean? conditionalCreate = configResource.conditionalCreate;
             if conditionalCreate is boolean {
                 'resource.conditionalCreate = conditionalCreate;
             } else {
-                LogDebug(string `${VALUE_NOT_FOUND}: conditionalCreate`);
+                log:printDebug(string `${VALUE_NOT_FOUND}: conditionalCreate`);
             }
 
             string? configConditionalRead = configResource.conditionalRead;
@@ -281,14 +282,14 @@ isolated function populateCapabilityStatementRestResources(string? resourceFileP
                 international401:CapabilityStatementRestResourceConditionalRead conditionalRead = check configConditionalRead.ensureType(international401:CapabilityStatementRestResourceConditionalRead);
                 'resource.conditionalRead = conditionalRead;
             } else {
-                LogDebug(string `${VALUE_NOT_FOUND}: conditionalRead`);
+                log:printDebug(string `${VALUE_NOT_FOUND}: conditionalRead`);
             }
 
             boolean? conditionalUpdate = configResource.conditionalUpdate;
             if conditionalUpdate is boolean {
                 'resource.conditionalUpdate = conditionalUpdate;
             } else {
-                LogDebug(string `${VALUE_NOT_FOUND}: conditionalUpdate`);
+                log:printDebug(string `${VALUE_NOT_FOUND}: conditionalUpdate`);
             }
 
             
@@ -297,11 +298,11 @@ isolated function populateCapabilityStatementRestResources(string? resourceFileP
                 international401:CapabilityStatementRestResourceConditionalDelete conditionalDelete = check configConditionalDelete.ensureType(international401:CapabilityStatementRestResourceConditionalDelete);
                 'resource.conditionalDelete = conditionalDelete;
             } else {
-                LogDebug(string `${VALUE_NOT_FOUND}: conditionalDelete`);
+                log:printDebug(string `${VALUE_NOT_FOUND}: conditionalDelete`);
             }
 
             international401:CapabilityStatementRestResourceReferencePolicy[] referencePolicy = [];
-            string[]? configReferencePolicy = configResource.referencePolicy;
+            string[]? configReferencePolicy = configResource.referencePolicies;
             if configReferencePolicy is string[] {
                 foreach string configReferencePolicyItem in configReferencePolicy {
                     international401:CapabilityStatementRestResourceReferencePolicy referencePolicyItem = check configReferencePolicyItem.ensureType(international401:CapabilityStatementRestResourceReferencePolicy);
@@ -309,55 +310,55 @@ isolated function populateCapabilityStatementRestResources(string? resourceFileP
                 }
                 'resource.referencePolicy = referencePolicy;
             } else {
-                LogDebug(string `${VALUE_NOT_FOUND}: referencePolicy`);
+                log:printDebug(string `${VALUE_NOT_FOUND}: referencePolicy`);
             }
 
             string[] searchRevInclude = [];
-            string[]? configSearchRevIncludes = configResource.searchRevInclude;
+            string[]? configSearchRevIncludes = configResource.searchRevIncludes;
             if configSearchRevIncludes is string[] {
                 foreach string configSearchRevIncludeItem in configSearchRevIncludes {
                     searchRevInclude.push(configSearchRevIncludeItem);
                 }
                 'resource.searchRevInclude = searchRevInclude;
             } else {
-                LogDebug(string `${VALUE_NOT_FOUND}: searchRevInclude`);
+                log:printDebug(string `${VALUE_NOT_FOUND}: searchRevInclude`);
             }
 
             international401:CapabilityStatementRestResourceSearchParam[] resourceSearchParams = [];
             do {
-                string[]? configStringParams = configResource.searchParamString;
+                string[]? configStringParams = configResource.stringSearchParams;
                 international401:CapabilityStatementRestResourceSearchParam[] stringSearchParams = check populateSearchParams(configStringParams, r4:CODE_TYPE_STRING);
                 resourceSearchParams.push(...stringSearchParams);
 
-                string[]? configNumberParams = configResource.searchParamNumber;
+                string[]? configNumberParams = configResource.numberSearchParams;
                 international401:CapabilityStatementRestResourceSearchParam[] numberSearchParams = check populateSearchParams(configNumberParams, international401:CODE_TYPE_NUMBER);
                 resourceSearchParams.push(...numberSearchParams);
 
-                string[]? configDateParams = configResource.searchParamDate;
+                string[]? configDateParams = configResource.dateSearchParams;
                 international401:CapabilityStatementRestResourceSearchParam[] dateSearchParams = check populateSearchParams(configDateParams, international401:CODE_TYPE_DATE);
                 resourceSearchParams.push(...dateSearchParams);
 
-                string[]? configTokenParams = configResource.searchParamToken;
+                string[]? configTokenParams = configResource.tokenSearchParams;
                 international401:CapabilityStatementRestResourceSearchParam[] tokenSearchParams = check populateSearchParams(configTokenParams, international401:CODE_TYPE_TOKEN);
                 resourceSearchParams.push(...tokenSearchParams);
 
-                string[]? configReferenceParams = configResource.searchParamReference;
+                string[]? configReferenceParams = configResource.referenceSearchParams;
                 international401:CapabilityStatementRestResourceSearchParam[] referenceSearchParams = check populateSearchParams(configReferenceParams, international401:CODE_TYPE_REFERENCE);
                 resourceSearchParams.push(...referenceSearchParams);
 
-                string[]? configCompositeParams = configResource.searchParamComposite;
+                string[]? configCompositeParams = configResource.compositeSearchParams;
                 international401:CapabilityStatementRestResourceSearchParam[] compositeSearchParams = check populateSearchParams(configCompositeParams, international401:CODE_TYPE_COMPOSITE);
                 resourceSearchParams.push(...compositeSearchParams);
 
-                string[]? configQuantityParams = configResource.searchParamQuantity;
+                string[]? configQuantityParams = configResource.quantitySearchParams;
                 international401:CapabilityStatementRestResourceSearchParam[] quantitySearchParams = check populateSearchParams(configQuantityParams, international401:CODE_TYPE_QUANTITY);
                 resourceSearchParams.push(...quantitySearchParams);
 
-                string[]? configUriParams = configResource.searchParamURI;
+                string[]? configUriParams = configResource.uriSearchParams;
                 international401:CapabilityStatementRestResourceSearchParam[] uriSearchParams = check populateSearchParams(configUriParams, international401:CODE_TYPE_URI);
                 resourceSearchParams.push(...uriSearchParams);
 
-                string[]? configSpecialParams = configResource.searchParamSpecial;
+                string[]? configSpecialParams = configResource.specialSearchParams;
                 international401:CapabilityStatementRestResourceSearchParam[] specialSearchParams = check populateSearchParams(configSpecialParams, international401:CODE_TYPE_SPECIAL);
                 resourceSearchParams.push(...specialSearchParams);
 
@@ -368,7 +369,7 @@ isolated function populateCapabilityStatementRestResources(string? resourceFileP
             resources.push('resource);
         }
     } else {
-        LogDebug(string `${VALUE_NOT_FOUND}: restResources`);
+        log:printDebug(string `${VALUE_NOT_FOUND}: restResources`);
         return;
     }
     return resources;
@@ -385,7 +386,7 @@ isolated function populateSearchParams(string[]? configSearchParams, internation
     if typeSearchParams is international401:CapabilityStatementRestResourceSearchParam[] {
         searchParams.push(...typeSearchParams);
     } else {
-        LogDebug(string `${VALUE_NOT_FOUND}: searchParams: ${'type}`);
+        log:printDebug(string `${VALUE_NOT_FOUND}: searchParams: ${'type}`);
     }
     return searchParams;
 }

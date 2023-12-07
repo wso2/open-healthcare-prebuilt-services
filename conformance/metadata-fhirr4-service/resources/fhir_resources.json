@@ -9,8 +9,8 @@
     "referencePolicies": ["resolves"],
     "searchRevIncludes": ["null"],
     "supportedProfiles": ["http://hl7.org/fhir/StructureDefinition/Patient"],
-    "interactions": ["create", "delete", "update", "history-type", "search-type", "vread", "read"],
-    "searchParamString": ["_lastUpdated", "_security", "_tag", "_source", "_profile"],
-    "searchParamNumber": ["_id"]
+    "interaction": ["create", "delete", "update", "history-type-scwe", "search-type", "vread", "read"],
+    "stringSearchParams": ["_lastUpdated", "_security", "_tag", "_source", "_profile"],
+    "numberSearchParams": ["_id"]
   }
 ]

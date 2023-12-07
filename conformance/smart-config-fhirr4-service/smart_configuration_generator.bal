@@ -14,19 +14,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
+import ballerina/log;
+
 configurable Configs configs = ?;
 
 # Generator function for Smart Configuration
 # + return - smart configuration as a json or an error
 public isolated function generateSmartConfiguration() returns SmartConfiguration|error {
-    LogDebug("Generating smart configuration started");
+    log:printDebug("Generating smart configuration started");
 
     OpenIDConfiguration openIdConfigurations = {};
     string? discoveryEndpoint = configs.discoveryEndpoint;
     if discoveryEndpoint is string && discoveryEndpoint != "" {
         openIdConfigurations = check getOpenidConfigurations(discoveryEndpoint).cloneReadOnly();
     } else {
-        LogDebug(string `${VALUE_NOT_FOUND}: discoveryEndpoint`);
+        log:printDebug(string `${VALUE_NOT_FOUND}: discoveryEndpoint`);
     }
 
     string? authorization_endpoint = configs.smartConfiguration?.authorizationEndpoint?:openIdConfigurations.authorization_endpoint?:();
@@ -72,6 +74,6 @@ public isolated function generateSmartConfiguration() returns SmartConfiguration
         scopes_supported: configs.smartConfiguration?.scopesSupported?:openIdConfigurations.scopes_supported?:()
     };
 
-    LogDebug("Generating smart configuration completed ");
+    log:printDebug("Generating smart configuration completed ");
     return smartConfig;
 }

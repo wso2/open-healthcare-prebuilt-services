@@ -94,20 +94,20 @@ public type ConfigSecurity record {
 # + conditionalRead - not-supported | modified-since | not-match | full-support
 # + conditionalUpdate - If allows/uses conditional update
 # + conditionalDelete - not-supported | single | multiple - how conditional delete is supported
-# + referencePolicy - literal | logical | resolves | enforced | local
-# + searchInclude - _include values supported by the server
-# + searchRevInclude - _revinclude values supported by the server
-# + supportedProfile - Use-case specific profiles
-# + interaction - Operations supported
-# + searchParamNumber - Numeric search parameters supported by implementation
-# + searchParamDate - Date search parameters supported by implementation
-# + searchParamString - String search parameters supported by implementation
-# + searchParamToken - Token search parameters supported by implementation
-# + searchParamReference - Reference search parameters supported by implementation
-# + searchParamComposite - Composite search parameters supported by implementation
-# + searchParamQuantity - Quantity search parameters supported by implementation
-# + searchParamURI - URI search parameters supported by implementation
-# + searchParamSpecial - Special search parameters supported by implementation
+# + referencePolicies - literal | logical | resolves | enforced | local
+# + searchIncludes - _include values supported by the server
+# + searchRevIncludes - _revinclude values supported by the server
+# + supportedProfiles - Use-case specific profiles
+# + interactions - Operations supported
+# + numberSearchParams - Numeric search parameters supported by implementation
+# + dateSearchParams - Date search parameters supported by implementation
+# + stringSearchParams - String search parameters supported by implementation
+# + tokenSearchParams - Token search parameters supported by implementation
+# + referenceSearchParams - Reference search parameters supported by implementation
+# + compositeSearchParams - Composite search parameters supported by implementation
+# + quantitySearchParams - Quantity search parameters supported by implementation
+# + uriSearchParams - URI search parameters supported by implementation
+# + specialSearchParams - Special search parameters supported by implementation
 public type ConfigResource record {
     string 'type;
     string versioning?;
@@ -115,18 +115,18 @@ public type ConfigResource record {
     string conditionalRead?;
     boolean conditionalUpdate?;
     string conditionalDelete?;
-    string[] referencePolicy?;
-    string[] searchInclude?;
-    string[] searchRevInclude?;
-    string[] supportedProfile?;
-    string[] interaction?;
-    string[] searchParamNumber?;
-    string[] searchParamDate?;
-    string[] searchParamString?;
-    string[] searchParamToken?;
-    string[] searchParamReference?;
-    string[] searchParamComposite?;
-    string[] searchParamQuantity?;
-    string[] searchParamURI?;
-    string[] searchParamSpecial?;
+    string[] referencePolicies?;
+    string[] searchIncludes?;
+    string[] searchRevIncludes?;
+    string[] supportedProfiles?;
+    string[] interactions?;
+    string[] numberSearchParams?;
+    string[] dateSearchParams?;
+    string[] stringSearchParams?;
+    string[] tokenSearchParams?;
+    string[] referenceSearchParams?;
+    string[] compositeSearchParams?;
+    string[] quantitySearchParams?;
+    string[] uriSearchParams?;
+    string[] specialSearchParams?;
 };
