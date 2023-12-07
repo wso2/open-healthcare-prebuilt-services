@@ -17,19 +17,18 @@
 import ballerina/http;
 import ballerina/log;
 import ballerina/time;
-import ballerinax/health.fhir.r4;
 
 // Represents the subtype of http:Ok status code record.
 type SmartConfigResponse record {|
     *http:Ok;
-    string mediaType;
+    string mediaType = "application/json";
     json body;
 |};
 
 // Represents the subtype of http:InternalServerError status code record.
 type SmartConfigInternalServerError record {|
     *http:InternalServerError;
-    json body;
+    string body;
 |};
 
 ## The service representing well known API
@@ -46,10 +45,9 @@ service / on new http:Listener(9090) {
         json|error response = smartConfiguration.toJson();
         if response is json {
             log:printDebug("Smart configuration served at " + time:utcNow()[0].toString());
-            return <SmartConfigResponse> {mediaType: "application/json", body: response};
+            return {body: response};
         } else {
-            r4:OperationOutcome opOutcome = r4:handleErrorResponse(response);
-            return <SmartConfigInternalServerError> {body: opOutcome.toJson()};
+            return <SmartConfigInternalServerError> {body: response.message()};
         }
     }
 }
