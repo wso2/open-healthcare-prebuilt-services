@@ -15,8 +15,22 @@
 // under the License.
 
 import ballerina/http;
+import ballerina/log;
 import ballerina/time;
 import ballerinax/health.fhir.r4;
+
+// Represents the subtype of http:Ok status code record.
+type SmartConfigResponse record {|
+    *http:Ok;
+    string mediaType;
+    json body;
+|};
+
+// Represents the subtype of http:InternalServerError status code record.
+type SmartConfigInternalServerError record {|
+    *http:InternalServerError;
+    json body;
+|};
 
 ## The service representing well known API
 final readonly & SmartConfiguration smartConfiguration = check generateSmartConfiguration().cloneReadOnly();
@@ -28,18 +42,14 @@ service / on new http:Listener(9090) {
     # The authorization endpoints accepted by a FHIR resource server are exposed as a Well-Known Uniform Resource Identifiers (URIs) (RFC5785) JSON document.
     # Reference: https://build.fhir.org/ig/HL7/smart-app-launch/conformance.html#using-well-known
     # + return - Smart configuration
-    resource isolated function get fhir/r4/\.well\-known/smart\-configuration() returns http:Response {
+    resource isolated function get fhir/r4/\.well\-known/smart\-configuration() returns SmartConfigResponse|SmartConfigInternalServerError {
         json|error response = smartConfiguration.toJson();
-        http:Response httpResponse = new;
         if response is json {
-            LogDebug("Smart configuration served at " + time:utcNow()[0].toString());
-            httpResponse.setJsonPayload(response);
-            httpResponse.statusCode = http:STATUS_OK;
+            log:printDebug("Smart configuration served at " + time:utcNow()[0].toString());
+            return <SmartConfigResponse> {mediaType: "application/json", body: response};
         } else {
             r4:OperationOutcome opOutcome = r4:handleErrorResponse(response);
-            httpResponse.setJsonPayload(opOutcome.toJson());
-            httpResponse.statusCode = http:STATUS_INTERNAL_SERVER_ERROR;
+            return <SmartConfigInternalServerError> {body: opOutcome.toJson()};
         }
-        return httpResponse;
     }
 }
