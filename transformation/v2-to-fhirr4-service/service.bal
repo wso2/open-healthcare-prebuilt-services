@@ -18,7 +18,7 @@ import ballerinax/health.hl7v2.utils.v2tofhirr4;
 // Represents the subtype of http:Ok status code record.
 type V2ToFhirResponse record {|
     *http:Ok;
-    string mediaType;
+    string mediaType = r4:FHIR_MIME_TYPE_JSON;
     json body;
 |};
 
@@ -39,7 +39,7 @@ service / on new http:Listener(9090) {
     resource function post transform(@http:Payload string hl7Message) returns V2ToFhirResponse|V2ToFhirBadRequest|V2ToFhirInternalServerError {
         json|error v2tofhirResult = v2tofhirr4:v2ToFhir(hl7Message);
         if v2tofhirResult is json {
-            return {body: v2tofhirResult, mediaType: r4:FHIR_MIME_TYPE_JSON};
+            return {body: v2tofhirResult};
         }
         else if v2tofhirResult is hl7v2:HL7Error {
             string msg = v2tofhirResult.detail().message ?: v2tofhirResult.message();

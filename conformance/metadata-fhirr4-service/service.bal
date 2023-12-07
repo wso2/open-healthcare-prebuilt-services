@@ -54,8 +54,7 @@ service / on new fhirr4:Listener(9090, apiConfig) {
             log:printDebug("Capability statement served at " + time:utcNow()[0].toString());
             return response;
         } else {
-            r4:OperationOutcome opOutcome = r4:handleErrorResponse(response);
-            return opOutcome;
+            return r4:handleErrorResponse(response);
         }
     }
 }
