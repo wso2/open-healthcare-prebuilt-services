@@ -1,10 +1,14 @@
 # C-CDA to FHIR Service
 
-This pre-built service implements a REST service to expose C-CDA to FHIR pre-built mappings. Once exposed it will accept CCDA documents and returns transformed FHIR Bundle. 
+## Introduction
 
-## Overview
+This service transforms C-CDA to FHIR resources. Data transformation conditions are taken from the official C-CDA to FHIR mappings page (https://build.fhir.org/ig/HL7/ccda-on-fhir/CF-index.html) and based on the feedback received from the users.
 
-This pre-built service exposes mappings implemented as per the CCDA to FHIR implementation guide (http://build.fhir.org/ig/HL7/ccda-on-fhir/CF-index.html). Following are the supported CCDA-to-FHIR conversions.
+You do not have to write code from scratch but reuse these existing services when implementing your FHIR services. You can deploy the pre-built service on your own environment or deploy on Choreo as a standard Ballerina service.
+
+```Supported FHIR version is 4.0.1.```
+
+This pre-built service exposes following CCDA-to-FHIR transformations.
 
 1) C-CDA Allergy Intolerance Observation to FHIR Allergy Intolerance.
 2) C-CDA Problem observation to FHIR Condition.
@@ -15,17 +19,9 @@ This pre-built service exposes mappings implemented as per the CCDA to FHIR impl
 7) C-CDA Author Header to FHIR Practitioner.
 8) C-CDA Procedure Activity to FHIR Procedure.
 
-### Compatibility
+## Setup and run
 
-| Protocol            | Version                   |
-|---------------------|---------------------------|
-| FHIR                | R4                        |
-
-## Using the Template
-
-### Setup and run
-
-1. Create fork from this pre built service.
+1.Clone this repository to your local machine and navigate to the pre-built service on `ccda-to-fhirr4-service`.
 
 2. Run the project.
 
@@ -38,7 +34,32 @@ This pre-built service exposes mappings implemented as per the CCDA to FHIR impl
     Sample request format:
 
     ```
-    curl --location 'http://<host>:<port>/transform' \ 
+    curl 'http://<host>:<port>/transform' \ 
     --header 'Content-Type: application/xml' \
     --data-raw '<ClinicalDocument/>'
     ```
+
+## [Optional] Deploy in Choreo
+
+WSO2’s Choreo (https://wso2.com/choreo/) is an internal developer platform that redefines how you create digital experiences. Choreo empowers you to seamlessly design, develop, deploy, and govern your cloud native applications, unlocking innovation while reducing time-to-market. You can deploy the healthcare prebuilt services in Choreo as explained below. 
+
+### Prerequisites
+
+If you are signing in to the Choreo Console for the first time, create an organization as follows:
+
+1. Go to https://console.choreo.dev/, and sign in using your preferred method.
+2. Enter a unique organization name. For example, Stark Industries.
+3. Read and accept the privacy policy and terms of use.
+4. Click Create.
+This creates the organization and opens the Project Home page of the default project created for you.
+
+### Steps to Deploy C-CDA to FHIR prebuilt service in Choreo
+1. Create Service Component
+    * Fork the pre-built Ballerina services repository (https://github.com/wso2/open-healthcare-prebuilt-services) to your Github organization.
+    * Create a service component pointing to the `ccda-to-fhirr4-service`. Follow the official documentation to create and configure a service: https://wso2.com/choreo/docs/develop-components/develop-services/develop-a-ballerina-rest-api/#step-1-create-a-service-component. 
+
+    * Once the component creation is complete, you will see the component overview page.
+
+2. Build and Deploy
+
+    Follow the official documentation to deploy the C-CDA to FHIR service to your organization https://wso2.com/choreo/docs/develop-components/develop-services/develop-a-ballerina-rest-api/#step-2-build-and-deploy.

@@ -66,9 +66,9 @@ isolated function generateCapabilityStatement() returns international401:Capabil
     };
     capabilityStatement.implementation = capabilityStatementImplementation;
 
-    r4:code[] patchFormat = [];
     string[]? configPatchFormat = configFHIRServer.patchFormat;
     if configPatchFormat is string[] {
+        r4:code[] patchFormat = [];
         foreach string configPatchFormatItem in configPatchFormat {
             r4:code patchFormatItem = check configPatchFormatItem.ensureType(r4:code);
             patchFormat.push(patchFormatItem);
@@ -102,9 +102,9 @@ isolated function populateCapabilityStatementRest() returns international401:Cap
         log:printDebug(string `${VALUE_NOT_FOUND}: restSecurity`);
     }
 
-    international401:CapabilityStatementRestInteraction[] restInteraction = [];
     string[]? configRestInteraction = configRest.interaction;
     if configRestInteraction is string[] {
+        international401:CapabilityStatementRestInteraction[] restInteraction = [];
         foreach string configInteractionCode in configRestInteraction {
             international401:CapabilityStatementRestInteractionCode interactionCode = check configInteractionCode.ensureType(international401:CapabilityStatementRestInteractionCode);
             international401:CapabilityStatementRestInteraction interaction = {
