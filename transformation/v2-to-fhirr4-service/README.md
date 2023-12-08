@@ -10,6 +10,25 @@ You do not have to write code from scratch but reuse these existing services whe
 
 ```Supported FHIR version is 4.0.1.```
 
+## Setup and run
+
+1.Clone this repository to your local machine and navigate to the pre-built service on `v2-to-fhirr4-service`.
+
+2. Run the project.
+
+    ```ballerina
+    bal run
+    ```
+
+4. Invoke the API.
+
+    Sample request format:
+
+    ```
+    curl 'http://<host>:<port>/transform' \
+    --data-raw 'MSH|^~\&|EPIC|EPICADT|SMS|SMSADT|202211031408|CHARRIS|ADT^A01|1817457|D|2.8'
+    ```
+
 ## [Optional] Deploy in Choreo
 
 WSO2’s Choreo (https://wso2.com/choreo/) is an internal developer platform that redefines how you create digital experiences. Choreo empowers you to seamlessly design, develop, deploy, and govern your cloud native applications, unlocking innovation while reducing time-to-market. You can deploy the healthcare prebuilt services in Choreo as explained below. 

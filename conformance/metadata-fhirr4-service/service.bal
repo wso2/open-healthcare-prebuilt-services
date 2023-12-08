@@ -12,7 +12,6 @@
 // under the License.
 import ballerina/http;
 import ballerina/log;
-import ballerina/time;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.international401;
 import ballerinax/health.fhirr4;
@@ -51,10 +50,9 @@ service / on new fhirr4:Listener(9090, apiConfig) {
     isolated resource function get fhir/r4/metadata(r4:FHIRContext fhirContext) returns international401:CapabilityStatement|r4:OperationOutcome {
         international401:CapabilityStatement|error response = capabilityStatement;
         if response is international401:CapabilityStatement {
-            log:printDebug("Capability statement served at " + time:utcNow()[0].toString());
+            log:printDebug("Capability statement served successfully.");
             return response;
-        } else {
-            return r4:handleErrorResponse(response);
         }
+        return r4:handleErrorResponse(response);
     }
 }

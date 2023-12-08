@@ -16,7 +16,6 @@
 
 import ballerina/http;
 import ballerina/log;
-import ballerina/time;
 
 // Represents the subtype of http:Ok status code record.
 type SmartConfigResponse record {|
@@ -44,10 +43,9 @@ service / on new http:Listener(9090) {
     resource isolated function get fhir/r4/\.well\-known/smart\-configuration() returns SmartConfigResponse|SmartConfigInternalServerError {
         json|error response = smartConfiguration.toJson();
         if response is json {
-            log:printDebug("Smart configuration served at " + time:utcNow()[0].toString());
+            log:printDebug("Smart configuration served successfully.");
             return {body: response};
-        } else {
-            return <SmartConfigInternalServerError> {body: response.message()};
         }
+        return <SmartConfigInternalServerError> {body: response.message()};
     }
 }

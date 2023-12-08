@@ -5,6 +5,3 @@ version = "0.9.0"
 distribution = "2201.8.1"
 authors = ["Ballerina"]
 keywords = ["Healthcare", "CCDA to FHIR", "FHIR", "CCDA"]
-
-[build-options]
-observabilityIncluded = true
