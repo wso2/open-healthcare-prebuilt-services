@@ -27,5 +27,9 @@ target/
 Config.toml
 Cloud.toml
 
-# VSCode
+# IDE specific configuration files
+.idea/
 .vscode/
+
+# Mac configuration file
+.DS_Store
