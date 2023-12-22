@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This service transforms C-CDA to FHIR resources. Data transformation conditions are taken from the official C-CDA to FHIR mappings page (https://build.fhir.org/ig/HL7/ccda-on-fhir/CF-index.html) and based on the feedback received from the users.
+This service transforms C-CDA to FHIR resources. Data transformation conditions are taken from the official C-CDA to FHIR mappings page (http://hl7.org/fhir/us/ccda/2023May/) and based on the feedback received from the users.
 
 You do not have to write code from scratch but reuse these existing services when implementing your FHIR services. You can deploy the pre-built service on your own environment or deploy on Choreo as a standard Ballerina service.
 
