@@ -211,6 +211,9 @@ dependencies = [
 	{org = "ballerina", name = "lang.value"},
 	{org = "ballerina", name = "observe"}
 ]
+modules = [
+	{org = "ballerina", packageName = "log", moduleName = "log"}
+]
 
 [[package]]
 org = "ballerina"
@@ -531,6 +534,7 @@ name = "Hl7v2ToFhirR4Service"
 version = "1.1.0"
 dependencies = [
 	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "log"},
 	{org = "ballerina", name = "test"},
 	{org = "ballerinai", name = "observe"},
 	{org = "ballerinax", name = "health.fhir.r4"},
