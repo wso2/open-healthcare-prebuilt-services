@@ -44,7 +44,7 @@ service / on new fhirr4:Listener(9090, conditionApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/Condition(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/Condition(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Condition", fhirContext, (), (), uscore:USCoreCondition).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Condition search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -77,7 +77,7 @@ service / on new fhirr4:Listener(9091, allergyIntoleranceApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/AllergyIntolerance(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/AllergyIntolerance(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("AllergyIntolerance", fhirContext, (), (), uscore:USCoreAllergyIntolerance).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the AllergyIntolerance search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -110,7 +110,7 @@ service / on new fhirr4:Listener(9092, procedureApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/Procedure(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/Procedure(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Procedure", fhirContext, (), (), uscore:USCoreProcedureProfile).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Procedure search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -144,7 +144,7 @@ service / on new fhirr4:Listener(9093, serviceRequestApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/ServiceRequest(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/ServiceRequest(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("ServiceRequest", fhirContext, (), (), international401:ServiceRequest).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the ServiceRequest search interaction.", r4:CODE_SEVERITY_ERROR,
