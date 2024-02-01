@@ -43,7 +43,7 @@ public type ConfigFHIRServer record {|
     string implementationUrl?;
     string implementationDescription;
     string fhirVersion;
-    international401:CapabilityStatementFormat[] format;
+    string[] format;
     string[] patchFormat?;
 |};
 
