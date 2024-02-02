@@ -205,7 +205,7 @@ isolated function populateSecurityExtensions(r4:Extension[] extensions, string e
     if endpoint is string {
         r4:Extension securityExtension = {
             url: extensionUrl,
-            valueUrl: endpoint.toString()
+            valueUri: endpoint.toString()
         };
         extensions.push(securityExtension);
     }
