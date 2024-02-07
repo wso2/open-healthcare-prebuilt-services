@@ -31,12 +31,12 @@ public isolated function generateSmartConfiguration() returns SmartConfiguration
         log:printDebug(string `${VALUE_NOT_FOUND}: discoveryEndpoint`);
     }
 
-    string? authorization_endpoint = configs.smartConfiguration?.authorizationEndpoint?:openIdConfigurations.authorization_endpoint?:();
+    string? authorization_endpoint = openIdConfigurations.authorization_endpoint?:configs.smartConfiguration?.authorizationEndpoint?:();
     if authorization_endpoint is () || authorization_endpoint == "" {
         return error(string `${VALUE_NOT_FOUND}: Authorization endpoint`);
     }
 
-    string? token_endpoint = configs.smartConfiguration?.tokenEndpoint?:openIdConfigurations.token_endpoint?:();
+    string? token_endpoint = openIdConfigurations.token_endpoint?:configs.smartConfiguration?.tokenEndpoint?:();
     if token_endpoint is () || token_endpoint == "" {
         return error(string `${VALUE_NOT_FOUND}: Token endpoint`);
     }
@@ -62,12 +62,12 @@ public isolated function generateSmartConfiguration() returns SmartConfiguration
         capabilities,
         code_challenge_methods_supported,
         grant_types_supported,
-        issuer: configs.smartConfiguration?.issuer?:openIdConfigurations.issuer?:(),
-        revocation_endpoint: configs.smartConfiguration?.revocationEndpoint?:openIdConfigurations.revocation_endpoint?:(),
-        introspection_endpoint: configs.smartConfiguration?.introspectionEndpoint?:openIdConfigurations.introspection_endpoint?:(),
+        issuer: openIdConfigurations.issuer?:configs.smartConfiguration?.issuer?:(),
+        revocation_endpoint: openIdConfigurations.revocation_endpoint?:configs.smartConfiguration?.revocationEndpoint?:(),
+        introspection_endpoint: openIdConfigurations.introspection_endpoint?:configs.smartConfiguration?.introspectionEndpoint?:(),
         management_endpoint: configs.smartConfiguration?.managementEndpoint?:openIdConfigurations.management_endpoint?:(),
-        registration_endpoint: configs.smartConfiguration?.registrationEndpoint?:openIdConfigurations.registration_endpoint?:(),
-        jwks_uri: configs.smartConfiguration?.jwksUri?:openIdConfigurations.jwks_uri?:(),
+        registration_endpoint: openIdConfigurations.registration_endpoint?:configs.smartConfiguration?.registrationEndpoint?:(),
+        jwks_uri: openIdConfigurations.jwks_uri?:configs.smartConfiguration?.jwksUri?:(),
         response_types_supported: configs.smartConfiguration?.responseTypesSupported?:openIdConfigurations.response_types_supported?:(),
         token_endpoint_auth_methods_supported: configs.smartConfiguration?.tokenEndpointAuthMethodsSupported?:openIdConfigurations.token_endpoint_auth_methods_supported?:(),
         token_endpoint_auth_signing_alg_values_supported: configs.smartConfiguration?.tokenEndpointAuthSigningAlgValuesSupported?:(),
