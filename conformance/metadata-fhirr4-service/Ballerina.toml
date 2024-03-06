@@ -2,6 +2,6 @@
 org = "wso2"
 name = "MetadataService"
 version = "2.0.0"
-distribution = "2201.8.1"
+distribution = "2201.8.5"
 authors = ["Ballerina"]
 keywords = ["Healthcare","FHIR","Metadata"]
