@@ -15,7 +15,8 @@ import ballerina/log;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.validator;
 
-configurable string[] CORS_ALLOWED_ORIGINS = ?;
+// Configure the array below if you want to allow only specific origins
+configurable string[] CORS_ALLOWED_ORIGINS = ["*"];
 
 service http:Service / on new http:Listener(9090) {
 
@@ -74,12 +75,12 @@ service http:Service / on new http:Listener(9090) {
         //custom FHIRIssueDetail and returns it.
         log:printDebug("Validation successful");
         r4:FHIRIssueDetail issue = {
-                    severity: <r4:Severity>"information",
-                    code: <r4:IssueType>"informational",
-                    diagnostic: "Validation Successful",
-                    expression: (),
-                    details: ()
-            };
+            severity: <r4:Severity>"information",
+            code: <r4:IssueType>"informational",
+            diagnostic: "Validation Successful",
+            expression: (),
+            details: ()
+        };
 
         r4:OperationOutcomeIssue opIssue = issueDetailToOperationOutcomeIssue(issue);
         r4:OperationOutcome opOutcome = {

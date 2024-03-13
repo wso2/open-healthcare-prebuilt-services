@@ -21,6 +21,10 @@ public type FHIRValidationErrorDetail record {
     [validator:FHIRValidationIssueDetail, validator:FHIRValidationIssueDetail...] issues;
 };
 
+# This util function is used to convert FHIR validation error detail to FHIR OperationOutcome issue.
+#
+# + detail - FHIR validation error detail
+# + return - FHIR OperationOutcome issue
 isolated function issueDetailToOperationOutcomeIssue(r4:FHIRIssueDetail detail) returns r4:OperationOutcomeIssue {
 
     r4:OperationOutcomeIssue issueBBE = {
