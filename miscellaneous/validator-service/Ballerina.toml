@@ -1,0 +1,18 @@
+[package]
+org = "wso2"
+name = "validator_service"
+version = "0.1.0"
+distribution = "2201.8.1"
+
+[build-options]
+observabilityIncluded = true
+
+[[dependency]]
+org = "ballerinax"
+name = "health.fhir.r4.validator"
+version = "4.2.0"
+
+[[dependency]]
+org = "ballerinax"
+name = "health.fhir.r4"
+version = "4.3.3"
