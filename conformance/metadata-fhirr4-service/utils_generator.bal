@@ -30,3 +30,13 @@ public isolated function getOpenidConfigurations(string discoveryEndpoint) retur
     log:printDebug("Retrieving openid configuration ended");
     return openidConfiguration;
 }
+
+# Pad single digits with a leading zero.
+# + number - Number to be padded
+# + return - Padded number as a string
+isolated function padSingleDigits(int number) returns string {
+    if (number < 10) {
+        return "0" + number.toString();
+    }
+    return number.toString();
+}
