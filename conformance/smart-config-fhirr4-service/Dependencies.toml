@@ -22,7 +22,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "cache"
-version = "3.7.0"
+version = "3.7.1"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -41,7 +41,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "crypto"
-version = "2.6.0"
+version = "2.6.2"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "time"}
@@ -244,9 +244,13 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "observe"
-version = "1.2.0"
+version = "1.2.2"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
+]
+modules = [
+	{org = "ballerina", packageName = "observe", moduleName = "observe"},
+	{org = "ballerina", packageName = "observe", moduleName = "observe.mockextension"}
 ]
 
 [[package]]
@@ -300,18 +304,6 @@ modules = [
 ]
 
 [[package]]
-org = "ballerinai"
-name = "observe"
-version = "0.0.0"
-dependencies = [
-	{org = "ballerina", name = "jballerina.java"},
-	{org = "ballerina", name = "observe"}
-]
-modules = [
-	{org = "ballerinai", packageName = "observe", moduleName = "observe"}
-]
-
-[[package]]
 org = "wso2"
 name = "SmartConfigService"
 version = "2.0.0"
@@ -319,9 +311,9 @@ dependencies = [
 	{org = "ballerina", name = "http"},
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "log"},
+	{org = "ballerina", name = "observe"},
 	{org = "ballerina", name = "test"},
-	{org = "ballerina", name = "url"},
-	{org = "ballerinai", name = "observe"}
+	{org = "ballerina", name = "url"}
 ]
 modules = [
 	{org = "wso2", packageName = "SmartConfigService", moduleName = "SmartConfigService"}

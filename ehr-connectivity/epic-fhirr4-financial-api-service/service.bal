@@ -60,7 +60,7 @@ service / on new fhirr4:Listener(9090, accountApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/Account(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/Account(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Account", fhirContext, (), (), Account).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Account search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -70,7 +70,7 @@ service / on new fhirr4:Listener(9090, accountApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/Account(r4:FHIRContext fhirContext, international401:Account account) returns Account|r4:FHIRError {
+    isolated resource function post fhir/r4/Account(r4:FHIRContext fhirContext, international401:Account account) returns Account|r4:FHIRError {
         Account|error fhirInteractionResult = executeFhirInteraction("Account", fhirContext, (), account, Account).ensureType(Account);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Account create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -93,7 +93,7 @@ service / on new fhirr4:Listener(9091, contractApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/Contract(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/Contract(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Contract", fhirContext, (), (), Contract).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Contract search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -103,7 +103,7 @@ service / on new fhirr4:Listener(9091, contractApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/Contract(r4:FHIRContext fhirContext, international401:Contract contract) returns Contract|r4:FHIRError {
+    isolated resource function post fhir/r4/Contract(r4:FHIRContext fhirContext, international401:Contract contract) returns Contract|r4:FHIRError {
         Contract|error fhirInteractionResult = executeFhirInteraction("Contract", fhirContext, (), contract, Contract).ensureType(Contract);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Contract create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -126,7 +126,7 @@ service / on new fhirr4:Listener(9092, coverageApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/Coverage(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/Coverage(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Coverage", fhirContext, (), (), Coverage).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Coverage search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -136,7 +136,7 @@ service / on new fhirr4:Listener(9092, coverageApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/Coverage(r4:FHIRContext fhirContext, international401:Coverage coverage) returns Coverage|r4:FHIRError {
+    isolated resource function post fhir/r4/Coverage(r4:FHIRContext fhirContext, international401:Coverage coverage) returns Coverage|r4:FHIRError {
         Coverage|error fhirInteractionResult = executeFhirInteraction("Coverage", fhirContext, (), coverage, Coverage).ensureType(Coverage);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Coverage create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -159,7 +159,7 @@ service / on new fhirr4:Listener(9093, coverageEligibilityRequestApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/CoverageEligibilityRequest(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/CoverageEligibilityRequest(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("CoverageEligibilityRequest", fhirContext, (), (), CoverageEligibilityRequest).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the CoverageEligibilityRequest search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -169,7 +169,7 @@ service / on new fhirr4:Listener(9093, coverageEligibilityRequestApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/CoverageEligibilityRequest(r4:FHIRContext fhirContext, international401:CoverageEligibilityRequest coverageEligibilityRequest) returns CoverageEligibilityRequest|r4:FHIRError {
+    isolated resource function post fhir/r4/CoverageEligibilityRequest(r4:FHIRContext fhirContext, international401:CoverageEligibilityRequest coverageEligibilityRequest) returns CoverageEligibilityRequest|r4:FHIRError {
         CoverageEligibilityRequest|error fhirInteractionResult = executeFhirInteraction("CoverageEligibilityRequest", fhirContext, (), coverageEligibilityRequest, CoverageEligibilityRequest).ensureType(CoverageEligibilityRequest);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the CoverageEligibilityRequest create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -192,7 +192,7 @@ service / on new fhirr4:Listener(9094, coverageEligibilityResponseApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/CoverageEligibilityResponse(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/CoverageEligibilityResponse(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("CoverageEligibilityResponse", fhirContext, (), (), CoverageEligibilityResponse).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the CoverageEligibilityResponse search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -202,7 +202,7 @@ service / on new fhirr4:Listener(9094, coverageEligibilityResponseApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/CoverageEligibilityResponse(r4:FHIRContext fhirContext, international401:CoverageEligibilityResponse coverageEligibilityResponse) returns CoverageEligibilityResponse|r4:FHIRError {
+    isolated resource function post fhir/r4/CoverageEligibilityResponse(r4:FHIRContext fhirContext, international401:CoverageEligibilityResponse coverageEligibilityResponse) returns CoverageEligibilityResponse|r4:FHIRError {
         CoverageEligibilityResponse|error fhirInteractionResult = executeFhirInteraction("CoverageEligibilityResponse", fhirContext, (), coverageEligibilityResponse, CoverageEligibilityResponse).ensureType(CoverageEligibilityResponse);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the CoverageEligibilityResponse create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -225,7 +225,7 @@ service / on new fhirr4:Listener(9095, enrollmentRequestApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/EnrollmentRequest(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/EnrollmentRequest(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("EnrollmentRequest", fhirContext, (), (), EnrollmentRequest).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the EnrollmentRequest search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -235,7 +235,7 @@ service / on new fhirr4:Listener(9095, enrollmentRequestApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/EnrollmentRequest(r4:FHIRContext fhirContext, international401:EnrollmentRequest enrollmentRequest) returns EnrollmentRequest|r4:FHIRError {
+    isolated resource function post fhir/r4/EnrollmentRequest(r4:FHIRContext fhirContext, international401:EnrollmentRequest enrollmentRequest) returns EnrollmentRequest|r4:FHIRError {
         EnrollmentRequest|error fhirInteractionResult = executeFhirInteraction("EnrollmentRequest", fhirContext, (), enrollmentRequest, EnrollmentRequest).ensureType(EnrollmentRequest);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the EnrollmentRequest create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -258,7 +258,7 @@ service / on new fhirr4:Listener(9096, enrollmentResponseApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/EnrollmentResponse(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/EnrollmentResponse(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("EnrollmentResponse", fhirContext, (), (), EnrollmentResponse).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the EnrollmentResponse search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -268,7 +268,7 @@ service / on new fhirr4:Listener(9096, enrollmentResponseApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/EnrollmentResponse(r4:FHIRContext fhirContext, international401:EnrollmentResponse enrollmentResponse) returns EnrollmentResponse|r4:FHIRError {
+    isolated resource function post fhir/r4/EnrollmentResponse(r4:FHIRContext fhirContext, international401:EnrollmentResponse enrollmentResponse) returns EnrollmentResponse|r4:FHIRError {
         EnrollmentResponse|error fhirInteractionResult = executeFhirInteraction("EnrollmentResponse", fhirContext, (), enrollmentResponse, EnrollmentResponse).ensureType(EnrollmentResponse);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the EnrollmentResponse create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -291,7 +291,7 @@ service / on new fhirr4:Listener(9097, visionPrescriptionApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/VisionPrescription(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/VisionPrescription(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("VisionPrescription", fhirContext, (), (), VisionPrescription).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the VisionPrescription search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -301,7 +301,7 @@ service / on new fhirr4:Listener(9097, visionPrescriptionApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/VisionPrescription(r4:FHIRContext fhirContext, international401:VisionPrescription visionPrescription) returns VisionPrescription|r4:FHIRError {
+    isolated resource function post fhir/r4/VisionPrescription(r4:FHIRContext fhirContext, international401:VisionPrescription visionPrescription) returns VisionPrescription|r4:FHIRError {
         VisionPrescription|error fhirInteractionResult = executeFhirInteraction("VisionPrescription", fhirContext, (), visionPrescription, VisionPrescription).ensureType(VisionPrescription);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the VisionPrescription create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -324,7 +324,7 @@ service / on new fhirr4:Listener(9098, claimApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/Claim(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/Claim(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Claim", fhirContext, (), (), Claim).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Claim search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -334,7 +334,7 @@ service / on new fhirr4:Listener(9098, claimApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/Claim(r4:FHIRContext fhirContext, international401:Claim claim) returns Claim|r4:FHIRError {
+    isolated resource function post fhir/r4/Claim(r4:FHIRContext fhirContext, international401:Claim claim) returns Claim|r4:FHIRError {
         Claim|error fhirInteractionResult = executeFhirInteraction("Claim", fhirContext, (), claim, Claim).ensureType(Claim);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Claim create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -357,7 +357,7 @@ service / on new fhirr4:Listener(9099, claimResponseApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/ClaimResponse(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/ClaimResponse(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("ClaimResponse", fhirContext, (), (), ClaimResponse).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the ClaimResponse search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -367,7 +367,7 @@ service / on new fhirr4:Listener(9099, claimResponseApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/ClaimResponse(r4:FHIRContext fhirContext, international401:ClaimResponse claimResponse) returns ClaimResponse|r4:FHIRError {
+    isolated resource function post fhir/r4/ClaimResponse(r4:FHIRContext fhirContext, international401:ClaimResponse claimResponse) returns ClaimResponse|r4:FHIRError {
         ClaimResponse|error fhirInteractionResult = executeFhirInteraction("ClaimResponse", fhirContext, (), claimResponse, ClaimResponse).ensureType(ClaimResponse);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the ClaimResponse create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -390,7 +390,7 @@ service / on new fhirr4:Listener(9100, paymentNoticeApiConfig) {
     }
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/PaymentNotice(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/PaymentNotice(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("PaymentNotice", fhirContext, (), (), PaymentNotice).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the PaymentNotice search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -400,7 +400,7 @@ service / on new fhirr4:Listener(9100, paymentNoticeApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/PaymentNotice(r4:FHIRContext fhirContext, international401:PaymentNotice paymentNotice) returns PaymentNotice|r4:FHIRError {
+    isolated resource function post fhir/r4/PaymentNotice(r4:FHIRContext fhirContext, international401:PaymentNotice paymentNotice) returns PaymentNotice|r4:FHIRError {
         PaymentNotice|error fhirInteractionResult = executeFhirInteraction("PaymentNotice", fhirContext, (), paymentNotice, PaymentNotice).ensureType(PaymentNotice);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the PaymentNotice create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -423,7 +423,7 @@ service / on new fhirr4:Listener(9101, paymentReconciliationApiConfig) {
     } 
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/PaymentReconciliation(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/PaymentReconciliation(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("PaymentReconciliation", fhirContext, (), (), PaymentReconciliation).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the PaymentReconciliation search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -433,7 +433,7 @@ service / on new fhirr4:Listener(9101, paymentReconciliationApiConfig) {
     } 
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/PaymentReconciliation(r4:FHIRContext fhirContext, international401:PaymentReconciliation paymentReconciliation) returns PaymentReconciliation|r4:FHIRError {
+    isolated resource function post fhir/r4/PaymentReconciliation(r4:FHIRContext fhirContext, international401:PaymentReconciliation paymentReconciliation) returns PaymentReconciliation|r4:FHIRError {
         PaymentReconciliation|error fhirInteractionResult = executeFhirInteraction("PaymentReconciliation", fhirContext, (), paymentReconciliation, PaymentReconciliation).ensureType(PaymentReconciliation);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the PaymentReconciliation create interaction.", r4:CODE_SEVERITY_ERROR,
@@ -456,7 +456,7 @@ service / on new fhirr4:Listener(9102, explanationOfBenefitApiConfig) {
     } 
 
     // Search for resources based on some filter criteria.
-    isolated resource function search fhir/r4/ExplanationOfBenefit(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
+    isolated resource function get fhir/r4/ExplanationOfBenefit(r4:FHIRContext fhirContext) returns r4:Bundle|r4:FHIRError {
         r4:Bundle|error fhirInteractionResult = executeFhirInteraction("ExplanationOfBenefit", fhirContext, (), (), ExplanationOfBenefit).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the ExplanationOfBenefit search interaction.", r4:CODE_SEVERITY_ERROR,
@@ -466,7 +466,7 @@ service / on new fhirr4:Listener(9102, explanationOfBenefitApiConfig) {
     } 
 
     // Create a new resource with a server assigned id.
-    isolated resource function create fhir/r4/ExplanationOfBenefit(r4:FHIRContext fhirContext, international401:ExplanationOfBenefit explanationOfBenefit) returns ExplanationOfBenefit|r4:FHIRError {
+    isolated resource function post fhir/r4/ExplanationOfBenefit(r4:FHIRContext fhirContext, international401:ExplanationOfBenefit explanationOfBenefit) returns ExplanationOfBenefit|r4:FHIRError {
         ExplanationOfBenefit|error fhirInteractionResult = executeFhirInteraction("ExplanationOfBenefit", fhirContext, (), explanationOfBenefit, ExplanationOfBenefit).ensureType(ExplanationOfBenefit);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the ExplanationOfBenefit create interaction.", r4:CODE_SEVERITY_ERROR,

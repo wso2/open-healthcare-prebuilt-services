@@ -29,7 +29,7 @@ FHIR resource) that specifies which resource types and interactions are supporte
     Sample request for FHIR Capability Statement:
 
     ```
-    curl 'http://<host>:<port>/metadata'
+    curl 'http://<host>:<port>/fhir/r4/metadata'
     ```
 
 ## [Optional] Deploy in Choreo
@@ -83,9 +83,9 @@ Following configurations need to be added in a `Config.toml` or in the Choreo co
 | `interaction`                | The that operations are supported <br/><br/> eg: `[search-system, history-system]`                 | 
 | `cors`                       | CORS Headers availability <br/><br/> eg: `true`                                                    |
 | `discoveryEndpoint`          | The discovery endpoint for the server <br/><br/> eg: `https://api.asgardeo.io/t/<organization_name>/oauth2/token/.well-known/openid-configuration` |
-| `tokenEndpoint`              | OAUTH2 access token url <br/><br/> eg: `https://api.asgardeo.io/t/<organization_name>/oauth2/token`          | 
-| `revocationEndpoint`         | OAUTH2 access revoke url <br/><br/> eg: `https://api.asgardeo.io/t/<organization_name>/oauth2/revoke`        | 
-| `authorizeEndpoint`          | OAUTH2 access authorize url <br/><br/> eg: `https://api.asgardeo.io/t/<organization_name>/oauth2/authorize`  |
+| `tokenEndpoint`              | OPTIONAL: If not provided a discoveryEndpoint. <br/>OAUTH2 access token url <br/><br/> eg: `https://api.asgardeo.io/t/<organization_name>/oauth2/token`          | 
+| `revocationEndpoint`         | OPTIONAL: If not provided a discoveryEndpoint. <br/>OAUTH2 access revoke url <br/><br/> eg: `https://api.asgardeo.io/t/<organization_name>/oauth2/revoke`        | 
+| `authorizeEndpoint`          | OPTIONAL: If not provided a discoveryEndpoint. <br/>OAUTH2 access authorize url <br/><br/> eg: `https://api.asgardeo.io/t/<organization_name>/oauth2/authorize`  |
 
 A sample `Config.toml` is consisting above configurations as below.
 
