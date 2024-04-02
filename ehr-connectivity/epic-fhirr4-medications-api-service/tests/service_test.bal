@@ -3,6 +3,7 @@ import ballerina/test;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.uscore501 as uscore;
 // import ballerinax/health.clients.fhir;
+import ballerina/io;
 
 http:Client clientEndpoint9090 = check new ("http://localhost:9090");
 http:Client clientEndpoint9091 = check new ("http://localhost:9091");
@@ -15,8 +16,8 @@ function testEpicConnection(){
     // if (fhirConnectorObjtest is error) {
     //     test:assertFail("Connection failed");
     // }
-
-    if (epicConfig.baseURL == "") {
+    io:println("================");
+    if (base == "" || tokenUrl== "" || clientId == "" || keyFile==""){
         test:assertFail("Connection failed");
     }
 }
