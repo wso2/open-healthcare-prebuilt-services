@@ -12,7 +12,9 @@ http:Client clientEndpoint9093 = check new ("http://localhost:9093");
 @test:BeforeSuite
 function testEpicConnection(){
     fhir:FHIRConnector|error fhirConnectorObjtest = new(epicConfig);
-    test:assertTrue(fhirConnectorObjtest is error, "Connection failed");  
+    if (fhirConnectorObjtest is error) {
+        test:assertFail("Connection failed");
+    }
 }
 
 //Tests for Medication
