@@ -2,11 +2,18 @@ import ballerina/http;
 import ballerina/test;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.uscore501 as uscore;
+import ballerinax/health.clients.fhir;
 
 http:Client clientEndpoint9090 = check new ("http://localhost:9090");
 http:Client clientEndpoint9091 = check new ("http://localhost:9091");
 http:Client clientEndpoint9092 = check new ("http://localhost:9092");
 http:Client clientEndpoint9093 = check new ("http://localhost:9093");
+
+@test:BeforeSuite
+function testEpicConnection(){
+    fhir:FHIRConnector|error fhirConnectorObjtest = new(epicConfig);
+    test:assertTrue(fhirConnectorObjtest is error, "Connection failed");  
+}
 
 //Tests for Medication
 @test:Config {}
