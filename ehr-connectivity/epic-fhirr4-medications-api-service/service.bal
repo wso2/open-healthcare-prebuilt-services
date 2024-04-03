@@ -4,7 +4,8 @@ import ballerinax/health.fhirr4;
 import ballerinax/health.fhir.r4.uscore501 as uscore;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.international401;
-import ballerina/http; 
+import ballerina/http;
+import ballerina/io;
 
 
 configurable string base = os:getEnv("EPIC_FHIR_SERVER_URL");
@@ -36,6 +37,7 @@ service / on new fhirr4:Listener(9090, medicationApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/Medication/[string id](r4:FHIRContext fhirContext) returns Medication|r4:FHIRError {
+        io:println("Medication ID: ");
         Medication|error fhirInteractionResult = executeFhirInteraction("Medication", fhirContext, id, (), Medication).ensureType(Medication);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation read interaction.", r4:CODE_SEVERITY_ERROR,
