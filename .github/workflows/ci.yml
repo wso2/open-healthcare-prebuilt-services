@@ -10,77 +10,10 @@ env:
   TRANSFORMATION_PATTERN: transformation/*/*
 
 jobs:
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      project-matrix: ${{ steps.unique-project-paths.outputs.BALLERINA_PROJECT_PATHS }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Extract Unique Ballerina Project Paths from Changed Files
-        id: unique-project-paths
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Get changed files of PR from github API
-          CHANGED_FILES=$(gh api graphql -f query='
-            query($owner: String!, $repo: String!, $pr: Int!, $endCursor: String) {
-              repository(owner: $owner, name: $repo) {
-                pullRequest(number: $pr) {
-                  files(first: 100, after: $endCursor) {
-                    pageInfo{ hasNextPage, endCursor }
-                    nodes {
-                      path
-                    }
-                  }
-                }
-              }
-            }' -F owner='wso2' -F repo='open-healthcare-prebuilt-services' -F pr=${{ github.event.pull_request.number }} --paginate --jq '.data.repository.pullRequest.files.nodes.[].path')
-          echo "Changed Files: "
-          echo "${CHANGED_FILES}"
-
-          # Convert CHANGED_FILES to an array
-          readarray -t CHANGED_FILES_ARRAY <<<"${CHANGED_FILES}"
-          
-          # Remove duplicates from the CHANGED_FILES_ARRAY
-          declare -A UNIQUE_PATHS_MAP
-          for file in "${CHANGED_FILES_ARRAY[@]}"; do
-            if [[ $file == $CONFORMANCE_PATTERN ]] || [[ $file == $EHR_PATTERN ]] || [[ $file == $MISC_PATTERN ]] || [[ $file == $TRANSFORMATION_PATTERN ]]; then
-              # Condition for 2 level projects
-              EXTRACTED_PATH=$(echo "$file" | cut -d '/' -f 1-2)
-              echo "${EXTRACTED_PATH}"
-            fi
-
-            if [[ $EXTRACTED_PATH ]]; then
-              UNIQUE_PATHS_MAP[$EXTRACTED_PATH]=1
-            fi
-          done
-          
-          # Print the unique ballerina project paths
-          echo "Extracted Unique Ballerina Project Paths: "
-          for EXTRACTED_PATH in "${!UNIQUE_PATHS_MAP[@]}"; do
-            echo "$EXTRACTED_PATH"
-          done
-
-          # Create the JSON array with elements enclosed in double quotes
-          UNIQUE_PATHS_JSON=$(for key in "${!UNIQUE_PATHS_MAP[@]}"; do echo "\"$key\""; done | jq -s -c .)
-          echo "UNIQUE_PATHS_JSON: "
-          echo "${UNIQUE_PATHS_JSON}"
-          echo "BALLERINA_PROJECT_PATHS=${UNIQUE_PATHS_JSON}" >> $GITHUB_OUTPUT
-
   build:
-    needs: [ setup ]
     runs-on: ubuntu-latest
     env:
       JAVA_OPTS: -Xmx4G
-    if: ${{ needs.setup.outputs.project-matrix != '[]' }}
-    strategy:
-      matrix:
-        path: ${{ fromJson(needs.setup.outputs.project-matrix) }}
 
     steps:
       - name: Checkout code
@@ -91,18 +24,13 @@ jobs:
         with:
           args: pack
         env:
-          WORKING_DIR: ./${{ matrix.path }}
+          WORKING_DIR: ./
           JAVA_HOME: /usr/lib/jvm/default-jvm
 
   test:
-    needs: [ setup ]
     runs-on: ubuntu-latest
     env:
       JAVA_OPTS: -Xmx4G
-    if: ${{ needs.setup.outputs.project-matrix != '[]' }}
-    strategy:
-      matrix:
-        path: ${{ fromJson(needs.setup.outputs.project-matrix) }}
 
     steps:
       - name: Checkout code
@@ -113,7 +41,7 @@ jobs:
         with:
           args: test --code-coverage
         env:
-          WORKING_DIR: ./${{ matrix.path }}
+          WORKING_DIR: ./
           JAVA_HOME: /usr/lib/jvm/default-jvm
           EPIC_FHIR_SERVER_URL: ${{ secrets.EPIC_FHIR_SERVER_URL}}
           EPIC_FHIR_SERVER_TOKEN_URL: ${{ secrets.EPIC_FHIR_SERVER_TOKEN_URL}}
