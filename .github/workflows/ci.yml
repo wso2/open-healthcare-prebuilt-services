@@ -118,6 +118,10 @@ jobs:
         env:
           WORKING_DIR: ./${{ matrix.path }}
           JAVA_HOME: /usr/lib/jvm/default-jvm
+          EPIC_FHIR_SERVER_URL: ${{ secrets.EPIC_FHIR_SERVER_URL }}
+          EPIC_FHIR_SERVER_TOKEN_URL: ${{ secrets.EPIC_FHIR_SERVER_TOKEN_URL}}
+          EPIC_FHIR_APP_CLIENT_ID: ${{ secrets.EPIC_FHIR_APP_CLIENT_ID}}
+          EPIC_FHIR_APP_PRIVATE_KEY_FILE: ${{ secrets.EPIC_FHIR_APP_PRIVATE_KEY_FILE}}
 
       - name: Read Ballerina Test Results
         id: test_results
