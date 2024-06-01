@@ -31,47 +31,47 @@ public isolated function generateSmartConfiguration() returns SmartConfiguration
         log:printDebug(string `${VALUE_NOT_FOUND}: discoveryEndpoint`);
     }
 
-    string? authorization_endpoint = configs.smartConfiguration?.authorizationEndpoint?:openIdConfigurations.authorization_endpoint?:();
+    string? authorization_endpoint = openIdConfigurations.authorization_endpoint ?: configs.smartConfiguration?.authorizationEndpoint ?: ();
     if authorization_endpoint is () || authorization_endpoint == "" {
         return error(string `${VALUE_NOT_FOUND}: Authorization endpoint`);
     }
 
-    string? token_endpoint = configs.smartConfiguration?.tokenEndpoint?:openIdConfigurations.token_endpoint?:();
+    string? token_endpoint = openIdConfigurations.token_endpoint ?: configs.smartConfiguration?.tokenEndpoint ?: ();
     if token_endpoint is () || token_endpoint == "" {
         return error(string `${VALUE_NOT_FOUND}: Token endpoint`);
     }
 
-    string[]? capabilities = configs.smartConfiguration?.capabilities?:();
+    string[]? capabilities = configs.smartConfiguration?.capabilities ?: ();
     if capabilities is () || capabilities.length() == 0 {
         return error(string `${VALUE_NOT_FOUND}: Capabilities`);
     }
 
-    string[]? code_challenge_methods_supported = configs.smartConfiguration?.codeChallengeMethodsSupported?:openIdConfigurations.code_challenge_methods_supported?:();
+    string[]? code_challenge_methods_supported = configs.smartConfiguration?.codeChallengeMethodsSupported ?: openIdConfigurations.code_challenge_methods_supported ?: ();
     if code_challenge_methods_supported is () || code_challenge_methods_supported.length() == 0 {
         return error(string `${VALUE_NOT_FOUND}: Code challenge methods supported`);
     }
 
-    string[]? grant_types_supported = configs.smartConfiguration?.grantTypesSupported?:openIdConfigurations.grant_types_supported?:();
+    string[]? grant_types_supported = configs.smartConfiguration?.grantTypesSupported ?: openIdConfigurations.grant_types_supported ?: ();
     if grant_types_supported is () || grant_types_supported.length() == 0 {
         return error(string `${VALUE_NOT_FOUND}: Grant types supported`);
     }
 
     SmartConfiguration smartConfig = {
-        authorization_endpoint, 
+        authorization_endpoint,
         token_endpoint,
         capabilities,
         code_challenge_methods_supported,
         grant_types_supported,
-        issuer: configs.smartConfiguration?.issuer?:openIdConfigurations.issuer?:(),
-        revocation_endpoint: configs.smartConfiguration?.revocationEndpoint?:openIdConfigurations.revocation_endpoint?:(),
-        introspection_endpoint: configs.smartConfiguration?.introspectionEndpoint?:openIdConfigurations.introspection_endpoint?:(),
-        management_endpoint: configs.smartConfiguration?.managementEndpoint?:openIdConfigurations.management_endpoint?:(),
-        registration_endpoint: configs.smartConfiguration?.registrationEndpoint?:openIdConfigurations.registration_endpoint?:(),
-        jwks_uri: configs.smartConfiguration?.jwksUri?:openIdConfigurations.jwks_uri?:(),
-        response_types_supported: configs.smartConfiguration?.responseTypesSupported?:openIdConfigurations.response_types_supported?:(),
-        token_endpoint_auth_methods_supported: configs.smartConfiguration?.tokenEndpointAuthMethodsSupported?:openIdConfigurations.token_endpoint_auth_methods_supported?:(),
-        token_endpoint_auth_signing_alg_values_supported: configs.smartConfiguration?.tokenEndpointAuthSigningAlgValuesSupported?:(),
-        scopes_supported: configs.smartConfiguration?.scopesSupported?:openIdConfigurations.scopes_supported?:()
+        issuer: openIdConfigurations.issuer ?: configs.smartConfiguration?.issuer ?: (),
+        revocation_endpoint: openIdConfigurations.revocation_endpoint ?: configs.smartConfiguration?.revocationEndpoint ?: (),
+        introspection_endpoint: openIdConfigurations.introspection_endpoint ?: configs.smartConfiguration?.introspectionEndpoint ?: (),
+        management_endpoint: configs.smartConfiguration?.managementEndpoint ?: openIdConfigurations.management_endpoint ?: (),
+        registration_endpoint: openIdConfigurations.registration_endpoint ?: configs.smartConfiguration?.registrationEndpoint ?: (),
+        jwks_uri: openIdConfigurations.jwks_uri ?: configs.smartConfiguration?.jwksUri ?: (),
+        response_types_supported: configs.smartConfiguration?.responseTypesSupported ?: openIdConfigurations.response_types_supported ?: (),
+        token_endpoint_auth_methods_supported: configs.smartConfiguration?.tokenEndpointAuthMethodsSupported ?: openIdConfigurations.token_endpoint_auth_methods_supported ?: (),
+        token_endpoint_auth_signing_alg_values_supported: configs.smartConfiguration?.tokenEndpointAuthSigningAlgValuesSupported ?: (),
+        scopes_supported: configs.smartConfiguration?.scopesSupported ?: openIdConfigurations.scopes_supported ?: ()
     };
 
     log:printDebug("Generating smart configuration completed ");
