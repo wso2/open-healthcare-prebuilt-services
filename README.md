@@ -1,3 +1,6 @@
+# Open Healthcare Prebuilt Services
+![Daily Build](https://github.com/wso2/open-healthcare-prebuilt-services/actions/workflows/daily-build.yml/badge.svg)
+
 ## Overview
 This repository comprises prebuilt healthcare-related services that are ready for immediate use. Users have the flexibility to deploy and run these services in their respective environments. Optionally, these services can be deployed in [Choreo](https://console.choreo.dev/home) as well. For further details, refer to the documentation of the individual services.
 
