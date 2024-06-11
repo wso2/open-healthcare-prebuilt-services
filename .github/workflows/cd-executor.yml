@@ -8,6 +8,9 @@ on:
         type: string
         required: true
 
+env:
+  BALLERINA_VERSION: 2201.9.0
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -16,13 +19,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Run ballerina build
-        uses: ballerina-platform/ballerina-action@2201.9.0
+      - name: Set Up Ballerina
+        uses: ballerina-platform/setup-ballerina@v1.1.0
         with:
-          args: pack
-        env:
-          WORKING_DIR: ${{ inputs.working_dir }}
-          JAVA_HOME: /usr/lib/jvm/default-jvm
+          version: $BALLERINA_VERSION
+
+      - name: Run ballerina build
+        run: |
+          pushd "${{ inputs.working_dir }}"
+          bal pack
+          popd
 
       - name: Get version from Ballerina.toml
         working-directory: ${{ inputs.working_dir }}
