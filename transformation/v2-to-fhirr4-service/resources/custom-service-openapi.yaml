@@ -1,0 +1,225 @@
+openapi: 3.0.0
+info:
+  title: HL7v2 to FHIR Custom Mapping Service
+  version: 1.0.0
+  description: API for customizingHL7v2 segments to FHIR mappings.
+servers:
+  - url: http://localhost:9091/v2tofhir
+paths:
+  /segment/nk1:
+    post:
+      summary: Handle NK1 segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/pid:
+    post:
+      summary: Handle PID segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/pd1:
+    post:
+      summary: Handle PD1 segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/pv1:
+    post:
+      summary: Handle PV1 segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/dg1:
+    post:
+      summary: Handle DG1 segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/al1:
+    post:
+      summary: Handle AL1 segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/evn:
+    post:
+      summary: Handle EVN segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/msh:
+    post:
+      summary: Handle MSH segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/pv2:
+    post:
+      summary: Handle PV2 segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/obx:
+    post:
+      summary: Handle OBX segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/orc:
+    post:
+      summary: Handle ORC segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/obr:
+    post:
+      summary: Handle OBR segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+          
