@@ -36,15 +36,15 @@ type V2ToFhirInternalServerError record {|
 |};
 
 // configuration to bind the custom mapping service
-configurable v2tofhirr4:V2ToFhirCustomServiceConfig serviceConfig = {
+configurable v2tofhirr4:V2ToFhirCustomMapperServiceConfig customMapper = {
     baseUrl: "",
-    segmentToAPI: {}
+    segmentMappings: {}
 };
 
 service / on new http:Listener(9090) {
 
     resource function post transform(@http:Payload string hl7Message) returns V2ToFhirResponse|V2ToFhirBadRequest|V2ToFhirInternalServerError {
-        json|error v2tofhirResult = v2tofhirr4:v2ToFhir(hl7Message, serviceconf = serviceConfig);
+        json|error v2tofhirResult = v2tofhirr4:v2ToFhir(hl7Message, mapperServiceConf = customMapper);
         if v2tofhirResult is json {
             log:printDebug("Successfully transformed the HL7 message to FHIR.");
             return {body: v2tofhirResult};

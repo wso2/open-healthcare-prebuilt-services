@@ -31,35 +31,30 @@ You do not have to write code from scratch but reuse these existing services whe
 
 ## Customization
 
-You can customize the v2 segments to FHIR transformation logic by implement a service with custom mappings and configure the v2-to-fhirr4-service to invoke the custom service. This custom service can be implemented from Ballerina by using the template or use the OAS definition provided(resources/custom-mapping-service-openapi.yaml) to implement your service using any other technology. Following is the command to initiate the Ballerina template. 
+You can customize the v2 segments to FHIR transformation logic by implementing a service with custom mappings and configuring the v2-to-fhirr4-service to invoke the custom service. This custom service can be implemented in [Ballerina](https://ballerina.io/) by using the provided template, or you can use the OAS definition (resources/custom-mapping-service-openapi.yaml) to implement your service using any other technology. The following is the command to initiate the Ballerina template to implement the custom logic:
 
 ```bash
-bal new <service_name> -t ballerinax/v2_to_fhir_custom_service
+bal new <service_name> -t ballerinax/health.fhir.templates.r4.v2tofhircustomsvc
 ```
 
-You can configure the v2-to-fhir-service to point your custom service to invoke the mapping endpoints. Following is a sample configuration structure to invoke a custom service.
+You can configure the v2-to-fhir-service in [Config.toml file](https://ballerina.io/learn/provide-values-to-configurable-variables/#provide-via-configuration-files) to point to your custom service to invoke the mapping endpoints. The following is a sample configuration structure to invoke a custom service.
 
 ```toml
-[serviceConfig]
+[customMapper]
 baseUrl = "http://localhost:9091/v2tofhir"
 
-[serviceConfig.segmentToAPI.NK1]
-path = "/segment/nk1"
-
-[serviceConfig.segmentToAPI.PID]
-path = "/segment/pid"
-useDefault = true
+[customMapper.segmentMappings]
+NK1 = "/segment/nk1"
+PID = "/segment/pid"
 ```
 
 
 | Table | Field | Description |
 |-------|-------|-------------|
-| `serviceConfig`| `baseUrl` | The base URL of the custom service. |
-| `serviceConfig.segmentToAPI.<segmentName>`| | Nested table to hold the endpoint configuration for the custom segment mapping |
-| `serviceConfig.segmentToAPI.<segmentName>`| `path` | The path of the custom service endpoint. |
-| `serviceConfig.segmentToAPI.<segmentName>`| `useDefault` | If true, the default transformation logic will be used. If false, the custom service will be invoked. The default value is false. |
+| `customMapper`| `baseUrl` | The base URL of the custom service. |
+| `customMapper.segmentMappings`| `<segmentName>` | The path of the custom service endpoint against the each customized segment name. |
 
-> **Note:** If you deploy this to [Choreo](https://wso2.com/choreo/), you can apply configurations through the [config editor](https://wso2.com/choreo/docs/devops-and-ci-cd/manage-configurations-and-secrets/#manage-ballerina-configurables) in the Choreo console.
+> **Note:** If you deploy this to [Choreo](https://wso2.com/choreo/), you can apply configurations through the [config editor](https://wso2.com/choreo/docs/devops-and-ci-cd/manage-configurations-and-secrets/#manage-ballerina-configurables) in the Choreo console. For more information, see [Deploy in Choreo](#optional-deploy-in-choreo).
 
 
 ## [Optional] Deploy in Choreo

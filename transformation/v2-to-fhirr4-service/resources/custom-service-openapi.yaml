@@ -222,4 +222,363 @@ paths:
                 type: object
         '500':
           description: Internal Server Error
-          
+  /segment/nte:
+    post:
+      summary: Handle NTE segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/sft:
+    post:
+      summary: Handle SFT segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/iam:
+    post:
+      summary: Handle IAM segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/mrg: 
+    post:
+      summary: Handle MRG segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/tq1:
+    post:
+      summary: Handle TQ1 segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/rxa: 
+    post:
+      summary: Handle RXA segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/rxo:
+    post:
+      summary: Handle RXO segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/rxr:
+    post:
+      summary: Handle RXR segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error                                                     
+  /segment/in1:
+    post:
+      summary: Handle IN1 segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/in3: 
+    post:
+      summary: Handle IN3 segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error                
+  /segment/pr1:
+    post:
+      summary: Handle PR1 segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/prt:
+    post:
+      summary: Handle PRT segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/spm:
+    post:
+      summary: Handle SPM segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/txa:
+    post:
+      summary: Handle TXA segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/aig:
+    post:
+      summary: Handle AIG segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/ail:
+    post:
+      summary: Handle AIL segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/aip:
+    post:
+      summary: Handle AIP segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/ais: 
+    post:
+      summary: Handle AIS segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/sch:
+    post:
+      summary: Handle SCH segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error
+  /segment/rol:
+    post:
+      summary: Handle ROL segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal Server Error                                                                                
