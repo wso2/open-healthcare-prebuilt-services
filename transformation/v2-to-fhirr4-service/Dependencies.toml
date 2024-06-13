@@ -184,6 +184,9 @@ version = "0.0.0"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
+modules = [
+	{org = "ballerina", packageName = "lang.runtime", moduleName = "lang.runtime"}
+]
 
 [[package]]
 org = "ballerina"
@@ -513,6 +516,9 @@ dependencies = [
 	{org = "ballerinax", name = "health.hl7v27"},
 	{org = "ballerinax", name = "health.hl7v28"}
 ]
+modules = [
+	{org = "ballerinax", packageName = "health.hl7v2commons", moduleName = "health.hl7v2commons"}
+]
 
 [[package]]
 org = "wso2"
@@ -520,13 +526,15 @@ name = "Hl7v2ToFhirR4Service"
 version = "1.1.0"
 dependencies = [
 	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "lang.runtime"},
 	{org = "ballerina", name = "log"},
 	{org = "ballerina", name = "test"},
 	{org = "ballerinai", name = "observe"},
 	{org = "ballerinax", name = "health.fhir.r4"},
 	{org = "ballerinax", name = "health.fhir.r4.parser"},
 	{org = "ballerinax", name = "health.hl7v2"},
-	{org = "ballerinax", name = "health.hl7v2.utils.v2tofhirr4"}
+	{org = "ballerinax", name = "health.hl7v2.utils.v2tofhirr4"},
+	{org = "ballerinax", name = "health.hl7v2commons"}
 ]
 modules = [
 	{org = "wso2", packageName = "Hl7v2ToFhirR4Service", moduleName = "Hl7v2ToFhirR4Service"}
