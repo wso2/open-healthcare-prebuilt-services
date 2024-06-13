@@ -29,6 +29,34 @@ You do not have to write code from scratch but reuse these existing services whe
     --data-raw 'MSH|^~\&|EPIC|EPICADT|SMS|SMSADT|202211031408|CHARRIS|ADT^A01|1817457|D|2.8'
     ```
 
+## Customization
+
+You can customize the v2 segments to FHIR transformation logic by implementing a service with custom mappings and configuring the v2-to-fhirr4-service to invoke the custom service. This custom service can be implemented in [Ballerina](https://ballerina.io/) by using the provided template, or you can use the OAS definition (resources/custom-mapping-service-openapi.yaml) to implement your service using any other technology. The following is the command to initiate the Ballerina template to implement the custom logic:
+
+```bash
+bal new <service_name> -t ballerinax/health.fhir.templates.r4.v2tofhircustomsvc
+```
+
+You can configure the v2-to-fhir-service in [Config.toml file](https://ballerina.io/learn/provide-values-to-configurable-variables/#provide-via-configuration-files) to point to your custom service to invoke the mapping endpoints. The following is a sample configuration structure to invoke a custom service.
+
+```toml
+[customMapper]
+baseUrl = "http://localhost:9091/v2tofhir"
+
+[customMapper.segmentMappings]
+NK1 = "/segment/nk1"
+PID = "/segment/pid"
+```
+
+
+| Table | Field | Description |
+|-------|-------|-------------|
+| `customMapper`| `baseUrl` | The base URL of the custom service. |
+| `customMapper.segmentMappings`| `<segmentName>` | The path of the custom service endpoint against the each customized segment name. |
+
+> **Note:** If you deploy this to [Choreo](https://wso2.com/choreo/), you can apply configurations through the [config editor](https://wso2.com/choreo/docs/devops-and-ci-cd/manage-configurations-and-secrets/#manage-ballerina-configurables) in the Choreo console. For more information, see [Deploy in Choreo](#optional-deploy-in-choreo).
+
+
 ## [Optional] Deploy in Choreo
 
 WSO2’s Choreo (https://wso2.com/choreo/) is an internal developer platform that redefines how you create digital experiences. Choreo empowers you to seamlessly design, develop, deploy, and govern your cloud native applications, unlocking innovation while reducing time-to-market. You can deploy the healthcare prebuilt services in Choreo as explained below. 
@@ -45,8 +73,7 @@ This creates the organization and opens the Project Home page of the default pro
 
 ### Steps to Deploy HL7 v2 to FHIR prebuilt service in Choreo
 1. Create Service Component
-    * Fork the pre-built Ballerina services repository (https://github.com/wso2/open-healthcare-prebuilt-services) to your Github organization.
-    * Follow the official documentation to create and configure a service: https://wso2.com/choreo/docs/develop-components/develop-services/develop-a-ballerina-rest-api/#step-1-create-a-service-component. Use the following selections. 
+    * Follow the official documentation to create and configure a service: https://wso2.com/choreo/docs/develop-components/develop-services/develop-a-ballerina-rest-api/#step-1-create-a-service-component. Fill **Provide Repository URL** as "https://github.com/wso2/open-healthcare-prebuilt-services" and use the following selections. 
 
         ![Alt](create-prebuilt-service-v2-fhir.png "Create a hl7v2 to FHIR service in Choreo")
 
