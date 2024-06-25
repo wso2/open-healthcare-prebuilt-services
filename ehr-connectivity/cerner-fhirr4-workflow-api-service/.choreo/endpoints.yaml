@@ -1,0 +1,35 @@
+# +required Version of the endpoint configuration YAML
+version: 0.1
+
+# +required List of endpoints to create
+endpoints:
+- name: Cerner FHIR Appointment API
+  port: 9099
+  type: REST
+  networkVisibility: Public
+  context: /
+  schemaFilePath: oas/AppointmentAPI.yaml
+- name: Cerner FHIR AppointmentResponse API
+  port: 9100
+  type: REST
+  networkVisibility: Public
+  context: /
+  schemaFilePath: oas/AppointmentResponseAPI.yaml
+- name: Cerner FHIR Schedule API
+  port: 9097
+  type: REST
+  networkVisibility: Public
+  context: /
+  schemaFilePath: oas/ScheduleAPI.yaml
+- name: Cerner FHIR ServiceRequest API
+  port: 9101
+  type: REST
+  networkVisibility: Public
+  context: /
+  schemaFilePath: oas/ServiceRequestAPI.yaml
+- name: Cerner FHIR Slot API
+  port: 9098
+  type: REST
+  networkVisibility: Public
+  context: /
+  schemaFilePath: oas/SlotAPI.yaml       
