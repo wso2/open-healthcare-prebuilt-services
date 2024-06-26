@@ -13,7 +13,7 @@ tags:
 - name: CapabilityStatement
 - name: 4.0.1
 paths:
-  /metadata:
+  /:
     get:
       tags:
       - GET
