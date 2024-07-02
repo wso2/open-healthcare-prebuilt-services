@@ -1,8 +1,8 @@
 [package]
-org = "sameerag"
+org = "wso2"
 name = "epic_fhirr4_workflow_api_service"
 version = "0.1.0"
-distribution = "2201.7.0"
+distribution = "2201.8.0"
 
 [build-options]
 observabilityIncluded = true
