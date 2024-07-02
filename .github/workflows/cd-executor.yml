@@ -9,7 +9,7 @@ on:
         required: true
 
 env:
-  BALLERINA_VERSION: 2201.9.0
+  BALLERINA_VERSION: 2201.8.0
 
 jobs:
   release:
