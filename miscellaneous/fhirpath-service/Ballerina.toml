@@ -4,7 +4,7 @@ name = "FHIRPathService"
 authors = ["Ballerina"]
 keywords = ["Healthcare", "FHIR", "FHIRPATH"]
 version = "1.0.1"
-distribution = "2201.8.4"
+distribution = "2201.8.6"
 
 [build-options]
 observabilityIncluded = true

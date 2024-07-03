@@ -3,7 +3,7 @@ org = "wso2"
 name = "FHIRAuthzService"
 version = "1.0.0"
 export = ["FHIRAuthzService"]
-distribution = "2201.8.4"
+distribution = "2201.8.6"
 authors = ["Ballerina"]
 keywords = ["Healthcare", "FHIR", "Authorization", "Service"]
 

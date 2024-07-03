@@ -2,6 +2,6 @@
 org = "wso2"
 name = "CcdaToFhirR4Service"
 version = "0.9.0"
-distribution = "2201.8.4"
+distribution = "2201.8.6"
 authors = ["Ballerina"]
 keywords = ["Healthcare", "CCDA to FHIR", "FHIR", "CCDA"]
