@@ -2,7 +2,7 @@
 org = "wso2"
 name = "CernerFhirR4AdministrationApiService"
 version = "0.1.0"
-distribution = "2201.8.6"
+distribution = "2201.8.5"
 
 [build-options]
 observabilityIncluded = true
