@@ -1,0 +1,218 @@
+import ballerina/ftp;
+import ballerina/http;
+import ballerina/io;
+import ballerina/log;
+import ballerina/task;
+import ballerinax/health.fhir.r4;
+
+public isolated function executeJob(PollingTask job, decimal interval) returns task:JobId|error? {
+
+    // Implement the job execution logic here
+    task:JobId id = check task:scheduleJobRecurByFrequency(job, interval);
+    job.setId(id);
+    return id;
+}
+
+public isolated function unscheduleJob(task:JobId id) returns error? {
+
+    // Implement the job termination logic here
+    log:printDebug("Unscheduling the job.", Jobid = id);
+    task:Error? unscheduleJob = task:unscheduleJob(id);
+    if unscheduleJob is task:Error {
+        log:printError("Error occurred while unscheduling the job.", unscheduleJob);
+    }
+    return null;
+}
+
+public isolated function getFileAsStream(string downloadLink) returns stream<byte[], io:Error?>|error? {
+    http:Client statusClientV2 = check new (downloadLink);
+    http:Response|http:ClientError statusResponse = statusClientV2->/;
+    if statusResponse is http:Response {
+        int status = statusResponse.statusCode;
+        if status == 200 {
+            return check statusResponse.getByteStream();
+        } else {
+            log:printError("Error occurred while getting the status.");
+        }
+    } else {
+        log:printError("Error occurred while getting the status.", statusResponse);
+    }
+    return null;
+}
+
+public isolated function saveFileInFS(string downloadLink, string fileName) returns error? {
+
+    stream<byte[], io:Error?> streamer = check getFileAsStream(downloadLink) ?: new ();
+
+    check io:fileWriteBlocksFromStream(fileName, streamer);
+    check streamer.close();
+    log:printInfo("Export task completed.");
+}
+
+public isolated function sendFileFromFSToFTP(FtpServerConfig config, string sourcePath, string fileName) returns error? {
+    // Implement the FTP server logic here
+    // download the file to the FTP server
+    // implement the FTP server logic
+    ftp:Client fileClient = check new ({
+        host: config.host,
+        auth: {
+            credentials: {
+                username: config.username,
+                password: config.password
+            }
+        }
+    });
+    stream<io:Block, io:Error?> fileStream
+        = check io:fileReadBlocksAsStream(sourcePath, 1024);
+    check fileClient->put(string `${config.directory}/${fileName}`, fileStream);
+    check fileStream.close();
+}
+
+public isolated function saveFileInFTP(FtpServerConfig config, string downloadLink, string fileName) returns error? {
+    stream<byte[], io:Error?> streamer = check getFileAsStream(downloadLink) ?: new ();
+    //need to read as blocks, not as byte array.
+    // ftp:Client fileClient = check new ({
+    //     host: config.host,
+    //     auth: {
+    //         credentials: {
+    //             username: config.username,
+    //             password: config.password
+    //         }
+    //     }
+    // });
+    // check fileClient->put(string `${config.directory}/${fileName}`, streamer.getBytes());
+    check streamer.close();
+}
+
+public isolated function downloadFiles(json exportSummary) returns error? {
+
+    ExportSummary exportSummary1 = check exportSummary.cloneWithType(ExportSummary);
+
+    foreach OutputFile item in exportSummary1.output {
+        log:printDebug("Downloading the file.", url = item.url);
+        error? downloadFileResult = saveFileInFS(item.url, string `${clientServiceConfig.targetDirectory}/${item.'type}-exported.ndjson`);
+        if downloadFileResult is error {
+            log:printError("Error occurred while downloading the file.", downloadFileResult);
+        }
+        if ftpServerConfig.enabled {
+            // download the file to the FTP server
+            // implement the FTP server logic
+            error? uploadFileResult = sendFileFromFSToFTP(ftpServerConfig, string `${clientServiceConfig.targetDirectory}/${item.'type}-exported.ndjson`, string `${item.'type}-exported.ndjson`);
+            if uploadFileResult is error {
+                log:printError("Error occurred while sending the file to ftp.", downloadFileResult);
+
+            }
+        }
+
+    }
+    return null;
+}
+
+public isolated function createOpereationOutcome(string severity, string code, string message) returns r4:OperationOutcome {
+    r4:OperationOutcomeIssueSeverity severityType;
+    do {
+        severityType = check severity.cloneWithType(r4:OperationOutcomeIssueSeverity);
+    } on fail var e {
+        log:printError("Error occurred while creating the operation outcome. Error in severity type", e);
+        r4:OperationOutcome operationOutcomeError = {
+            issue: [
+                {severity: "error", code: "exception", diagnostics: "Error occurred while creating the operation outcome. Error in severity type"}
+            ]
+        };
+        return operationOutcomeError;
+
+    }
+    r4:OperationOutcome operationOutcome = {
+        issue: [
+            {severity: severityType, code: code, diagnostics: message}
+        ]
+    };
+    return operationOutcome;
+}
+
+public class PollingTask {
+
+    *task:Job;
+    string exportId;
+    string lastStatus;
+    string location;
+    task:JobId jobId = {id: 0};
+
+    public function execute() {
+        do {
+            http:Client statusClientV2 = check new (self.location);
+
+            log:printInfo("Polling the export task status.", exportId = self.exportId);
+            if self.lastStatus == "In-progress" {
+                // update the status
+                // update the export task
+
+                http:Response|http:ClientError statusResponse;
+                statusResponse = statusClientV2->/;
+                addPollingEvent addPollingEventFuntion = addPollingEventToMemory;
+                if statusResponse is http:Response {
+                    int status = statusResponse.statusCode;
+                    if status == 200 {
+                        // update the status
+                        // extract payload
+                        // unschedule the job
+                        self.setLastStaus("Completed");
+                        lock {
+                            boolean _ = updateExportTaskStatusInMemory(taskMap = exportTasks, exportTaskId = self.exportId, newStatus = "Completed");
+                        }
+                        json payload = check statusResponse.getJsonPayload();
+                        log:printDebug("Export task completed.", exportId = self.exportId, payload = payload);
+                        error? unscheduleJobResult = unscheduleJob(self.jobId);
+                        if unscheduleJobResult is error {
+                            log:printError("Error occurred while unscheduling the job.", unscheduleJobResult);
+                        }
+
+                        // download the files
+                        error? downloadFilesResult = downloadFiles(payload);
+                        if downloadFilesResult is error {
+                            log:printError("Error in downloading files", downloadFilesResult);
+                        }
+
+                    } else if status == 202 {
+                        // update the status
+                        log:printDebug("Export task in-progress.", exportId = self.exportId);
+                        string progress = check statusResponse.getHeader("X-Progress");
+                        PollingEvent pollingEvent = {id: self.exportId, eventStatus: "Success", exportStatus: progress};
+
+                        lock {
+                            // persisting event
+                            boolean _ = addPollingEventFuntion(exportTasks, pollingEvent.clone());
+                        }
+                        self.setLastStaus("In-progress");
+                    }
+                } else {
+                    log:printError("Error occurred while getting the status.", statusResponse);
+                    lock {
+                        // statusResponse
+                        PollingEvent pollingEvent = {id: self.exportId, eventStatus: "Failed"};
+                        boolean _ = addPollingEventFuntion(exportTasks, pollingEvent.cloneReadOnly());
+                    }
+                }
+            } else if self.lastStatus == "Completed" {
+                // This is a rare occurance; if the job is not unscheduled properly, it will keep polling the status.
+                log:printDebug("Export task completed.", exportId = self.exportId);
+            }
+        } on fail var e {
+            log:printError("Error occurred while polling the export task status.", e);
+        }
+    }
+
+    isolated function init(string exportId, string location, string lastStatus = "In-progress") {
+        self.exportId = exportId;
+        self.lastStatus = lastStatus;
+        self.location = location;
+    }
+
+    public function setLastStaus(string newStatus) {
+        self.lastStatus = newStatus;
+    }
+
+    public isolated function setId(task:JobId jobId) {
+        self.jobId = jobId;
+    }
+}
