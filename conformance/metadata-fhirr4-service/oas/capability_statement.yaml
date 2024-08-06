@@ -22,7 +22,7 @@ paths:
       - name: id
         in: path
         description: logical identifier
-        required: true
+        required: false
         schema:
           type: string
       - name: context
