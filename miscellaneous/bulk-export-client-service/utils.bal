@@ -24,9 +24,9 @@ public isolated function unscheduleJob(task:JobId id) returns error? {
     return null;
 }
 
-public isolated function getFileAsStream(string downloadLink) returns stream<byte[], io:Error?>|error? {
-    http:Client statusClientV2 = check new (downloadLink);
-    http:Response|http:ClientError statusResponse = statusClientV2->/;
+public isolated function getFileAsStream(string downloadLink, http:Client statusClientV2) returns stream<byte[], io:Error?>|error? {
+
+    http:Response|http:ClientError statusResponse = statusClientV2->get("/");
     if statusResponse is http:Response {
         int status = statusResponse.statusCode;
         if status == 200 {
@@ -42,7 +42,8 @@ public isolated function getFileAsStream(string downloadLink) returns stream<byt
 
 public isolated function saveFileInFS(string downloadLink, string fileName) returns error? {
 
-    stream<byte[], io:Error?> streamer = check getFileAsStream(downloadLink) ?: new ();
+    http:Client statusClientV2 = check new (downloadLink);
+    stream<byte[], io:Error?> streamer = check getFileAsStream(downloadLink, statusClientV2) ?: new ();
 
     check io:fileWriteBlocksFromStream(fileName, streamer);
     check streamer.close();
@@ -50,9 +51,7 @@ public isolated function saveFileInFS(string downloadLink, string fileName) retu
 }
 
 public isolated function sendFileFromFSToFTP(FtpServerConfig config, string sourcePath, string fileName) returns error? {
-    // Implement the FTP server logic here
-    // download the file to the FTP server
-    // implement the FTP server logic
+    // Implement the FTP server logic here.
     ftp:Client fileClient = check new ({
         host: config.host,
         auth: {
@@ -69,7 +68,8 @@ public isolated function sendFileFromFSToFTP(FtpServerConfig config, string sour
 }
 
 public isolated function saveFileInFTP(FtpServerConfig config, string downloadLink, string fileName) returns error? {
-    stream<byte[], io:Error?> streamer = check getFileAsStream(downloadLink) ?: new ();
+    http:Client statusClientV2 = check new (downloadLink);
+    stream<byte[], io:Error?> streamer = check getFileAsStream(downloadLink, statusClientV2) ?: new ();
     //need to read as blocks, not as byte array.
     // ftp:Client fileClient = check new ({
     //     host: config.host,
