@@ -47,7 +47,7 @@ public isolated function saveFileInFS(string downloadLink, string fileName) retu
 
     check io:fileWriteBlocksFromStream(fileName, streamer);
     check streamer.close();
-    log:printInfo("Export task completed.");
+    log:printDebug(string `Successfully downloaded the file. File name: ${fileName}`);
 }
 
 public isolated function sendFileFromFSToFTP(FtpServerConfig config, string sourcePath, string fileName) returns error? {
@@ -67,24 +67,7 @@ public isolated function sendFileFromFSToFTP(FtpServerConfig config, string sour
     check fileStream.close();
 }
 
-public isolated function saveFileInFTP(FtpServerConfig config, string downloadLink, string fileName) returns error? {
-    http:Client statusClientV2 = check new (downloadLink);
-    stream<byte[], io:Error?> streamer = check getFileAsStream(downloadLink, statusClientV2) ?: new ();
-    //need to read as blocks, not as byte array.
-    // ftp:Client fileClient = check new ({
-    //     host: config.host,
-    //     auth: {
-    //         credentials: {
-    //             username: config.username,
-    //             password: config.password
-    //         }
-    //     }
-    // });
-    // check fileClient->put(string `${config.directory}/${fileName}`, streamer.getBytes());
-    check streamer.close();
-}
-
-public isolated function downloadFiles(json exportSummary) returns error? {
+public isolated function downloadFiles(json exportSummary, string exportId) returns error? {
 
     ExportSummary exportSummary1 = check exportSummary.cloneWithType(ExportSummary);
 
@@ -103,8 +86,11 @@ public isolated function downloadFiles(json exportSummary) returns error? {
 
             }
         }
-
     }
+    lock {
+        boolean _ = updateExportTaskStatusInMemory(taskMap=exportTasks, exportTaskId=exportId, newStatus = "Downloaded");
+    }
+    log:printInfo("All files downloaded successfully.");
     return null;
 }
 
@@ -142,7 +128,7 @@ public class PollingTask {
         do {
             http:Client statusClientV2 = check new (self.location);
 
-            log:printInfo("Polling the export task status.", exportId = self.exportId);
+            log:printDebug("Polling the export task status.", exportId = self.exportId);
             if self.lastStatus == "In-progress" {
                 // update the status
                 // update the export task
@@ -158,7 +144,7 @@ public class PollingTask {
                         // unschedule the job
                         self.setLastStaus("Completed");
                         lock {
-                            boolean _ = updateExportTaskStatusInMemory(taskMap = exportTasks, exportTaskId = self.exportId, newStatus = "Completed");
+                            boolean _ = updateExportTaskStatusInMemory(taskMap = exportTasks, exportTaskId = self.exportId, newStatus = "Export Completed. Downloading files.");
                         }
                         json payload = check statusResponse.getJsonPayload();
                         log:printDebug("Export task completed.", exportId = self.exportId, payload = payload);
@@ -168,7 +154,7 @@ public class PollingTask {
                         }
 
                         // download the files
-                        error? downloadFilesResult = downloadFiles(payload);
+                        error? downloadFilesResult = downloadFiles(payload, self.exportId);
                         if downloadFilesResult is error {
                             log:printError("Error in downloading files", downloadFilesResult);
                         }

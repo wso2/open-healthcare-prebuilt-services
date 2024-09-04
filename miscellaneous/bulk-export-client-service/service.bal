@@ -33,7 +33,7 @@ service /trigger on new http:Listener(clientServiceConfig.port) {
         log:printInfo("Bulk export client Service is started...", port = clientServiceConfig.port);
     }
 
-    isolated resource function get export(string params) returns json|error {
+    isolated resource function get export(string? params) returns json|error {
 
         // update config for status polling
         // initialize the status polling
