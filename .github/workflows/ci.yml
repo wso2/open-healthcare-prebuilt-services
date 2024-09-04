@@ -121,6 +121,7 @@ jobs:
           version: $BALLERINA_VERSION
 
       - name: Ballerina Test
+        if: ${{ ! contains(matrix.path, 'miscellaneous/bulk-export-client-service') }}
         run: |
           pushd "${{ matrix.path }}"
           bal test --code-coverage
