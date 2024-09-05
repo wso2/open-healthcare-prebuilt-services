@@ -15,6 +15,9 @@ public type BulkExportServerConfig record {|
     decimal defaultIntervalInSec;
 |};
 
+// have a generic config for source server and target server for FHIR cases
+// check Ballerina FTP client for the FTP server config
+
 public type BulkExportClientConfig record {|
     int port;
     boolean authEnabled;
@@ -51,4 +54,10 @@ public type ExportSummary record {|
     OutputFile[] output;
     string[] deleted;
     string[] 'error;
+|};
+
+public type MatchedPatient record {|
+    string id;
+    string canonical?;
+    map<string> identifiers?;
 |};

@@ -4,6 +4,7 @@ import ballerina/io;
 import ballerina/log;
 import ballerina/task;
 import ballerinax/health.fhir.r4;
+import ballerinax/health.fhir.r4.international401;
 
 public isolated function executeJob(PollingTask job, decimal interval) returns task:JobId|error? {
 
@@ -88,7 +89,7 @@ public isolated function downloadFiles(json exportSummary, string exportId) retu
         }
     }
     lock {
-        boolean _ = updateExportTaskStatusInMemory(taskMap=exportTasks, exportTaskId=exportId, newStatus = "Downloaded");
+        boolean _ = updateExportTaskStatusInMemory(taskMap = exportTasks, exportTaskId = exportId, newStatus = "Downloaded");
     }
     log:printInfo("All files downloaded successfully.");
     return null;
@@ -115,6 +116,76 @@ public isolated function createOpereationOutcome(string severity, string code, s
     };
     return operationOutcome;
 }
+
+public isolated function createR4Parameters(map<string> parameters) returns international401:Parameters {
+    international401:Parameters r4Parameters = {'parameter: []};
+    international401:ParametersParameter[] paramsArr = [];
+    foreach string key in parameters.keys() {
+        international401:ParametersParameter parameterToAdd = {
+            name: key,
+            valueString: parameters.get(key)
+        };
+        paramsArr.push(parameterToAdd);
+    }
+    r4Parameters.'parameter = paramsArr;
+    return r4Parameters;
+}
+
+public isolated function populateParamsResource(MatchedPatient[] matchedPatients, string? _outputFormat, string? _since, string? _type) returns international401:Parameters {
+
+    international401:Parameters r4Parameters = {'parameter: []};
+    international401:ParametersParameter[] paramsArr = [];
+
+    if matchedPatients != [] {
+        foreach MatchedPatient patient in matchedPatients {
+            string patientReference = string `Patient/${patient.id}`;
+            r4:Reference patientRef = {reference: patientReference};
+            paramsArr.push({name: "patient", valueReference: patientRef});
+        }
+    }
+
+    if _outputFormat is string {
+        paramsArr.push({name: "_outputFormat", valueString: _outputFormat});
+
+    }
+    if _since is string {
+        paramsArr.push({name: "_since", valueInstant: _since});
+    }
+    if _type is string {
+        paramsArr.push({name: "_type", valueString: _type});
+    }
+
+    r4Parameters.'parameter = paramsArr;
+    return r4Parameters;
+}
+
+public isolated function populateQueryString(string? _outputFormat, string? _since, string? _type) returns string{
+
+    string queryString = "";
+
+    if _outputFormat is string {
+        queryString = string `?_outputFormat=${_outputFormat}`;
+
+    }
+    if _since is string {
+        queryString = addQueryParam(queryString, "_since", _since);
+    }
+    if _type is string {
+        queryString = addQueryParam(queryString, "_type", _type);
+    }
+
+    return queryString;
+}
+
+public isolated function addQueryParam(string queryString, string key, string value) returns string {
+    if queryString == "" {
+        return string `?${key}=${value}`;
+    } else {
+        return string `${queryString}&${key}=${value}`;
+    }
+}
+
+
 
 public class PollingTask {
 
