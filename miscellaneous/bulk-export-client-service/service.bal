@@ -151,7 +151,7 @@ service /trigger on new http:Listener(clientServiceConfig.port) {
             string queryString = populateQueryString(_outputFormat, _since, _type);
             // kick-off request to the bulk export server
             lock {
-                status = statusClient->get(string `${exportSeverConfig.contextPath}/Group/${group_id}/$export${queryString}`,{
+                status = statusClient->get(string `${exportSeverConfig.contextPath}/Group/${group_id}/$export${queryString}`, {
                     Accept: "application/fhir+json",
                     Prefer: "respond-async"
                 });

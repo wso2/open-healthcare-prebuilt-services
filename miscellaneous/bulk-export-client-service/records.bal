@@ -1,8 +1,3 @@
-public type BulkExportKickoffResponse record {|
-    string exportId;
-    int httpStatus;
-    string kickOffTime;
-|};
 
 public type BulkExportServerConfig record {|
     string baseUrl;
@@ -31,14 +26,6 @@ public type FtpServerConfig record {|
     string username;
     string password;
     string directory;
-|};
-
-public type BulkExportStatusConfig record {|
-    string status;
-    string location;
-    string progress?;
-    decimal interval;
-    string exportId;
 |};
 
 public type OutputFile record {|
