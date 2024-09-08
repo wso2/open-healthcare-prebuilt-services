@@ -378,6 +378,19 @@ modules = [
 ]
 
 [[package]]
+org = "ballerinax"
+name = "health.fhir.r4.international401"
+version = "2.1.0"
+dependencies = [
+	{org = "ballerina", name = "constraint"},
+	{org = "ballerina", name = "log"},
+	{org = "ballerinax", name = "health.fhir.r4"}
+]
+modules = [
+	{org = "ballerinax", packageName = "health.fhir.r4.international401", moduleName = "health.fhir.r4.international401"}
+]
+
+[[package]]
 org = "wso2"
 name = "bulk_export_client_service"
 version = "0.1.0"
@@ -391,7 +404,8 @@ dependencies = [
 	{org = "ballerina", name = "time"},
 	{org = "ballerina", name = "uuid"},
 	{org = "ballerinai", name = "observe"},
-	{org = "ballerinax", name = "health.fhir.r4"}
+	{org = "ballerinax", name = "health.fhir.r4"},
+	{org = "ballerinax", name = "health.fhir.r4.international401"}
 ]
 modules = [
 	{org = "wso2", packageName = "bulk_export_client_service", moduleName = "bulk_export_client_service"}

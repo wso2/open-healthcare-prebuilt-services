@@ -159,13 +159,12 @@ public isolated function populateParamsResource(MatchedPatient[] matchedPatients
     return r4Parameters;
 }
 
-public isolated function populateQueryString(string? _outputFormat, string? _since, string? _type) returns string{
+public isolated function populateQueryString(string? _outputFormat, string? _since, string? _type) returns string {
 
     string queryString = "";
 
     if _outputFormat is string {
         queryString = string `?_outputFormat=${_outputFormat}`;
-
     }
     if _since is string {
         queryString = addQueryParam(queryString, "_since", _since);
@@ -173,7 +172,6 @@ public isolated function populateQueryString(string? _outputFormat, string? _sin
     if _type is string {
         queryString = addQueryParam(queryString, "_type", _type);
     }
-
     return queryString;
 }
 
@@ -184,8 +182,6 @@ public isolated function addQueryParam(string queryString, string key, string va
         return string `${queryString}&${key}=${value}`;
     }
 }
-
-
 
 public class PollingTask {
 
