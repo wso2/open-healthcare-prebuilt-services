@@ -60,7 +60,9 @@ final davincihrex100:MatcherConfig matcherConfig = {
 // FHIR member matcher instance
 final davincihrex100:FhirMemberMatcher fhirMemberMatcher = check new (matcherConfig, ());
 
-service / on new fhirr4:Listener(9090, apiConfig) {
+// final DemoFHIRMemberMatcher fhirMemberMatcher = check new ();
+
+service / on new fhirr4:Listener(9095, apiConfig) {
     isolated resource function post fhir/r4/Patient/\$member\-match(r4:FHIRContext context,
             davincihrex100:HRexMemberMatchRequestParameters parameters)
             returns davincihrex100:HRexMemberMatchResponseParameters|r4:FHIRError {
