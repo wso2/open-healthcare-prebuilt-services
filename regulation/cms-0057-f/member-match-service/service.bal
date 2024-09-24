@@ -60,6 +60,9 @@ final davincihrex100:MatcherConfig matcherConfig = {
 // FHIR member matcher instance
 final davincihrex100:FhirMemberMatcher fhirMemberMatcher = check new (matcherConfig, ());
 
+## uncomment the following line to use the demo FHIR member matcher.
+## Note: This will bypass the default matching flow. This is only for testing purposes.
+
 // final DemoFHIRMemberMatcher fhirMemberMatcher = check new ();
 
 service / on new fhirr4:Listener(9095, apiConfig) {

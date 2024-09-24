@@ -10,6 +10,15 @@ public type BulkExportServerConfig record {|
     decimal defaultIntervalInSec;
 |};
 
+public type TargetServerConfig record {|
+    string 'type;
+    string host;
+    int port;
+    string username;
+    string password;
+    string directory;
+    |};
+
 // have a generic config for source server and target server for FHIR cases
 // check Ballerina FTP client for the FTP server config
 

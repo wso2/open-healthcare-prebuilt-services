@@ -4,18 +4,18 @@ import ballerina/task;
 import ballerina/uuid;
 import ballerinax/health.fhir.r4.international401;
 
-configurable BulkExportServerConfig exportSeverConfig = ?;
+configurable BulkExportServerConfig sourceServerConfig = ?;
 configurable BulkExportClientConfig clientServiceConfig = ?;
-configurable FtpServerConfig ftpServerConfig = ?;
+configurable TargetServerConfig targetServerConfig = ?;
 
 http:OAuth2ClientCredentialsGrantConfig config = {
-    tokenUrl: exportSeverConfig.tokenUrl,
-    clientId: exportSeverConfig.clientId,
-    clientSecret: exportSeverConfig.clientSecret,
-    scopes: exportSeverConfig.scopes
+    tokenUrl: sourceServerConfig.tokenUrl,
+    clientId: sourceServerConfig.clientId,
+    clientSecret: sourceServerConfig.clientSecret,
+    scopes: sourceServerConfig.scopes
 };
 
-isolated http:Client statusClient = check new (exportSeverConfig.baseUrl);
+isolated http:Client statusClient = check new (sourceServerConfig.baseUrl);
 
 service /trigger on new http:Listener(clientServiceConfig.port) {
 
@@ -23,11 +23,11 @@ service /trigger on new http:Listener(clientServiceConfig.port) {
 
         if clientServiceConfig.authEnabled {
             lock {
-                statusClient = check new (exportSeverConfig.baseUrl, auth = config.clone());
+                statusClient = check new (sourceServerConfig.baseUrl, auth = config.clone());
             }
         } else {
             lock {
-                statusClient = check new (exportSeverConfig.baseUrl);
+                statusClient = check new (sourceServerConfig.baseUrl);
             }
         }
 
@@ -53,7 +53,7 @@ service /trigger on new http:Listener(clientServiceConfig.port) {
             string queryString = populateQueryString(_outputFormat, _since, _type);
             // kick-off request to the bulk export server
             lock {
-                status = statusClient->get(string `${exportSeverConfig.contextPath}/Patient/$export${queryString}`, {
+                status = statusClient->get(string `${sourceServerConfig.contextPath}/Patient/$export${queryString}`, {
                     Accept: "application/fhir+json",
                     Prefer: "respond-async"
                 });
@@ -106,7 +106,7 @@ service /trigger on new http:Listener(clientServiceConfig.port) {
             // kick-off request to the bulk export server
 
             lock {
-                status = statusClient->post(string `${exportSeverConfig.contextPath}/Patient/$export`, parametersResource.clone().toJson(),
+                status = statusClient->post(string `${sourceServerConfig.contextPath}/Patient/$export`, parametersResource.clone().toJson(),
                 {
                     Accept: "application/fhir+json",
                     Prefer: "respond-async",
@@ -151,7 +151,7 @@ service /trigger on new http:Listener(clientServiceConfig.port) {
             string queryString = populateQueryString(_outputFormat, _since, _type);
             // kick-off request to the bulk export server
             lock {
-                status = statusClient->get(string `${exportSeverConfig.contextPath}/Group/${group_id}/$export${queryString}`, {
+                status = statusClient->get(string `${sourceServerConfig.contextPath}/Group/${group_id}/$export${queryString}`, {
                     Accept: "application/fhir+json",
                     Prefer: "respond-async"
                 });
@@ -199,7 +199,7 @@ isolated function submitBackgroundJob(string taskId, http:Response|http:ClientEr
         // get the location of the status check
         do {
             string location = check status.getHeader("Content-location");
-            task:JobId|() _ = check executeJob(new PollingTask(taskId, location), exportSeverConfig.defaultIntervalInSec);
+            task:JobId|() _ = check executeJob(new PollingTask(taskId, location), sourceServerConfig.defaultIntervalInSec);
             log:printDebug("Polling location recieved: " + location);
         } on fail var e {
             log:printError("Error occurred while getting the location or scheduling the Job", e);
