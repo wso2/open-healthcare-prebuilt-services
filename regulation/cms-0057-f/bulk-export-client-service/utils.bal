@@ -51,7 +51,7 @@ public isolated function saveFileInFS(string downloadLink, string fileName) retu
     log:printDebug(string `Successfully downloaded the file. File name: ${fileName}`);
 }
 
-public isolated function sendFileFromFSToFTP(FtpServerConfig config, string sourcePath, string fileName) returns error? {
+public isolated function sendFileFromFSToFTP(TargetServerConfig config, string sourcePath, string fileName) returns error? {
     // Implement the FTP server logic here.
     ftp:Client fileClient = check new ({
         host: config.host,
@@ -78,10 +78,10 @@ public isolated function downloadFiles(json exportSummary, string exportId) retu
         if downloadFileResult is error {
             log:printError("Error occurred while downloading the file.", downloadFileResult);
         }
-        if ftpServerConfig.enabled {
+        if targetServerConfig.'type == "ftp" {
             // download the file to the FTP server
             // implement the FTP server logic
-            error? uploadFileResult = sendFileFromFSToFTP(ftpServerConfig, string `${clientServiceConfig.targetDirectory}/${item.'type}-exported.ndjson`, string `${item.'type}-exported.ndjson`);
+            error? uploadFileResult = sendFileFromFSToFTP(targetServerConfig, string `${clientServiceConfig.targetDirectory}/${item.'type}-exported.ndjson`, string `${item.'type}-exported.ndjson`);
             if uploadFileResult is error {
                 log:printError("Error occurred while sending the file to ftp.", downloadFileResult);
 
