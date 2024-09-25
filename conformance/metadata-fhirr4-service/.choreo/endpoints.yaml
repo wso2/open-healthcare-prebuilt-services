@@ -15,5 +15,5 @@ endpoints:
   networkVisibility: Public
   # +optional Context (base path) of the API that is exposed via this endpoint.
   # This is mandatory if the endpoint type is set to REST or GraphQL.
-  context: /fhir/r4/
+  context: /fhir/r4/metadata
   schemaFilePath: oas/capability_statement.yaml
