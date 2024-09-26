@@ -31,7 +31,7 @@ service / on new fhirr4:Listener(9090, observationApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/Observation/[string id](r4:FHIRContext fhirContext) returns Observation|r4:FHIRError {
-        Observation|error fhirInteractionResult = executeFhirInteraction("Observation", fhirContext, id, (), Observation).ensureType(Observation);
+        Observation|error fhirInteractionResult = executeFhirInteraction("Observation", fhirContext, id, (), international401:Observation).ensureType(Observation);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -41,7 +41,7 @@ service / on new fhirr4:Listener(9090, observationApiConfig) {
 
     // Search for resources based on some filter criteria.
     isolated resource function get fhir/r4/Observation(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Observation", fhirContext, (), (), Observation).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Observation", fhirContext, (), (), international401:Observation).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -52,7 +52,7 @@ service / on new fhirr4:Listener(9090, observationApiConfig) {
     // Create a new resource with a server assigned id.
     // TODO: fix the payload type to accept all the union types supported for observation.
     isolated resource function post fhir/r4/Observation(r4:FHIRContext fhirContext, international401:Observation payload) returns @http:Payload {mediaType: ["application/fhir+json"]} Observation|r4:FHIRError {
-        Observation|error fhirInteractionResult = executeFhirInteraction("Observation", fhirContext, (), payload, Observation).ensureType(Observation);
+        Observation|error fhirInteractionResult = executeFhirInteraction("Observation", fhirContext, (), payload, international401:Observation).ensureType(Observation);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -65,7 +65,7 @@ service / on new fhirr4:Listener(9091, diagnosticreportApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/DiagnosticReport/[string id](r4:FHIRContext fhirContext) returns DiagnosticReport|r4:FHIRError {
-        DiagnosticReport|error fhirInteractionResult = executeFhirInteraction("DiagnosticReport", fhirContext, id, (), DiagnosticReport).ensureType(DiagnosticReport);
+        DiagnosticReport|error fhirInteractionResult = executeFhirInteraction("DiagnosticReport", fhirContext, id, (), international401:DiagnosticReport).ensureType(DiagnosticReport);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the DiagnosticReport read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -75,7 +75,7 @@ service / on new fhirr4:Listener(9091, diagnosticreportApiConfig) {
 
     // Search for resources based on some filter criteria.
     isolated resource function get fhir/r4/DiagnosticReport(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("DiagnosticReport", fhirContext, (), (), DiagnosticReport).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("DiagnosticReport", fhirContext, (), (), international401:DiagnosticReport).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the DiagnosticReport search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -85,7 +85,7 @@ service / on new fhirr4:Listener(9091, diagnosticreportApiConfig) {
 
     // Create a new resource with a server assigned id.
     isolated resource function post fhir/r4/DiagnosticReport(r4:FHIRContext fhirContext, international401:DiagnosticReport payload) returns @http:Payload {mediaType: ["application/fhir+json"]} DiagnosticReport|r4:FHIRError {
-        DiagnosticReport|error fhirInteractionResult = executeFhirInteraction("DiagnosticReport", fhirContext, (), payload, DiagnosticReport).ensureType(DiagnosticReport);
+        DiagnosticReport|error fhirInteractionResult = executeFhirInteraction("DiagnosticReport", fhirContext, (), payload, international401:DiagnosticReport).ensureType(DiagnosticReport);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the DiagnosticReport create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);

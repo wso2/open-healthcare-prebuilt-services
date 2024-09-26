@@ -37,7 +37,7 @@ service / on new fhirr4:Listener(9090, scheduleApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/Schedule/[string id](r4:FHIRContext fhirContext) returns Schedule|r4:FHIRError {
-        Schedule|error fhirInteractionResult = executeFhirInteraction("Schedule", fhirContext, id, (), Schedule).ensureType(Schedule);
+        Schedule|error fhirInteractionResult = executeFhirInteraction("Schedule", fhirContext, id, (), international401:Schedule).ensureType(Schedule);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Schedule read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -47,7 +47,7 @@ service / on new fhirr4:Listener(9090, scheduleApiConfig) {
 
     // Search for resources based on some filter criteria.
     isolated resource function get fhir/r4/Schedule(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Schedule", fhirContext, (), (), Schedule).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Schedule", fhirContext, (), (), international401:Schedule).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Schedule search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -57,7 +57,7 @@ service / on new fhirr4:Listener(9090, scheduleApiConfig) {
 
     // Create a new resource with a server assigned id.
     isolated resource function post fhir/r4/Schedule(r4:FHIRContext fhirContext, international401:Schedule schedule) returns @http:Payload {mediaType: ["application/fhir+json"]} Schedule|r4:FHIRError {
-        Schedule|error fhirInteractionResult = executeFhirInteraction("Schedule", fhirContext, (), schedule, Schedule).ensureType(Schedule);
+        Schedule|error fhirInteractionResult = executeFhirInteraction("Schedule", fhirContext, (), schedule, international401:Schedule).ensureType(Schedule);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Schedule create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -70,7 +70,7 @@ service / on new fhirr4:Listener(9091, slotApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/Slot/[string id](r4:FHIRContext fhirContext) returns Slot|r4:FHIRError {
-        Slot|error fhirInteractionResult = executeFhirInteraction("Slot", fhirContext, id, (), Slot).ensureType(Slot);
+        Slot|error fhirInteractionResult = executeFhirInteraction("Slot", fhirContext, id, (), international401:Slot).ensureType(Slot);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Slot read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -80,7 +80,7 @@ service / on new fhirr4:Listener(9091, slotApiConfig) {
 
     // Search for resources based on some filter criteria.
     isolated resource function get fhir/r4/Slot(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Slot", fhirContext, (), (), Slot).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Slot", fhirContext, (), (), international401:Slot).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Slot search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -90,7 +90,7 @@ service / on new fhirr4:Listener(9091, slotApiConfig) {
 
     // Create a new resource with a server assigned id.
     isolated resource function post fhir/r4/Slot(r4:FHIRContext fhirContext, international401:Slot slot) returns @http:Payload {mediaType: ["application/fhir+json"]} Slot|r4:FHIRError {
-        Slot|error fhirInteractionResult = executeFhirInteraction("Slot", fhirContext, (), slot, Slot).ensureType(Slot);
+        Slot|error fhirInteractionResult = executeFhirInteraction("Slot", fhirContext, (), slot, international401:Slot).ensureType(Slot);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Slot create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -103,7 +103,7 @@ service / on new fhirr4:Listener(9092, appointmentApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/Appointment/[string id](r4:FHIRContext fhirContext) returns Appointment|r4:FHIRError {
-        Appointment|error fhirInteractionResult = executeFhirInteraction("Appointment", fhirContext, id, (), Appointment).ensureType(Appointment);
+        Appointment|error fhirInteractionResult = executeFhirInteraction("Appointment", fhirContext, id, (), international401:Appointment).ensureType(Appointment);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Appointment read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -113,7 +113,7 @@ service / on new fhirr4:Listener(9092, appointmentApiConfig) {
 
     // Search for resources based on some filter criteria.
     isolated resource function get fhir/r4/Appointment(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Appointment", fhirContext, (), (), Appointment).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Appointment", fhirContext, (), (), international401:Appointment).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Appointment search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -123,7 +123,7 @@ service / on new fhirr4:Listener(9092, appointmentApiConfig) {
 
     // Create a new resource with a server assigned id.
     isolated resource function post fhir/r4/Appointment(r4:FHIRContext fhirContext, international401:Appointment appointment) returns @http:Payload {mediaType: ["application/fhir+json"]} Appointment|r4:FHIRError {
-        Appointment|error fhirInteractionResult = executeFhirInteraction("Appointment", fhirContext, (), appointment, Appointment).ensureType(Appointment);
+        Appointment|error fhirInteractionResult = executeFhirInteraction("Appointment", fhirContext, (), appointment, international401:Appointment).ensureType(Appointment);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Appointment create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -136,7 +136,7 @@ service / on new fhirr4:Listener(9093, appointmentResponseApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/AppointmentResponse/[string id](r4:FHIRContext fhirContext) returns AppointmentResponse|r4:FHIRError {
-        AppointmentResponse|error fhirInteractionResult = executeFhirInteraction("AppointmentResponse", fhirContext, id, (), AppointmentResponse).ensureType(AppointmentResponse);
+        AppointmentResponse|error fhirInteractionResult = executeFhirInteraction("AppointmentResponse", fhirContext, id, (), international401:AppointmentResponse).ensureType(AppointmentResponse);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the AppointmentResponse read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -146,7 +146,7 @@ service / on new fhirr4:Listener(9093, appointmentResponseApiConfig) {
 
     // Search for resources based on some filter criteria.
     isolated resource function get fhir/r4/AppointmentResponse(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("AppointmentResponse", fhirContext, (), (), AppointmentResponse).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("AppointmentResponse", fhirContext, (), (), international401:AppointmentResponse).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the AppointmentResponse search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -156,7 +156,7 @@ service / on new fhirr4:Listener(9093, appointmentResponseApiConfig) {
 
     // Create a new resource with a server assigned id.
     isolated resource function post fhir/r4/AppointmentResponse(r4:FHIRContext fhirContext, international401:AppointmentResponse appointmentResponse) returns @http:Payload {mediaType: ["application/fhir+json"]} AppointmentResponse|r4:FHIRError {
-        AppointmentResponse|error fhirInteractionResult = executeFhirInteraction("AppointmentResponse", fhirContext, (), appointmentResponse, AppointmentResponse).ensureType(AppointmentResponse);
+        AppointmentResponse|error fhirInteractionResult = executeFhirInteraction("AppointmentResponse", fhirContext, (), appointmentResponse, international401:AppointmentResponse).ensureType(AppointmentResponse);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the AppointmentResponse create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -169,7 +169,7 @@ service / on new fhirr4:Listener(9094, serviceRequestApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/ServiceRequest/[string id](r4:FHIRContext fhirContext) returns ServiceRequest|r4:FHIRError {
-        ServiceRequest|error fhirInteractionResult = executeFhirInteraction("ServiceRequest", fhirContext, id, (), ServiceRequest).ensureType(ServiceRequest);
+        ServiceRequest|error fhirInteractionResult = executeFhirInteraction("ServiceRequest", fhirContext, id, (), international401:ServiceRequest).ensureType(ServiceRequest);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the ServiceRequest read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -179,7 +179,7 @@ service / on new fhirr4:Listener(9094, serviceRequestApiConfig) {
 
     // Search for resources based on some filter criteria.
     isolated resource function get fhir/r4/ServiceRequest(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("ServiceRequest", fhirContext, (), (), ServiceRequest).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("ServiceRequest", fhirContext, (), (), international401:ServiceRequest).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the ServiceRequest search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -189,7 +189,7 @@ service / on new fhirr4:Listener(9094, serviceRequestApiConfig) {
 
     // Create a new resource with a server assigned id.
     isolated resource function post fhir/r4/ServiceRequest(r4:FHIRContext fhirContext, international401:ServiceRequest serviceRequest) returns @http:Payload {mediaType: ["application/fhir+json"]} ServiceRequest|r4:FHIRError {
-        ServiceRequest|error fhirInteractionResult = executeFhirInteraction("ServiceRequest", fhirContext, (), serviceRequest, ServiceRequest).ensureType(ServiceRequest);
+        ServiceRequest|error fhirInteractionResult = executeFhirInteraction("ServiceRequest", fhirContext, (), serviceRequest, international401:ServiceRequest).ensureType(ServiceRequest);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the ServiceRequest create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);

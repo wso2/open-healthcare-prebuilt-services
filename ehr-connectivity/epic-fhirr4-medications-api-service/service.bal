@@ -36,7 +36,7 @@ service / on new fhirr4:Listener(9090, medicationApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/Medication/[string id](r4:FHIRContext fhirContext) returns Medication|r4:FHIRError {
-        Medication|error fhirInteractionResult = executeFhirInteraction("Medication", fhirContext, id, (), Medication).ensureType(Medication);
+        Medication|error fhirInteractionResult = executeFhirInteraction("Medication", fhirContext, id, (), uscore:USCoreMedicationProfile).ensureType(Medication);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -46,7 +46,7 @@ service / on new fhirr4:Listener(9090, medicationApiConfig) {
 
     // Search for resources based on some filter criteria.
     isolated resource function get fhir/r4/Medication(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Medication", fhirContext, (), (), Medication).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Medication", fhirContext, (), (), uscore:USCoreMedicationProfile).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -56,7 +56,7 @@ service / on new fhirr4:Listener(9090, medicationApiConfig) {
 
     // Create a new resource with a server assigned id.
     isolated resource function post fhir/r4/Medication(r4:FHIRContext fhirContext, uscore:USCoreMedicationProfile medication) returns @http:Payload {mediaType: ["application/fhir+json"]} Medication|r4:FHIRError {
-        Medication|error fhirInteractionResult = executeFhirInteraction("Medication", fhirContext, (), medication, Medication).ensureType(Medication);
+        Medication|error fhirInteractionResult = executeFhirInteraction("Medication", fhirContext, (), medication, uscore:USCoreMedicationProfile).ensureType(Medication);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -69,7 +69,7 @@ service / on new fhirr4:Listener(9091, immunizationApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/Immunication/[string id](r4:FHIRContext fhirContext) returns Immunization|r4:FHIRError {
-        Immunization|error fhirInteractionResult = executeFhirInteraction("Immunization", fhirContext, id, (), Immunization).ensureType(Immunization);
+        Immunization|error fhirInteractionResult = executeFhirInteraction("Immunization", fhirContext, id, (), uscore:USCoreImmunizationProfile).ensureType(Immunization);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -79,7 +79,7 @@ service / on new fhirr4:Listener(9091, immunizationApiConfig) {
 
     // Search for resources based on some filter criteria.
     isolated resource function get fhir/r4/Immunization(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Immunization", fhirContext, (), (), Immunization).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Immunization", fhirContext, (), (), uscore:USCoreImmunizationProfile).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -89,7 +89,7 @@ service / on new fhirr4:Listener(9091, immunizationApiConfig) {
 
     // Create a new resource with a server assigned id.
     isolated resource function post fhir/r4/Immunization(r4:FHIRContext fhirContext, uscore:USCoreImmunizationProfile immunization) returns @http:Payload {mediaType: ["application/fhir+json"]} Immunization|r4:FHIRError {
-        Immunization|error fhirInteractionResult = executeFhirInteraction("Immunization", fhirContext, (), immunization, Immunization).ensureType(Immunization);
+        Immunization|error fhirInteractionResult = executeFhirInteraction("Immunization", fhirContext, (), immunization, uscore:USCoreImmunizationProfile).ensureType(Immunization);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -102,7 +102,7 @@ service / on new fhirr4:Listener(9092, medicationrequestApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/MedicationRequest/[string id](r4:FHIRContext fhirContext) returns MedicationRequest|r4:FHIRError {
-        MedicationRequest|error fhirInteractionResult = executeFhirInteraction("MedicationRequest", fhirContext, id, (), MedicationRequest).ensureType(MedicationRequest);
+        MedicationRequest|error fhirInteractionResult = executeFhirInteraction("MedicationRequest", fhirContext, id, (), uscore:USCoreMedicationRequestProfile).ensureType(MedicationRequest);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -112,7 +112,7 @@ service / on new fhirr4:Listener(9092, medicationrequestApiConfig) {
 
     // Search for resources based on some filter criteria.
     isolated resource function get fhir/r4/MedicationRequest(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("MedicationRequest", fhirContext, (), (), MedicationRequest).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("MedicationRequest", fhirContext, (), (), uscore:USCoreMedicationRequestProfile).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -122,7 +122,7 @@ service / on new fhirr4:Listener(9092, medicationrequestApiConfig) {
 
     // Create a new resource with a server assigned id.
     isolated resource function post fhir/r4/MedicationRequest(r4:FHIRContext fhirContext, uscore:USCoreMedicationRequestProfile medicationRequest) returns @http:Payload {mediaType: ["application/fhir+json"]} MedicationRequest|r4:FHIRError {
-        MedicationRequest|error fhirInteractionResult = executeFhirInteraction("MedicationRequest", fhirContext, (), medicationRequest, MedicationRequest).ensureType(MedicationRequest);
+        MedicationRequest|error fhirInteractionResult = executeFhirInteraction("MedicationRequest", fhirContext, (), medicationRequest, uscore:USCoreMedicationRequestProfile).ensureType(MedicationRequest);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -135,7 +135,7 @@ service / on new fhirr4:Listener(9093, medicationstatementApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/MedicationStatement/[string id](r4:FHIRContext fhirContext) returns MedicationStatement|r4:FHIRError {
-        MedicationStatement|error fhirInteractionResult = executeFhirInteraction("MedicationStatement", fhirContext, id, (), MedicationStatement).ensureType(MedicationStatement);
+        MedicationStatement|error fhirInteractionResult = executeFhirInteraction("MedicationStatement", fhirContext, id, (), international401:MedicationStatement).ensureType(MedicationStatement);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -145,7 +145,7 @@ service / on new fhirr4:Listener(9093, medicationstatementApiConfig) {
 
     // Search for resources based on some filter criteria.
     isolated resource function get fhir/r4/MedicationStatement(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("MedicationStatement", fhirContext, (), (), MedicationStatement).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("MedicationStatement", fhirContext, (), (), international401:MedicationStatement).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -155,7 +155,7 @@ service / on new fhirr4:Listener(9093, medicationstatementApiConfig) {
 
     // Create a new resource with a server assigned id.
     isolated resource function post fhir/r4/MedicationStatement(r4:FHIRContext fhirContext, international401:MedicationStatement medicationStatement) returns @http:Payload {mediaType: ["application/fhir+json"]} MedicationStatement|r4:FHIRError {
-        MedicationStatement|error fhirInteractionResult = executeFhirInteraction("MedicationStatement", fhirContext, (), medicationStatement, MedicationStatement).ensureType(MedicationStatement);
+        MedicationStatement|error fhirInteractionResult = executeFhirInteraction("MedicationStatement", fhirContext, (), medicationStatement, international401:MedicationStatement).ensureType(MedicationStatement);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Observation create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
