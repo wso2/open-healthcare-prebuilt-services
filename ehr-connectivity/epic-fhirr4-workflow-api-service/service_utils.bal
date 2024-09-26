@@ -47,7 +47,7 @@ isolated function executeFhirInteraction(string resourceType, r4:FHIRContext fhi
                 return r4:createFHIRError("Error occurred while parsing the response", r4:CODE_SEVERITY_ERROR,
                         r4:TRANSIENT_EXCEPTION, cause = parsedResponse);
             }
-            log:printError("Error occurred while retrieving the response from Epic.");
+            log:printError("Error occurred while retrieving the response from Epic.", fhirResponse);
             return r4:createFHIRError("Error occurred while retrieving the response Epic.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirResponse);
         }
@@ -57,7 +57,7 @@ isolated function executeFhirInteraction(string resourceType, r4:FHIRContext fhi
             if response is fhir:FHIRResponse {
                 return <r4:Bundle>check parseFhirResponse(response, targetModelType);
             }
-            log:printError("Error occurred while retrieving the response from Epic.");
+            log:printError("Error occurred while retrieving the response from Epic.", response);
             return r4:createFHIRError("Error occurred while retrieving the response from Epic.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = response);
         }
@@ -72,7 +72,7 @@ isolated function executeFhirInteraction(string resourceType, r4:FHIRContext fhi
                 return r4:createFHIRError("Error occurred while parsing the response", r4:CODE_SEVERITY_ERROR,
                         r4:TRANSIENT_EXCEPTION, cause = parsedResponse);
             }
-            log:printError("Error occurred while retrieving the response from Epic.");
+            log:printError("Error occurred while retrieving the response from Epic.", response);
             return r4:createFHIRError("Error occurred while retrieving the response from Epic.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = response);
         }
@@ -101,7 +101,7 @@ isolated function parseFhirResponse(fhir:FHIRResponse fhirResponse, typedesc<any
     }
     string|error resourceType = fhir:extractResourceType(resourceResult);
     if resourceType is error {
-        log:printError("Error occurred while extracting the resource type.");
+        log:printError("Error occurred while extracting the resource type.", resourceType);
         return r4:createFHIRError("Error occurred while extracting the resource type.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = resourceType);
     }
