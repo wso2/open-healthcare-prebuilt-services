@@ -49,7 +49,7 @@ isolated function generateCapabilityStatement() returns international401:Capabil
         capabilityStatementDate = date;
     } else {
         time:Civil dateTimeCivil =  time:utcToCivil(time:utcNow());
-        capabilityStatementDate = string `${dateTimeCivil.year}-${dateTimeCivil.month}-${dateTimeCivil.day}`;
+        capabilityStatementDate = string `${padSingleDigits(dateTimeCivil.year)}-${padSingleDigits(dateTimeCivil.month)}-${padSingleDigits(dateTimeCivil.day)}`;
     }
 
     international401:CapabilityStatement capabilityStatement = {
