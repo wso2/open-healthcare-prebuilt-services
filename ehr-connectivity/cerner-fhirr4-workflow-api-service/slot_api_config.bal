@@ -95,6 +95,13 @@ final r4:ResourceAPIConfig slotApiConfig = {
             builtin: false,
             documentation: "http://hl7.org/fhir/SearchParameter/Slot-appointment-type"
         }
+    },
+    {
+        name: "practitioner",
+        active: true, 
+        information: {
+            description: "The related practitioner for the selected slot."
+        }
     }
         ],
     operations: [

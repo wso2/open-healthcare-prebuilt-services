@@ -46,7 +46,7 @@ public type Patient uscore:USCorePatientProfile|international:Patient;
 
 public type Organization uscore:USCoreOrganizationProfile;
 
-public type Practitioner uscore:USCorePractitionerProfile;
+public type Practitioner international:Practitioner;
 
 public type PractitionerRole uscore:USCorePractitionerRoleProfile;
 
@@ -126,7 +126,7 @@ service / on new fhirr4:Listener(9092, practitionerApiConfig) {
 
     // Read the current state of the resource.
     isolated resource function get fhir/r4/Practitioner/[string id](r4:FHIRContext fhirContext) returns Practitioner|r4:FHIRError {
-        Practitioner|error fhirInteractionResult = executeFhirInteraction("Practitioner", fhirContext, id, (), uscore:USCorePractitionerProfile).ensureType(Practitioner);
+        Practitioner|error fhirInteractionResult = executeFhirInteraction("Practitioner", fhirContext, id, (), international:Practitioner).ensureType(Practitioner);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Practitioner read interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -136,7 +136,7 @@ service / on new fhirr4:Listener(9092, practitionerApiConfig) {
 
     // Search the resource type based on some filter criteria.
     isolated resource function get fhir/r4/Practitioner(r4:FHIRContext fhirContext) returns @http:Payload {mediaType: ["application/fhir+json"]} r4:Bundle|r4:FHIRError {
-        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Practitioner", fhirContext, (), (), uscore:USCorePractitionerProfile).ensureType(r4:Bundle);
+        r4:Bundle|error fhirInteractionResult = executeFhirInteraction("Practitioner", fhirContext, (), (), international:Practitioner).ensureType(r4:Bundle);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Practitioner search interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
@@ -145,8 +145,8 @@ service / on new fhirr4:Listener(9092, practitionerApiConfig) {
     }
 
     // Create a new resource with a server assigned id.
-    isolated resource function post fhir/r4/Practitioner(r4:FHIRContext fhirContext, uscore:USCorePractitionerProfile payload) returns @http:Payload {mediaType: ["application/fhir+json"]} http:Response|r4:FHIRError {
-        anydata|error fhirInteractionResult = executeFhirInteraction("Practitioner", fhirContext, (), payload, uscore:USCorePractitionerProfile);
+    isolated resource function post fhir/r4/Practitioner(r4:FHIRContext fhirContext, international:Practitioner payload) returns @http:Payload {mediaType: ["application/fhir+json"]} http:Response|r4:FHIRError {
+        anydata|error fhirInteractionResult = executeFhirInteraction("Practitioner", fhirContext, (), payload, international:Practitioner);
         if fhirInteractionResult is error {
             return r4:createFHIRError("Error occurred while executing the Practitioner create interaction.", r4:CODE_SEVERITY_ERROR,
                 r4:TRANSIENT_EXCEPTION, cause = fhirInteractionResult);
