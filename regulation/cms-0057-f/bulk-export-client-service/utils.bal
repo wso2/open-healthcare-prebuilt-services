@@ -1,3 +1,16 @@
+import ballerina/file;
+// Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com).
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 import ballerina/ftp;
 import ballerina/http;
 import ballerina/io;
@@ -5,8 +18,12 @@ import ballerina/log;
 import ballerina/task;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.international401;
-import ballerina/file;
 
+# Schedule Ballerina task .
+#
+# + job - Polling task to be executed  
+# + interval - interval to execute the job
+# + return - assigned job id
 public isolated function executeJob(PollingTask job, decimal interval) returns task:JobId|error? {
 
     // Implement the job execution logic here
@@ -15,6 +32,10 @@ public isolated function executeJob(PollingTask job, decimal interval) returns t
     return id;
 }
 
+# Terminate periodic task.
+#
+# + id - job id to be terminated
+# + return - error if failed to terminate the job
 public isolated function unscheduleJob(task:JobId id) returns error? {
 
     // Implement the job termination logic here
@@ -26,6 +47,11 @@ public isolated function unscheduleJob(task:JobId id) returns error? {
     return null;
 }
 
+# Get ndjson content as stream.
+#
+# + downloadLink - file location
+# + statusClientV2 - http Client instance
+# + return - byte array stream of content
 public isolated function getFileAsStream(string downloadLink, http:Client statusClientV2) returns stream<byte[], io:Error?>|error? {
 
     http:Response|http:ClientError statusResponse = statusClientV2->get("/");
@@ -42,6 +68,11 @@ public isolated function getFileAsStream(string downloadLink, http:Client status
     return null;
 }
 
+# Write file into file system.
+#
+# + downloadLink - file location  
+# + fileName - file name
+# + return - error if failed
 public isolated function saveFileInFS(string downloadLink, string fileName) returns error? {
 
     http:Client statusClientV2 = check new (downloadLink);
@@ -52,6 +83,12 @@ public isolated function saveFileInFS(string downloadLink, string fileName) retu
     log:printDebug(string `Successfully downloaded the file. File name: ${fileName}`);
 }
 
+# Send file from file system to a file server via ftp.
+#
+# + config - server config
+# + sourcePath - file path
+# + fileName - file name
+# + return - error if failed
 public isolated function sendFileFromFSToFTP(TargetServerConfig config, string sourcePath, string fileName) returns error? {
     // Implement the FTP server logic here.
     ftp:Client fileClient = check new ({
@@ -69,6 +106,11 @@ public isolated function sendFileFromFSToFTP(TargetServerConfig config, string s
     check fileStream.close();
 }
 
+# Util method to handle file download.
+#
+# + exportSummary - metadata of the export
+# + exportId - assigned export id, (local reference)
+# + return - error if failed
 public isolated function downloadFiles(json exportSummary, string exportId) returns error? {
 
     ExportSummary exportSummary1 = check exportSummary.cloneWithType(ExportSummary);
@@ -96,6 +138,12 @@ public isolated function downloadFiles(json exportSummary, string exportId) retu
     return null;
 }
 
+# Result has to deliver as OperationOutcome resources, this method populate OpOutcome with relavant info.
+#
+# + severity - severity of the outcome
+# + code - code of the outcome
+# + message - text description of the outcome
+# + return - FHIR:R4 OperationOutcome resource
 public isolated function createOpereationOutcome(string severity, string code, string message) returns r4:OperationOutcome {
     r4:OperationOutcomeIssueSeverity severityType;
     do {
@@ -118,6 +166,10 @@ public isolated function createOpereationOutcome(string severity, string code, s
     return operationOutcome;
 }
 
+# Create R4:Parameters resource with given info.
+#
+# + parameters - parameter description
+# + return - R4:Parameters resource
 public isolated function createR4Parameters(map<string> parameters) returns international401:Parameters {
     international401:Parameters r4Parameters = {'parameter: []};
     international401:ParametersParameter[] paramsArr = [];
@@ -132,6 +184,13 @@ public isolated function createR4Parameters(map<string> parameters) returns inte
     return r4Parameters;
 }
 
+# Create R4:Parameters resource to query member-match operation..
+#
+# + matchedPatients - parameter description  
+# + _outputFormat - parameter description  
+# + _since - parameter description  
+# + _type - parameter description
+# + return - return value description
 public isolated function populateParamsResource(MatchedPatient[] matchedPatients, string? _outputFormat, string? _since, string? _type) returns international401:Parameters {
 
     international401:Parameters r4Parameters = {'parameter: []};
@@ -160,6 +219,12 @@ public isolated function populateParamsResource(MatchedPatient[] matchedPatients
     return r4Parameters;
 }
 
+# Populate query string for export operation.
+#
+# + _outputFormat - value of _outputFormat  
+# + _since - value of _since
+# + _type - value of _type
+# + return - complete query string
 public isolated function populateQueryString(string? _outputFormat, string? _since, string? _type) returns string {
 
     string queryString = "";
@@ -176,6 +241,12 @@ public isolated function populateQueryString(string? _outputFormat, string? _sin
     return queryString;
 }
 
+# Util function to append param to query string.
+#
+# + queryString - current string  
+# + key - new param key
+# + value - new param value
+# + return - updated string
 public isolated function addQueryParam(string queryString, string key, string value) returns string {
     if queryString == "" {
         return string `?${key}=${value}`;
@@ -184,6 +255,7 @@ public isolated function addQueryParam(string queryString, string key, string va
     }
 }
 
+# This class holds information related to the Ballerina task that used to poll the status endpoint.
 public class PollingTask {
 
     *task:Job;
