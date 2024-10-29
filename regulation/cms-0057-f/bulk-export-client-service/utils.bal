@@ -5,6 +5,7 @@ import ballerina/log;
 import ballerina/task;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.international401;
+import ballerina/file;
 
 public isolated function executeJob(PollingTask job, decimal interval) returns task:JobId|error? {
 
@@ -74,14 +75,14 @@ public isolated function downloadFiles(json exportSummary, string exportId) retu
 
     foreach OutputFile item in exportSummary1.output {
         log:printDebug("Downloading the file.", url = item.url);
-        error? downloadFileResult = saveFileInFS(item.url, string `${clientServiceConfig.targetDirectory}/${item.'type}-exported.ndjson`);
+        error? downloadFileResult = saveFileInFS(item.url, string `${clientServiceConfig.targetDirectory}${file:pathSeparator}${exportId}${file:pathSeparator}${item.'type}-exported.ndjson`);
         if downloadFileResult is error {
             log:printError("Error occurred while downloading the file.", downloadFileResult);
         }
         if targetServerConfig.'type == "ftp" {
             // download the file to the FTP server
             // implement the FTP server logic
-            error? uploadFileResult = sendFileFromFSToFTP(targetServerConfig, string `${clientServiceConfig.targetDirectory}/${item.'type}-exported.ndjson`, string `${item.'type}-exported.ndjson`);
+            error? uploadFileResult = sendFileFromFSToFTP(targetServerConfig, string `${clientServiceConfig.targetDirectory}${file:pathSeparator}${item.'type}-exported.ndjson`, string `${item.'type}-exported.ndjson`);
             if uploadFileResult is error {
                 log:printError("Error occurred while sending the file to ftp.", downloadFileResult);
 
