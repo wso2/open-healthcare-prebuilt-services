@@ -33,3 +33,4 @@ Cloud.toml
 
 # Mac configuration file
 .DS_Store
+files/
