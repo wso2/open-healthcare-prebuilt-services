@@ -3,6 +3,8 @@ import ballerina/log;
 import ballerina/task;
 import ballerina/uuid;
 import ballerinax/health.fhir.r4.international401;
+import ballerina/file;
+import ballerina/mime;
 
 configurable BulkExportServerConfig sourceServerConfig = ?;
 configurable BulkExportClientConfig clientServiceConfig = ?;
@@ -17,7 +19,7 @@ http:OAuth2ClientCredentialsGrantConfig config = {
 
 isolated http:Client statusClient = check new (sourceServerConfig.baseUrl);
 
-service /trigger on new http:Listener(clientServiceConfig.port) {
+isolated service / on new http:Listener(9099) {
 
     function init() returns error? {
 
@@ -190,6 +192,24 @@ service /trigger on new http:Listener(clientServiceConfig.port) {
         return http:STATUS_ACCEPTED;
 
     }
+
+    isolated resource function get file/download(http:Request req, string exportId, string resourceType) returns http:Response|error? {
+
+        log:printInfo("Downloading file for member: " + exportId + " and resource type: " + resourceType);
+        string filePath = clientServiceConfig.targetDirectory + file:pathSeparator + exportId + file:pathSeparator + resourceType + "-exported.ndjson";
+
+        mime:Entity entity = new;
+        entity.setFileAsEntityBody(filePath);
+
+        http:Response response = new;
+        response.setEntity(entity);
+        error? contentType = response.setContentType("gzip");
+        if contentType is error {
+            log:printError("Error occurred while setting the content type: ");
+        }
+        return response;
+
+    }
 }
 
 isolated function submitBackgroundJob(string taskId, http:Response|http:ClientError status) {
@@ -205,5 +225,7 @@ isolated function submitBackgroundJob(string taskId, http:Response|http:ClientEr
             log:printError("Error occurred while getting the location or scheduling the Job", e);
             // if location is available, can retry the task
         }
+    }else {
+        log:printError("Error occurred while sending the kick-off request to the bulk export server.", status);
     }
 }
