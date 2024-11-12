@@ -5,12 +5,12 @@
 
 [ballerina]
 dependencies-toml-version = "2"
-distribution-version = "2201.8.5"
+distribution-version = "2201.10.2"
 
 [[package]]
 org = "ballerina"
 name = "auth"
-version = "2.10.0"
+version = "2.12.0"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -41,7 +41,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "crypto"
-version = "2.6.3"
+version = "2.7.2"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "time"}
@@ -50,7 +50,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "file"
-version = "1.9.0"
+version = "1.10.0"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "http"
-version = "2.10.14"
+version = "2.12.2"
 dependencies = [
 	{org = "ballerina", name = "auth"},
 	{org = "ballerina", name = "cache"},
@@ -93,7 +93,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "io"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.value"}
@@ -107,10 +107,11 @@ version = "0.0.0"
 [[package]]
 org = "ballerina"
 name = "jwt"
-version = "2.10.0"
+version = "2.13.0"
 dependencies = [
 	{org = "ballerina", name = "cache"},
 	{org = "ballerina", name = "crypto"},
+	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.int"},
 	{org = "ballerina", name = "lang.string"},
@@ -207,7 +208,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "log"
-version = "2.9.0"
+version = "2.10.0"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -221,17 +222,18 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "mime"
-version = "2.9.0"
+version = "2.10.1"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
-	{org = "ballerina", name = "lang.int"}
+	{org = "ballerina", name = "lang.int"},
+	{org = "ballerina", name = "log"}
 ]
 
 [[package]]
 org = "ballerina"
 name = "oauth2"
-version = "2.10.0"
+version = "2.12.0"
 dependencies = [
 	{org = "ballerina", name = "cache"},
 	{org = "ballerina", name = "crypto"},
@@ -244,7 +246,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "observe"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
@@ -270,7 +272,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "tcp"
-version = "1.9.2"
+version = "1.11.1"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "jballerina.java"}
@@ -283,6 +285,7 @@ version = "0.0.0"
 scope = "testOnly"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
+	{org = "ballerina", name = "lang.array"},
 	{org = "ballerina", name = "lang.error"}
 ]
 modules = [
@@ -292,7 +295,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "time"
-version = "2.4.0"
+version = "2.5.0"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
@@ -308,7 +311,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "uuid"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -345,7 +348,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4"
-version = "5.1.0"
+version = "5.2.0"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "http"},
@@ -366,7 +369,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4.international401"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "log"},
@@ -376,7 +379,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4.parser"
-version = "5.1.0"
+version = "5.2.0"
 dependencies = [
 	{org = "ballerina", name = "http"},
 	{org = "ballerina", name = "log"},
@@ -390,7 +393,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "health.hl7v2"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
 	{org = "ballerina", name = "log"},
 	{org = "ballerina", name = "tcp"},
@@ -403,7 +406,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "health.hl7v2.utils.v2tofhirr4"
-version = "3.0.1"
+version = "3.1.0"
 dependencies = [
 	{org = "ballerina", name = "http"},
 	{org = "ballerina", name = "lang.array"},
@@ -431,7 +434,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "health.hl7v23"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
 	{org = "ballerina", name = "log"},
 	{org = "ballerinax", name = "health.hl7v2"}
@@ -440,7 +443,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.hl7v231"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
 	{org = "ballerina", name = "log"},
 	{org = "ballerinax", name = "health.hl7v2"}
@@ -449,7 +452,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.hl7v24"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
 	{org = "ballerina", name = "log"},
 	{org = "ballerinax", name = "health.hl7v2"}
@@ -458,7 +461,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.hl7v25"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
 	{org = "ballerina", name = "log"},
 	{org = "ballerinax", name = "health.hl7v2"}
@@ -467,7 +470,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.hl7v251"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
 	{org = "ballerina", name = "log"},
 	{org = "ballerinax", name = "health.hl7v2"}
@@ -476,7 +479,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.hl7v26"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
 	{org = "ballerina", name = "log"},
 	{org = "ballerinax", name = "health.hl7v2"}
@@ -485,7 +488,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.hl7v27"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
 	{org = "ballerina", name = "log"},
 	{org = "ballerinax", name = "health.hl7v2"}
@@ -494,7 +497,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.hl7v28"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
 	{org = "ballerina", name = "log"},
 	{org = "ballerinax", name = "health.hl7v2"}
@@ -503,7 +506,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.hl7v2commons"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
 	{org = "ballerinai", name = "observe"},
 	{org = "ballerinax", name = "health.hl7v23"},
@@ -522,7 +525,7 @@ modules = [
 [[package]]
 org = "wso2"
 name = "Hl7v2ToFhirR4Service"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
 	{org = "ballerina", name = "http"},
 	{org = "ballerina", name = "lang.runtime"},

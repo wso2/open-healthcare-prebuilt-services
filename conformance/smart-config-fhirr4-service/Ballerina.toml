@@ -4,4 +4,4 @@ name = "SmartConfigService"
 version = "2.0.0"
 authors = ["Ballerina"]
 keywords = ["Healthcare", "FHIR", "SMART"]
-distribution = "2201.8.6"
+distribution = "2201.10.2"

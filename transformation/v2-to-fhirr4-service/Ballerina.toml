@@ -1,10 +1,11 @@
 [package]
 org = "wso2"
 name = "Hl7v2ToFhirR4Service"
-version = "1.1.0"
-distribution = "2201.8.5"
+version = "1.2.0"
+distribution = "2201.10.2"
 authors = ["Ballerina"]
 keywords = ["Healthcare","FHIR","HL7V2", "Transform"]
 
 [build-options]
 observabilityIncluded = true
+optimizeDependencyCompilation = true
