@@ -1,6 +1,6 @@
 [package]
 authors = ["Ballerina"]
-distribution = "2201.8.6"
+distribution = "2201.10.2"
 export = ["FhirAuditService"]
 keywords = ["Healthcare", "Audit", "Prebuilt", "Service"]
 name = "FhirAuditService"

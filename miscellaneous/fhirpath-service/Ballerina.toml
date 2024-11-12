@@ -4,12 +4,7 @@ name = "FHIRPathService"
 authors = ["Ballerina"]
 keywords = ["Healthcare", "FHIR", "FHIRPATH"]
 version = "1.0.1"
-distribution = "2201.8.6"
+distribution = "2201.10.2"
 
 [build-options]
 observabilityIncluded = true
-
-[[dependency]]
-org = "ballerinax"
-name = "health.fhir.r4utils.fhirpath"
-version = "1.2.0"
