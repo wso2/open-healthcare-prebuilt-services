@@ -54,9 +54,14 @@ jobs:
           # Remove duplicates from the CHANGED_FILES_ARRAY
           declare -A UNIQUE_PATHS_MAP
           for file in "${CHANGED_FILES_ARRAY[@]}"; do
-            if [[ $file == $CONFORMANCE_PATTERN ]] || [[ $file == $EHR_PATTERN ]] || [[ $file == $MISC_PATTERN ]] || [[ $file == $TRANSFORMATION_PATTERN ]] || [[ $file == $REGULATION_PATTERN ]]; then
+            if [[ $file == $CONFORMANCE_PATTERN ]] || [[ $file == $EHR_PATTERN ]] || [[ $file == $MISC_PATTERN ]] || [[ $file == $TRANSFORMATION_PATTERN ]] ; then
               # Condition for 2 level projects
               EXTRACTED_PATH=$(echo "$file" | cut -d '/' -f 1-2)
+              echo "${EXTRACTED_PATH}"
+            fi
+            if [[ $file == $REGULATION_PATTERN ]]; then
+              # Condition for 3 level projects
+              EXTRACTED_PATH=$(echo "$file" | cut -d '/' -f 1-3)
               echo "${EXTRACTED_PATH}"
             fi
 
