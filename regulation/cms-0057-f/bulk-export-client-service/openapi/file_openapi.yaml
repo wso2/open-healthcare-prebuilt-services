@@ -1,0 +1,72 @@
+openapi: 3.0.1
+info:
+  title: File
+  version: 0.1.0
+servers:
+- url: "{server}:{port}/file"
+  variables:
+    server:
+      default: http://localhost
+    port:
+      default: "8099"
+paths:
+  /fetch:
+    get:
+      operationId: getFetch
+      parameters:
+      - name: exportId
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: resourceType
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: Any Response
+          content:
+            '*/*':
+              schema:
+                description: Any type of entity body
+        "202":
+          description: Accepted
+        "500":
+          description: InternalServerError
+          content:
+            gzip:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+        "400":
+          description: BadRequest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+components:
+  schemas:
+    ErrorPayload:
+      required:
+      - message
+      - method
+      - path
+      - reason
+      - status
+      - timestamp
+      type: object
+      properties:
+        timestamp:
+          type: string
+        status:
+          type: integer
+          format: int64
+        reason:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+        method:
+          type: string

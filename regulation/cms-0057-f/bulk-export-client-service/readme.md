@@ -14,8 +14,8 @@ This Ballerina pre-built service is designed to interact with a FHIR server to c
 Initiates the `/Patient/$export` operation on the FHIR server.
 
 **Endpoint**:  
-`POST /export` for single Patient exports
-`GET /export` for all Patient exports
+`POST /bulk/export` for single Patient exports
+`GET /bulk/export` for all Patient exports
 
 **Request Body**:
 ```json
@@ -31,7 +31,7 @@ Initiates the `/Patient/$export` operation on the FHIR server.
 Checks the status of the ongoing export operation.
 
 **Endpoint**:  
-`GET /status`
+`GET /bulk/status`
 
 ***Params:*** <br>- exportId - exportId returned in kick-off response
 
@@ -43,7 +43,7 @@ Checks the status of the ongoing export operation.
 Downloads the exported NDJSON files once the export process is complete.
 
 **Endpoint**:  
-`GET /file/download`
+`GET /file/fetch`
 
 ***Params:*** <br> 
 - exportId - exportId returned in kick-off response
@@ -85,3 +85,7 @@ Downloads the exported NDJSON files once the export process is complete.
 
  - Run the project
  ` bal run` 
+
+
+ ### Note:
+ For configure Choreo component's in-memory storage as file storage, add a volume mount to `/workspace/${target_dir}`

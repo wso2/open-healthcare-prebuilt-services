@@ -21,7 +21,6 @@ import ballerinax/health.fhir.r4.international401;
 configurable BulkExportServerConfig sourceServerConfig = ?;
 configurable BulkExportClientConfig clientServiceConfig = ?;
 configurable TargetServerConfig targetServerConfig = ?;
-configurable int file_service_port = 8099;
 
 http:OAuth2ClientCredentialsGrantConfig config = {
     tokenUrl: sourceServerConfig.tokenUrl,
@@ -32,7 +31,7 @@ http:OAuth2ClientCredentialsGrantConfig config = {
 
 isolated http:Client statusClient = check new (sourceServerConfig.baseUrl);
 
-isolated service /bulk on new http:Listener(clientServiceConfig.port) {
+isolated service /bulk on new http:Listener(9099) {
 
     function init() returns error? {
 
@@ -240,7 +239,7 @@ isolated service /bulk on new http:Listener(clientServiceConfig.port) {
     }
 }
 
-isolated service /file on new http:Listener(file_service_port) {
+isolated service /file on new http:Listener(8099) {
 
     // Resource function to fetch the exported files.
     //
