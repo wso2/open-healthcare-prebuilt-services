@@ -1,0 +1,232 @@
+openapi: 3.0.1
+info:
+  title: Bulk
+  version: 0.1.0
+servers:
+- url: "{server}:{port}/bulk"
+  variables:
+    server:
+      default: http://localhost
+    port:
+      default: "9099"
+paths:
+  /export:
+    get:
+      operationId: getExport
+      parameters:
+      - name: _outputFormat
+        in: query
+        schema:
+          type: string
+          nullable: true
+      - name: _since
+        in: query
+        schema:
+          type: string
+          nullable: true
+      - name: _type
+        in: query
+        schema:
+          type: string
+          nullable: true
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                type: object
+        "500":
+          description: InternalServerError
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+        "400":
+          description: BadRequest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+    post:
+      operationId: postExport
+      parameters:
+      - name: _outputFormat
+        in: query
+        schema:
+          type: string
+          nullable: true
+      - name: _since
+        in: query
+        schema:
+          type: string
+          nullable: true
+      - name: _type
+        in: query
+        schema:
+          type: string
+          nullable: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/MatchedPatient'
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+        "500":
+          description: InternalServerError
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+        "400":
+          description: BadRequest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+  /export/group/{group_id}:
+    get:
+      operationId: getExportGroupGroupId
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: _outputFormat
+        in: query
+        schema:
+          type: string
+          nullable: true
+      - name: _since
+        in: query
+        schema:
+          type: string
+          nullable: true
+      - name: _type
+        in: query
+        schema:
+          type: string
+          nullable: true
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                type: object
+        "500":
+          description: InternalServerError
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+        "400":
+          description: BadRequest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+  /status:
+    get:
+      operationId: getStatus
+      parameters:
+      - name: exportId
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                type: object
+        "500":
+          description: InternalServerError
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+        "400":
+          description: BadRequest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+  /download:
+    get:
+      operationId: getDownload
+      parameters:
+      - name: location
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                type: integer
+                format: int64
+                enum:
+                - 202
+                - 500
+        "400":
+          description: BadRequest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+components:
+  schemas:
+    ErrorPayload:
+      required:
+      - message
+      - method
+      - path
+      - reason
+      - status
+      - timestamp
+      type: object
+      properties:
+        timestamp:
+          type: string
+        status:
+          type: integer
+          format: int64
+        reason:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+        method:
+          type: string
+    MatchedPatient:
+      required:
+      - id
+      type: object
+      properties:
+        id:
+          type: string
+        canonical:
+          type: string
+        identifiers:
+          type: object
+          additionalProperties:
+            type: string
+      additionalProperties: false
+      description: Record to hold matched patients.

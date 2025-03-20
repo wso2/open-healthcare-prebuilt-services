@@ -1,0 +1,27 @@
+
+[sourceServerConfig]
+baseUrl = "https://bulk-data.smarthealthit.org"
+contextPath = "/eyJlcnIiOiIiLCJwYWdlIjoxMDAwMCwiZHVyIjoxMCwidGx0IjoxNSwibSI6MSwic3R1Ijo0LCJkZWwiOjAsInNlY3VyZSI6MH0/fhir/Patient"
+tokenUrl = "https://bulk-data.smarthealthit.org/auth/token"
+fileServerUrl = "https://bulk-data.smarthealthit.org"
+clientId = "bulk-export-client"
+clientSecret = "bulk-export-client-secret"
+scopes = ["admin"]
+defaultIntervalInSec = 5.0
+
+[clientServiceConfig]
+port = 9099
+authEnabled = false
+targetDirectory = "files"
+
+[targetServerConfig]
+type = "fhir"
+host = "localhost"
+port = 21
+username = "admin"
+password = "admin"
+directory = "/target/files"
+
+
+
+
