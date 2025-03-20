@@ -35,7 +35,7 @@ function testAddPollingEventToMemory() {
     PollingEvent testEvent = {
         id: "test-id",
         exportStatus: "In-progress"
-    ,
+        ,
         eventStatus: ""
     };
 

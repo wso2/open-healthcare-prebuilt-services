@@ -79,14 +79,14 @@ public type OutputFile record {|
 # + output - output files 
 # + deleted - deleted files
 # + 'error - error files
-public type ExportSummary record {|
+public type ExportSummary record {
     string transactionTime;
     string request;
     boolean requiresAccessToken;
     OutputFile[] output;
     string[] deleted;
     string[] 'error;
-|};
+};
 
 # Record to hold matched patients.
 #

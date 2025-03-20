@@ -52,3 +52,5 @@ type addExportTask isolated function (map<ExportTask> taskMap, ExportTask export
 
 type addPollingEvent isolated function (map<ExportTask> taskMap, PollingEvent pollingEvent) returns boolean;
 
+type updateExportTaskStatus function (map<ExportTask> taskMap, string exportTaskId, string newStatus) returns boolean;
+

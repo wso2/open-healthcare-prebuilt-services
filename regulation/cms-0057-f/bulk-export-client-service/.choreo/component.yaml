@@ -1,0 +1,51 @@
+# +required The configuration file schema version
+schemaVersion: 1.1
+
+# +optional Incoming connection details for the component
+endpoints:
+  # +required Unique name for the endpoint.
+  # This name will be used when generating the managed API
+  - name: bulk-export-client
+    # +optional Display name for the endpoint.
+    displayName: Bulk Export Client Endpoint
+    # +required Service section has the user service endpoint details
+    service:
+      # +optional Context (base path) of the API that gets exposed via the endpoint.
+      basePath: /bulk
+      # +required Numeric port value that gets exposed via the endpoint
+      port: 9099
+    # +required Type of traffic that the endpoint is accepting.
+    # Allowed values: REST, GraphQL, WS, GRPC, TCP, UDP.
+    type: REST
+    # +optional Network level visibilities of the endpoint.
+    # Accepted values: Project|Organization|Public(Default).
+    networkVisibilities: 
+      - Public
+      - Organization
+    # +optional Path to the schema definition file. Defaults to wild card route if not provided
+    # This is only applicable to REST or WS endpoint types.
+    # The path should be relative to the docker context.
+    schemaFilePath: openapi/service_openapi.yaml
+
+  - name: file-service
+    # +optional Display name for the endpoint.
+    displayName: File Service Endpoint
+    # +required Service section has the user service endpoint details
+    service:
+      # +optional Context (base path) of the API that gets exposed via the endpoint.
+      basePath: /file
+      # +required Numeric port value that gets exposed via the endpoint
+      port: 8099
+    # +required Type of traffic that the endpoint is accepting.
+    # Allowed values: REST, GraphQL, WS, GRPC, TCP, UDP.
+    type: REST
+    # +optional Network level visibilities of the endpoint.
+    # Accepted values: Project|Organization|Public(Default).
+    networkVisibilities: 
+      - Public
+      - Organization
+    # +optional Path to the schema definition file. Defaults to wild card route if not provided
+    # This is only applicable to REST or WS endpoint types.
+    # The path should be relative to the docker context.
+    schemaFilePath: openapi/service_openapi.yaml
+
