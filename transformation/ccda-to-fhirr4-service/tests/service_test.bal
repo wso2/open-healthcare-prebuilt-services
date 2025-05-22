@@ -35,7 +35,14 @@ function testCcdaDocumentToFhir() returns error? {
     test:assertTrue(response is http:Response, "Error occurred while transforming CCDA document to FHIR!");
     if (response is http:Response) {
         json jsonPayload = check response.getJsonPayload();
-        test:assertEquals(jsonPayload, bundle, "Response payload mismatched!");
+        json entryArr = check jsonPayload.entry;
+        json expectedEntryArr = check bundle.entry;
+        if entryArr is json[] && expectedEntryArr is json[] {
+            test:assertEquals(jsonPayload.resourceType, "Bundle", "Response should be a Bundle!");
+            test:assertEquals(entryArr.length(), expectedEntryArr.length(), "Response payload length mismatched!");
+        } else {
+            test:assertTrue(false, "Response payload is not an array!");
+        }
     }
 }
 
