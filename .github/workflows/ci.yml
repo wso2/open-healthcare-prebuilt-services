@@ -11,7 +11,7 @@ env:
   EHR_PATTERN: ehr-connectivity/*/*
   MISC_PATTERN: miscellaneous/*/*
   TRANSFORMATION_PATTERN: transformation/*/*
-  BALLERINA_VERSION: 2201.10.2
+  BALLERINA_VERSION: 2201.12.3
 
 jobs:
   setup:
