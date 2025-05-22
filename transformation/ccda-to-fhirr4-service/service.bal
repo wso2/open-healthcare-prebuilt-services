@@ -45,7 +45,7 @@ service / on new http:Listener(9090) {
 
     # CCDA to FHIR transform service
     # + return - Transformed FHIR bundle for the given CCDA document.
-    resource function post transform(http:RequestContext ctx, http:Request request) returns CcdaToFhirResponse|CcdaToFhirBadRequest|CcdaToFhirInternalServerError {
+    resource function post transform(http:RequestContext ctx, http:Request request) returns json|error {
 
         xml|error xmlPayload = request.getXmlPayload();
         if xmlPayload is error {
@@ -57,16 +57,16 @@ service / on new http:Listener(9090) {
             r4:OperationOutcome operationOutcome = r4:errorToOperationOutcome(r4:createFHIRError(
                 "Invalid xml document.", r4:CODE_SEVERITY_ERROR, r4:TRANSIENT_EXCEPTION, diagnostic = diagnosticMsg));
             log:printError(string `Invalid xml document.`, diagnosic = diagnosticMsg);
-            return <CcdaToFhirBadRequest> {body: operationOutcome};
+            return {body: operationOutcome}.toJson();
         }
         // Pass the xml payload to the CCDA to FHIR transform util function in the FHIR R4 utils package.
         r4:Bundle|r4:FHIRError ccdaToFhir = ccdatofhir:ccdaToFhir(xmlPayload);
         // If the success scenario, return the transformed FHIR bundle.
         if ccdaToFhir is r4:Bundle {
             log:printDebug(string`Transformed message: ${ccdaToFhir.toJsonString()}`);
-            return {body: ccdaToFhir};
+            return {body: ccdaToFhir}.toJson();
         }
         log:printError("Error occurred in CCDA to FHIR transformation.", ccdaToFhir);
-        return <CcdaToFhirInternalServerError> {body: r4:errorToOperationOutcome(ccdaToFhir)};
+        return {body: r4:errorToOperationOutcome(ccdaToFhir)}.toJson();
     }
 }

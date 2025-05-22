@@ -1,0 +1,2326 @@
+openapi: 3.0.1
+info:
+  title: /
+  version: 0.9.0
+servers:
+- url: "{server}:{port}/"
+  variables:
+    server:
+      default: http://localhost
+    port:
+      default: "9090"
+paths:
+  /transform:
+    post:
+      summary: CCDA to FHIR transform service
+      operationId: postTransform
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              description: Any type of entity body
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bundle'
+        "400":
+          description: BadRequest
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/OperationOutcome'
+                - $ref: '#/components/schemas/ErrorPayload'
+        "500":
+          description: InternalServerError
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationOutcome'
+components:
+  schemas:
+    Address:
+      type: object
+      description: An address expressed using postal conventions
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          use:
+            $ref: '#/components/schemas/AddressUse'
+          type:
+            $ref: '#/components/schemas/AddressType'
+          text:
+            type: string
+          line:
+            type: array
+            items:
+              type: string
+          city:
+            type: string
+          district:
+            type: string
+          state:
+            type: string
+          postalCode:
+            type: string
+          country:
+            type: string
+          period:
+            $ref: '#/components/schemas/Period'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    AddressExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueAddress
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueAddress:
+            $ref: '#/components/schemas/Address'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    AddressType:
+      type: string
+      enum:
+      - both
+      - physical
+      - postal
+    AddressUse:
+      type: string
+      enum:
+      - billing
+      - old
+      - temp
+      - work
+      - home
+    Age:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Quantity'
+      - type: object
+        properties:
+          ageValue:
+            $ref: '#/components/schemas/integer'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    AgeExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueAge
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueAge:
+            $ref: '#/components/schemas/Age'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Annotation:
+      type: object
+      description: "Text node with attribution Elements defined in Ancestors: id,\
+        \ extension"
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - text
+        type: object
+        properties:
+          authorReference:
+            $ref: '#/components/schemas/Reference'
+          authorString:
+            type: string
+          time:
+            $ref: '#/components/schemas/dateTime'
+          text:
+            $ref: '#/components/schemas/markdown'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    AnnotationExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueAnnotation
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueAnnotation:
+            $ref: '#/components/schemas/Annotation'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Attachment:
+      type: object
+      description: |-
+        Content in a format defined elsewhere.
+        Rule: If the Attachment has data, it SHALL have a contentType.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          contentType:
+            $ref: '#/components/schemas/code'
+          language:
+            $ref: '#/components/schemas/code'
+          data:
+            $ref: '#/components/schemas/base64Binary'
+          url:
+            $ref: '#/components/schemas/urlType'
+          size:
+            $ref: '#/components/schemas/unsignedInt'
+          hash:
+            $ref: '#/components/schemas/base64Binary'
+          title:
+            type: string
+          creation:
+            $ref: '#/components/schemas/dateTime'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    AttachmentExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueAttachment
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueAttachment:
+            $ref: '#/components/schemas/Attachment'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Availability:
+      type: object
+      properties:
+        availableTime:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailableTime'
+        notAvailableTime:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotAvailableTime'
+      additionalProperties: false
+    AvailabilityExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueAvailability
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueAvailability:
+            $ref: '#/components/schemas/Availability'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    AvailableTime:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          daysOfWeek:
+            type: string
+          allDay:
+            type: string
+          availableStartTime:
+            type: string
+          availableEndTime:
+            type: string
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    BackboneElement:
+      type: object
+      description: "Base for elements defined inside a resource Elements defined in\
+        \ Ancestors: id, extension."
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          modifierExtension:
+            type: array
+            items:
+              $ref: '#/components/schemas/Extension'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Base64BinaryExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueBase64Binary
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueBase64Binary:
+            $ref: '#/components/schemas/base64Binary'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    BaseBundleMeta:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Meta'
+      - type: object
+        properties:
+          profile:
+            type: array
+            items:
+              $ref: '#/components/schemas/canonical'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    BaseOperationOutcomeMeta:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Meta'
+      - type: object
+        properties:
+          profile:
+            type: array
+            items:
+              $ref: '#/components/schemas/canonical'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    BooleanExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueBoolean
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueBoolean:
+            type: boolean
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Bundle:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Resource'
+      - required:
+        - type
+        type: object
+        properties:
+          meta:
+            $ref: '#/components/schemas/BaseBundleMeta'
+          identifier:
+            $ref: '#/components/schemas/Identifier'
+          type:
+            $ref: '#/components/schemas/BundleType'
+          timestamp:
+            $ref: '#/components/schemas/instant'
+          total:
+            $ref: '#/components/schemas/unsignedInt'
+          link:
+            type: array
+            items:
+              $ref: '#/components/schemas/BundleLink'
+          entry:
+            type: array
+            items:
+              $ref: '#/components/schemas/BundleEntry'
+          signature:
+            $ref: '#/components/schemas/Signature'
+    BundleEntry:
+      type: object
+      properties:
+        link:
+          type: array
+          items:
+            $ref: '#/components/schemas/BundleLink'
+        fullUrl:
+          $ref: '#/components/schemas/uri'
+        resource:
+          oneOf:
+          - {}
+          - $ref: '#/components/schemas/FHIRWireFormat'
+        search:
+          $ref: '#/components/schemas/BundleEntrySearch'
+        request:
+          $ref: '#/components/schemas/BundleEntryRequest'
+        response:
+          $ref: '#/components/schemas/BundleEntryResponse'
+      additionalProperties: false
+    BundleEntryRequest:
+      required:
+      - method
+      - url
+      type: object
+      properties:
+        method:
+          $ref: '#/components/schemas/HTTPVerb'
+        url:
+          $ref: '#/components/schemas/uri'
+        ifNoneMatch:
+          type: string
+        ifModifiedSince:
+          $ref: '#/components/schemas/instant'
+        ifMatch:
+          type: string
+        ifNoneExist:
+          type: string
+      additionalProperties: false
+    BundleEntryResponse:
+      required:
+      - status
+      type: object
+      properties:
+        status:
+          type: string
+        location:
+          $ref: '#/components/schemas/uri'
+        etag:
+          type: string
+        lastModified:
+          $ref: '#/components/schemas/instant'
+        outcome:
+          oneOf:
+          - {}
+          - $ref: '#/components/schemas/FHIRWireFormat'
+      additionalProperties: false
+    BundleEntrySearch:
+      type: object
+      properties:
+        mode:
+          $ref: '#/components/schemas/SearchEntryMode'
+        score:
+          type: number
+          format: double
+      additionalProperties: false
+    BundleLink:
+      required:
+      - relation
+      - url
+      type: object
+      properties:
+        relation:
+          type: string
+        url:
+          $ref: '#/components/schemas/uri'
+      additionalProperties: false
+    BundleType:
+      type: string
+      enum:
+      - collection
+      - searchset
+      - history
+      - batch-response
+      - batch
+      - transaction-response
+      - transaction
+      - message
+      - document
+    CanonicalExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueCanonical
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueCanonical:
+            $ref: '#/components/schemas/canonical'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    CodeExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueCode
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueCode:
+            $ref: '#/components/schemas/code'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    CodeableConcept:
+      type: object
+      description: "A CodeableConcept represents a value that is usually supplied\
+        \ by providing a reference to one or more terminologies or \nontologies but\
+        \ may also be defined by the provision of text."
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          coding:
+            type: array
+            items:
+              $ref: '#/components/schemas/Coding'
+          text:
+            type: string
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    CodeableConceptExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueCodeableConcept
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueCodeableConcept:
+            $ref: '#/components/schemas/CodeableConcept'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    CodeableReference:
+      type: object
+      description: Reference to a resource or a concept.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          concept:
+            $ref: '#/components/schemas/CodeableConcept'
+          reference:
+            $ref: '#/components/schemas/Reference'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    CodeableReferenceExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueCodeableReference
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueCodeableReference:
+            $ref: '#/components/schemas/CodeableReference'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Coding:
+      type: object
+      description: A Coding is a representation of a defined concept using a symbol
+        from a defined "code system".
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          system:
+            $ref: '#/components/schemas/uri'
+          version:
+            type: string
+          code:
+            $ref: '#/components/schemas/code'
+          display:
+            type: string
+          userSelected:
+            type: boolean
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    CodingExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueCoding
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueCoding:
+            $ref: '#/components/schemas/Coding'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ContactDetail:
+      type: object
+      description: The ContactDetail structure defines general contact details.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          name:
+            type: string
+          telecom:
+            type: array
+            items:
+              $ref: '#/components/schemas/ContactPoint'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ContactDetailExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueContactDetail
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueContactDetail:
+            $ref: '#/components/schemas/ContactDetail'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ContactPoint:
+      type: object
+      description: "Details for all kinds of technology-mediated contact points for\
+        \ a person or organization, including telephone, email, etc."
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          system:
+            $ref: '#/components/schemas/ContactPointSystem'
+          value:
+            type: string
+          use:
+            $ref: '#/components/schemas/ContactPointUse'
+          rank:
+            $ref: '#/components/schemas/positiveInt'
+          period:
+            $ref: '#/components/schemas/Period'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ContactPointExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueContactPoint
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueContactPoint:
+            $ref: '#/components/schemas/ContactPoint'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ContactPointSystem:
+      type: string
+      enum:
+      - other
+      - sms
+      - url
+      - pager
+      - email
+      - fax
+      - phone
+    ContactPointUse:
+      type: string
+      enum:
+      - mobile
+      - old
+      - temp
+      - work
+      - home
+    Count:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Quantity'
+      - type: object
+        properties:
+          countValue:
+            $ref: '#/components/schemas/integer'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    CountExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueCount
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueCount:
+            $ref: '#/components/schemas/Count'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    DataRequirement:
+      type: object
+      description: Describes a required data item.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - type
+        type: object
+        properties:
+          type:
+            $ref: '#/components/schemas/code'
+          profile:
+            type: array
+            items:
+              $ref: '#/components/schemas/canonical'
+          subjectCodeableConcept:
+            $ref: '#/components/schemas/CodeableConcept'
+          subjectReference:
+            $ref: '#/components/schemas/Reference'
+          mustSupport:
+            type: array
+            items:
+              type: string
+          codeFilter:
+            type: array
+            items:
+              $ref: '#/components/schemas/ElementCodeFilter'
+          dateFilter:
+            type: array
+            items:
+              $ref: '#/components/schemas/ElementDateFilter'
+          limit:
+            $ref: '#/components/schemas/positiveInt'
+          sort:
+            type: array
+            items:
+              $ref: '#/components/schemas/ElementSort'
+    DataRequirementExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueDataRequirement
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueDataRequirement:
+            $ref: '#/components/schemas/DataRequirement'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    DateExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueDate
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueDate:
+            $ref: '#/components/schemas/date'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    DateTimeExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueDateTime
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueDateTime:
+            $ref: '#/components/schemas/dateTime'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Daycode:
+      type: string
+      enum:
+      - sun
+      - sat
+      - fri
+      - thu
+      - wed
+      - tue
+      - mon
+    DecimalExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueDecimal
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueDecimal:
+            type: number
+            format: double
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    DirectionCode:
+      type: string
+      enum:
+      - descending
+      - ascending
+    Distance:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Quantity'
+      - type: object
+        properties:
+          distanceValue:
+            type: number
+            format: double
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    DistanceExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueDistance
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueDistance:
+            $ref: '#/components/schemas/Distance'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    DomainResource:
+      type: object
+      description: |-
+        A resource with narrative, extensions, and contained resources.
+        * Rule: If the resource is contained in another resource, it SHALL NOT contain nested Resources.
+        * Rule: If the resource is contained in another resource, it SHALL be referred to from elsewhere in the resource or SHALL refer to the containing resource
+        * Rule: If a resource is contained in another resource, it SHALL NOT have a meta.versionId or a meta.lastUpdated.
+        * Rule: If a resource is contained in another resource, it SHALL NOT have a security label.
+        * Guideline: A resource should have narrative for robust management.
+      allOf:
+      - $ref: '#/components/schemas/Resource'
+      - type: object
+        properties:
+          text:
+            $ref: '#/components/schemas/Narrative'
+          contained:
+            type: array
+            items:
+              $ref: '#/components/schemas/Resource'
+          extension:
+            type: array
+            items:
+              $ref: '#/components/schemas/Extension'
+          modifierExtension:
+            type: array
+            items:
+              $ref: '#/components/schemas/Extension'
+    Dosage:
+      type: object
+      description: How the medication is/was taken or should be taken.
+      allOf:
+      - $ref: '#/components/schemas/BackboneElement'
+      - type: object
+        properties:
+          sequence:
+            $ref: '#/components/schemas/integer'
+          text:
+            type: string
+          addtionalInstruction:
+            type: array
+            items:
+              $ref: '#/components/schemas/CodeableConcept'
+          patientInstruction:
+            type: string
+          timing:
+            $ref: '#/components/schemas/Timing'
+          asNeededBoolean:
+            type: boolean
+          asNeededCodeableConcept:
+            $ref: '#/components/schemas/CodeableConcept'
+          site:
+            $ref: '#/components/schemas/CodeableConcept'
+          route:
+            $ref: '#/components/schemas/CodeableConcept'
+          method:
+            $ref: '#/components/schemas/CodeableConcept'
+          doseAndRate:
+            type: array
+            items:
+              $ref: '#/components/schemas/ElementDoseAndRate'
+          maxDosePerPeriod:
+            $ref: '#/components/schemas/Ratio'
+          maxDosePerAdministration:
+            $ref: '#/components/schemas/SimpleQuantity'
+          maxDosePerLifetime:
+            $ref: '#/components/schemas/SimpleQuantity'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    DosageExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueDosage
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueDosage:
+            $ref: '#/components/schemas/Dosage'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Duration:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Quantity'
+      - type: object
+        properties:
+          durationValue:
+            type: number
+            format: double
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    DurationExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueDuration
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueDuration:
+            $ref: '#/components/schemas/Duration'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Element:
+      type: object
+      properties:
+        id:
+          type: string
+        extension:
+          type: array
+          items:
+            $ref: '#/components/schemas/Extension'
+      additionalProperties:
+        $ref: '#/components/schemas/Element'
+      description: The base definition for all elements contained inside a resource.
+    ElementCodeFilter:
+      type: object
+      description: What codes are expected.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          path:
+            type: string
+          searchParam:
+            type: string
+          valueSet:
+            $ref: '#/components/schemas/canonical'
+          code:
+            type: array
+            items:
+              $ref: '#/components/schemas/Coding'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ElementDateFilter:
+      type: object
+      description: What dates/date ranges are expected.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          path:
+            type: string
+          searchParam:
+            type: string
+          valueDateTime:
+            $ref: '#/components/schemas/dateTime'
+          valuePeriod:
+            $ref: '#/components/schemas/Period'
+          valueDuration:
+            $ref: '#/components/schemas/Duration'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ElementDoseAndRate:
+      type: object
+      description: Amount of medication administered.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          type:
+            $ref: '#/components/schemas/CodeableConcept'
+          doseRange:
+            $ref: '#/components/schemas/Range'
+          doseQuantity:
+            $ref: '#/components/schemas/SimpleQuantity'
+          rateRatio:
+            $ref: '#/components/schemas/Ratio'
+          rateRange:
+            $ref: '#/components/schemas/Range'
+          rateQuantity:
+            $ref: '#/components/schemas/SimpleQuantity'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ElementRepeat:
+      type: object
+      description: When the event is to occur.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          boundsDuration:
+            $ref: '#/components/schemas/Duration'
+          boundsRange:
+            $ref: '#/components/schemas/Range'
+          boundsPeriod:
+            $ref: '#/components/schemas/Period'
+          count:
+            $ref: '#/components/schemas/positiveInt'
+          countMax:
+            $ref: '#/components/schemas/positiveInt'
+          duration:
+            type: number
+            format: double
+          durationMax:
+            type: number
+            format: double
+          durationUnit:
+            $ref: '#/components/schemas/Timecode'
+          frequency:
+            $ref: '#/components/schemas/positiveInt'
+          frequencyMax:
+            $ref: '#/components/schemas/positiveInt'
+          period:
+            type: number
+            format: double
+          periodMax:
+            type: number
+            format: double
+          periodUnit:
+            $ref: '#/components/schemas/Timecode'
+          dayOfWeek:
+            type: array
+            items:
+              $ref: '#/components/schemas/Daycode'
+          timeOfDay:
+            type: array
+            items:
+              $ref: '#/components/schemas/time'
+          when:
+            type: array
+            items:
+              $ref: '#/components/schemas/code'
+          offset:
+            $ref: '#/components/schemas/unsignedInt'
+    ElementSort:
+      type: object
+      description: Order of the results.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - direction
+        - path
+        type: object
+        properties:
+          path:
+            type: string
+          direction:
+            $ref: '#/components/schemas/DirectionCode'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ErrorPayload:
+      required:
+      - message
+      - method
+      - path
+      - reason
+      - status
+      - timestamp
+      type: object
+      properties:
+        timestamp:
+          type: string
+        status:
+          type: integer
+          format: int64
+        reason:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+        method:
+          type: string
+    Expression:
+      type: object
+      description: An expression that can be used to generate a value.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - language
+        type: object
+        properties:
+          description:
+            type: string
+          name:
+            $ref: '#/components/schemas/id'
+          language:
+            $ref: '#/components/schemas/code'
+          expression:
+            type: string
+          reference:
+            $ref: '#/components/schemas/uri'
+    ExpressionExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueExpression
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueExpression:
+            $ref: '#/components/schemas/Expression'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ExtendedContactDetail:
+      type: object
+      properties:
+        purpose:
+          $ref: '#/components/schemas/CodeableConcept'
+        name:
+          $ref: '#/components/schemas/HumanName'
+        telecom:
+          $ref: '#/components/schemas/ContactPoint'
+        address:
+          $ref: '#/components/schemas/Address'
+        organization:
+          $ref: '#/components/schemas/Reference'
+        period:
+          $ref: '#/components/schemas/Period'
+      additionalProperties: false
+    ExtendedContactDetailExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueExtendedContactDetail
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueExtendedContactDetail:
+            $ref: '#/components/schemas/ExtendedContactDetail'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Extension:
+      oneOf:
+      - $ref: '#/components/schemas/CodeableConceptExtension'
+      - $ref: '#/components/schemas/StringExtension'
+      - $ref: '#/components/schemas/CodingExtension'
+      - $ref: '#/components/schemas/CodeExtension'
+      - $ref: '#/components/schemas/IntegerExtension'
+      - $ref: '#/components/schemas/Base64BinaryExtension'
+      - $ref: '#/components/schemas/BooleanExtension'
+      - $ref: '#/components/schemas/CanonicalExtension'
+      - $ref: '#/components/schemas/DateExtension'
+      - $ref: '#/components/schemas/DateTimeExtension'
+      - $ref: '#/components/schemas/DecimalExtension'
+      - $ref: '#/components/schemas/IdExtension'
+      - $ref: '#/components/schemas/InstantExtension'
+      - $ref: '#/components/schemas/Integer64Extension'
+      - $ref: '#/components/schemas/MarkdownExtension'
+      - $ref: '#/components/schemas/OidExtension'
+      - $ref: '#/components/schemas/PositiveIntExtension'
+      - $ref: '#/components/schemas/TimeExtension'
+      - $ref: '#/components/schemas/UnsignedIntExtension'
+      - $ref: '#/components/schemas/UriExtension'
+      - $ref: '#/components/schemas/UrlExtension'
+      - $ref: '#/components/schemas/UuidExtension'
+      - $ref: '#/components/schemas/AddressExtension'
+      - $ref: '#/components/schemas/AgeExtension'
+      - $ref: '#/components/schemas/AnnotationExtension'
+      - $ref: '#/components/schemas/AttachmentExtension'
+      - $ref: '#/components/schemas/CodeableReferenceExtension'
+      - $ref: '#/components/schemas/ContactPointExtension'
+      - $ref: '#/components/schemas/CountExtension'
+      - $ref: '#/components/schemas/DistanceExtension'
+      - $ref: '#/components/schemas/DurationExtension'
+      - $ref: '#/components/schemas/HumanNameExtension'
+      - $ref: '#/components/schemas/IdentifierExtension'
+      - $ref: '#/components/schemas/MoneyExtension'
+      - $ref: '#/components/schemas/PeriodExtension'
+      - $ref: '#/components/schemas/QuantityExtension'
+      - $ref: '#/components/schemas/RangeExtension'
+      - $ref: '#/components/schemas/RatioExtension'
+      - $ref: '#/components/schemas/RatioRangeExtension'
+      - $ref: '#/components/schemas/ReferenceExtension'
+      - $ref: '#/components/schemas/SampledDataExtension'
+      - $ref: '#/components/schemas/SignatureExtension'
+      - $ref: '#/components/schemas/TimingExtension'
+      - $ref: '#/components/schemas/ContactDetailExtension'
+      - $ref: '#/components/schemas/DataRequirementExtension'
+      - $ref: '#/components/schemas/ExpressionExtension'
+      - $ref: '#/components/schemas/ParameterDefinitionExtension'
+      - $ref: '#/components/schemas/RelatedArtifactExtension'
+      - $ref: '#/components/schemas/TriggerDefinitionExtension'
+      - $ref: '#/components/schemas/UsageContextExtension'
+      - $ref: '#/components/schemas/AvailabilityExtension'
+      - $ref: '#/components/schemas/ExtendedContactDetailExtension'
+      - $ref: '#/components/schemas/DosageExtension'
+      - $ref: '#/components/schemas/MetaExtension'
+      - $ref: '#/components/schemas/ExtensionExtension'
+    ExtensionExtension:
+      type: object
+      description: |-
+        Every element in a resource or data type includes an optional "extension" child element that may be present
+        any number of times.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    FHIRWireFormat:
+      description: FHIR wire content type formats
+      oneOf:
+      - type: object
+      - type: object
+    HTTPVerb:
+      type: string
+      enum:
+      - PATCH
+      - DELETE
+      - PUT
+      - POST
+      - HEAD
+      - GET
+    HumanName:
+      type: object
+      description: Name of a human or other living entity - parts and usage.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          use:
+            $ref: '#/components/schemas/HumanNameUse'
+          text:
+            type: string
+          family:
+            type: string
+          given:
+            type: array
+            items:
+              type: string
+          prefix:
+            type: array
+            items:
+              type: string
+          suffix:
+            type: array
+            items:
+              type: string
+          period:
+            $ref: '#/components/schemas/Period'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    HumanNameExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueHumanName
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueHumanName:
+            $ref: '#/components/schemas/HumanName'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    HumanNameUse:
+      type: string
+      enum:
+      - maiden
+      - old
+      - anonymous
+      - nickname
+      - temp
+      - official
+      - usual
+    IdExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueId
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueId:
+            $ref: '#/components/schemas/id'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Identifier:
+      type: object
+      description: A numeric or alphanumeric string that is associated with a single
+        object or entity within a given system.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          use:
+            $ref: '#/components/schemas/IdentifierUse'
+          type:
+            $ref: '#/components/schemas/CodeableConcept'
+          system:
+            $ref: '#/components/schemas/uri'
+          value:
+            type: string
+          period:
+            $ref: '#/components/schemas/Period'
+          assigner:
+            $ref: '#/components/schemas/Reference'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    IdentifierExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueIdentifier
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueIdentifier:
+            $ref: '#/components/schemas/Identifier'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    IdentifierUse:
+      type: string
+      enum:
+      - old
+      - secondary
+      - temp
+      - official
+      - usual
+    InstantExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueInstant
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueInstant:
+            $ref: '#/components/schemas/instant'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Integer64Extension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueInteger64
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueInteger64:
+            $ref: '#/components/schemas/integer64'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    IntegerExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueInteger
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueInteger:
+            $ref: '#/components/schemas/integer'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    MarkdownExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueMarkdown
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueMarkdown:
+            $ref: '#/components/schemas/markdown'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Meta:
+      type: object
+      description: |-
+        Each resource contains an element "meta", of type "Meta", which is a set of metadata that provides technical and
+        workflow context to the resource.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          versionId:
+            $ref: '#/components/schemas/id'
+          lastUpdated:
+            $ref: '#/components/schemas/instant'
+          source:
+            $ref: '#/components/schemas/uri'
+          profile:
+            type: array
+            items:
+              $ref: '#/components/schemas/canonical'
+          security:
+            type: array
+            items:
+              $ref: '#/components/schemas/Coding'
+          tag:
+            type: array
+            items:
+              $ref: '#/components/schemas/Coding'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    MetaExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueMeta
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueMeta:
+            $ref: '#/components/schemas/Meta'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Money:
+      type: object
+      description: An amount of economic utility in some recognized currency.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          value:
+            type: number
+            format: double
+          currency:
+            $ref: '#/components/schemas/code'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    MoneyExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueMoney
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueMoney:
+            $ref: '#/components/schemas/Money'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Narrative:
+      type: object
+      description: Human-readable summary of the resource (essential clinical and
+        business information).
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - div
+        - status
+        type: object
+        properties:
+          status:
+            $ref: '#/components/schemas/StatusCode'
+          div:
+            $ref: '#/components/schemas/xhtml'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    NotAvailableTime:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          description:
+            type: string
+          during:
+            $ref: '#/components/schemas/Period'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    OidExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueOid
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueOid:
+            $ref: '#/components/schemas/oid'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    OperationOutcome:
+      type: object
+      description: FHIR OperationOutcome resource record.
+      allOf:
+      - $ref: '#/components/schemas/DomainResource'
+      - required:
+        - issue
+        type: object
+        properties:
+          meta:
+            $ref: '#/components/schemas/BaseOperationOutcomeMeta'
+          issue:
+            type: array
+            items:
+              $ref: '#/components/schemas/OperationOutcomeIssue'
+    OperationOutcomeIssue:
+      required:
+      - code
+      - severity
+      type: object
+      properties:
+        severity:
+          $ref: '#/components/schemas/OperationOutcomeIssueSeverity'
+        diagnostics:
+          type: string
+        extension:
+          type: array
+          items:
+            $ref: '#/components/schemas/Extension'
+        code:
+          $ref: '#/components/schemas/code'
+        expression:
+          type: array
+          items:
+            type: string
+        modifierExtension:
+          type: array
+          items:
+            $ref: '#/components/schemas/Extension'
+        details:
+          $ref: '#/components/schemas/CodeableConcept'
+        location:
+          type: array
+          items:
+            type: string
+        id:
+          type: string
+      additionalProperties: false
+      description: FHIR OperationOutcomeIssue datatype record.
+    OperationOutcomeIssueSeverity:
+      type: string
+      description: OperationOutcomeIssueSeverity enum
+      enum:
+      - fatal
+      - error
+      - information
+      - warning
+    ParameterDefinition:
+      type: object
+      description: Definition of a parameter to a module.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - type
+        - use
+        type: object
+        properties:
+          name:
+            $ref: '#/components/schemas/code'
+          use:
+            $ref: '#/components/schemas/ParameterDefinitionUse'
+          min:
+            $ref: '#/components/schemas/integer'
+          max:
+            type: string
+          documentation:
+            type: string
+          type:
+            $ref: '#/components/schemas/code'
+          profile:
+            $ref: '#/components/schemas/canonical'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ParameterDefinitionExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueParameterDefinition
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueParameterDefinition:
+            $ref: '#/components/schemas/ParameterDefinition'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ParameterDefinitionUse:
+      type: string
+      enum:
+      - out
+      - in
+    Period:
+      type: object
+      description: A time period defined by a start and end date/time.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          start:
+            $ref: '#/components/schemas/dateTime'
+          end:
+            $ref: '#/components/schemas/dateTime'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    PeriodExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valuePeriod
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valuePeriod:
+            $ref: '#/components/schemas/Period'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    PositiveIntExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valuePositiveInt
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valuePositiveInt:
+            $ref: '#/components/schemas/positiveInt'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Quantity:
+      type: object
+      description: |-
+        A measured or measurable amount
+        Rule: If a code for the unit is present, the system SHALL also be present
+        Elements defined in Ancestors: id, extension
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          value:
+            type: number
+            format: double
+          comparator:
+            $ref: '#/components/schemas/QuantityComparatorCode'
+          unit:
+            type: string
+          system:
+            $ref: '#/components/schemas/uri'
+          code:
+            $ref: '#/components/schemas/code'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    QuantityComparatorCode:
+      type: string
+      enum:
+      - '>'
+      - '>='
+      - <=
+      - <
+    QuantityExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueQuantity
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueQuantity:
+            $ref: '#/components/schemas/Quantity'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Range:
+      type: object
+      description: |-
+        Set of values bounded by low and high.
+        Rule: If present, low SHALL have a lower value than high Elements defined in Ancestors: id, extension
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          low:
+            $ref: '#/components/schemas/SimpleQuantity'
+          high:
+            $ref: '#/components/schemas/SimpleQuantity'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    RangeExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueRange
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueRange:
+            $ref: '#/components/schemas/Range'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Ratio:
+      type: object
+      description: "A ratio of two Quantity values - a numerator and a denominator\n\
+        Rule: Numerator and denominator SHALL both be present, or both are absent.\
+        \ If both are absent, \nthere SHALL be some extension present."
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          numerator:
+            $ref: '#/components/schemas/SimpleQuantity'
+          denominator:
+            $ref: '#/components/schemas/SimpleQuantity'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    RatioExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueRatio
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueRatio:
+            $ref: '#/components/schemas/Ratio'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    RatioRange:
+      type: object
+      description: "DesRange of ratio values\nRule: One of lowNumerator or highNumerator\
+        \ and denominator SHALL be present, or all are absent. \nIf all are absent,\
+        \ there SHALL be some extension present\nRule: If present, lowNumerator SHALL\
+        \ have a lower value than highNumerator Elements \ndefined in Ancestors: id,\
+        \ extensioncription."
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          highNumerator:
+            $ref: '#/components/schemas/SimpleQuantity'
+          lowNumerator:
+            $ref: '#/components/schemas/SimpleQuantity'
+          denominator:
+            $ref: '#/components/schemas/SimpleQuantity'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    RatioRangeExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueRatioRange
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueRatioRange:
+            $ref: '#/components/schemas/RatioRange'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Reference:
+      type: object
+      description: A reference from one resource to another.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          reference:
+            type: string
+          type:
+            type: string
+          identifier:
+            $ref: '#/components/schemas/Identifier'
+          display:
+            type: string
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    ReferenceExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueReference
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueReference:
+            $ref: '#/components/schemas/Reference'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    RelatedArtifact:
+      type: object
+      description: Related artifacts for a knowledge resource.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - type
+        type: object
+        properties:
+          type:
+            $ref: '#/components/schemas/code'
+          label:
+            type: string
+          display:
+            type: string
+          citation:
+            $ref: '#/components/schemas/markdown'
+          url:
+            $ref: '#/components/schemas/urlType'
+          document:
+            $ref: '#/components/schemas/Attachment'
+          resource:
+            $ref: '#/components/schemas/canonical'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    RelatedArtifactExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueRelatedArtifact
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueRelatedArtifact:
+            $ref: '#/components/schemas/RelatedArtifact'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Resource:
+      required:
+      - resourceType
+      type: object
+      properties:
+        resourceType:
+          type: string
+        id:
+          type: string
+        meta:
+          $ref: '#/components/schemas/Meta'
+        implicitRules:
+          $ref: '#/components/schemas/uri'
+        language:
+          $ref: '#/components/schemas/code'
+      description: Base Resource.
+    SampledData:
+      type: object
+      description: "A series of measurements taken by a device Elements defined in\
+        \ Ancestors: id, extension."
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - dimensions
+        - origin
+        - period
+        type: object
+        properties:
+          origin:
+            $ref: '#/components/schemas/SimpleQuantity'
+          period:
+            type: number
+            format: double
+          factor:
+            type: number
+            format: double
+          lowerLimit:
+            type: number
+            format: double
+          upperLimit:
+            type: number
+            format: double
+          dimensions:
+            $ref: '#/components/schemas/positiveInt'
+          data:
+            type: string
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    SampledDataExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueSampledData
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueSampledData:
+            $ref: '#/components/schemas/SampledData'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    SearchEntryMode:
+      type: string
+      enum:
+      - outcome
+      - include
+      - match
+    Signature:
+      type: object
+      description: "A Signature - XML DigSig, JWS, Graphical image of signature, etc."
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - type
+        - when
+        - who
+        type: object
+        properties:
+          type:
+            type: array
+            items:
+              $ref: '#/components/schemas/Coding'
+          when:
+            $ref: '#/components/schemas/instant'
+          who:
+            $ref: '#/components/schemas/Reference'
+          onBehalfOf:
+            $ref: '#/components/schemas/Reference'
+          targetFormat:
+            $ref: '#/components/schemas/code'
+          sigFormat:
+            $ref: '#/components/schemas/code'
+          data:
+            $ref: '#/components/schemas/base64Binary'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    SignatureExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueSignature
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueSignature:
+            $ref: '#/components/schemas/Signature'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    SimpleQuantity:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Quantity'
+      - type: object
+        properties: {}
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    StatusCode:
+      type: string
+      enum:
+      - empty
+      - additional
+      - extensions
+      - generated
+    StringExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueString
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueString:
+            type: string
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    TimeExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueTime
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueTime:
+            $ref: '#/components/schemas/time'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    Timecode:
+      type: string
+      enum:
+      - a
+      - mo
+      - wk
+      - d
+      - h
+      - min
+      - s
+    Timing:
+      type: object
+      description: A timing schedule that specifies an event that may occur multiple
+        times.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - type: object
+        properties:
+          event:
+            type: array
+            items:
+              $ref: '#/components/schemas/dateTime'
+          repeat:
+            $ref: '#/components/schemas/ElementRepeat'
+          code:
+            $ref: '#/components/schemas/CodeableConcept'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    TimingExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueTiming
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueTiming:
+            $ref: '#/components/schemas/Timing'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    TriggerDefinition:
+      type: object
+      description: Defines an expected trigger for a module.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - type
+        type: object
+        properties:
+          type:
+            $ref: '#/components/schemas/code'
+          name:
+            type: string
+          timingTiming:
+            $ref: '#/components/schemas/Timing'
+          timingReference:
+            $ref: '#/components/schemas/Reference'
+          timingDate:
+            $ref: '#/components/schemas/date'
+          timingDateTime:
+            $ref: '#/components/schemas/dateTime'
+          data:
+            type: array
+            items:
+              $ref: '#/components/schemas/DataRequirement'
+          condition:
+            $ref: '#/components/schemas/Expression'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    TriggerDefinitionExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueTriggerDefinition
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueTriggerDefinition:
+            $ref: '#/components/schemas/TriggerDefinition'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    UnsignedIntExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueUnsignedInt
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueUnsignedInt:
+            $ref: '#/components/schemas/unsignedInt'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    UriExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueUri
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueUri:
+            $ref: '#/components/schemas/uri'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    UrlExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueUrl
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueUrl:
+            $ref: '#/components/schemas/urlType'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    UsageContext:
+      type: object
+      description: Describes the context of use for a conformance or knowledge resource.
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - code
+        type: object
+        properties:
+          code:
+            $ref: '#/components/schemas/Coding'
+          valueCodeableConcept:
+            $ref: '#/components/schemas/CodeableConcept'
+          valueQuantity:
+            $ref: '#/components/schemas/Quantity'
+          valueRange:
+            $ref: '#/components/schemas/Range'
+          valueReference:
+            $ref: '#/components/schemas/Reference'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    UsageContextExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueUsageContext
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueUsageContext:
+            $ref: '#/components/schemas/UsageContext'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    UuidExtension:
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/Element'
+      - required:
+        - url
+        - valueUuid
+        type: object
+        properties:
+          url:
+            $ref: '#/components/schemas/uri'
+          valueUuid:
+            $ref: '#/components/schemas/uuid'
+        additionalProperties:
+          $ref: '#/components/schemas/Element'
+    base64Binary:
+      type: string
+      description: |-
+        A stream of bytes, base64 encoded (RFC 4648 )
+        * Regex: `(\s*([0-9a-zA-Z\+\=]){4}\s*)+`
+    canonical:
+      type: string
+      description: "A URI that refers to a resource by its canonical URL (resources\
+        \ with a url property). The canonical type differs from \na uri in that it\
+        \ has special meaning in this specification, and in that it may have a version\
+        \ appended, separated by \na vertical bar (|). Note that the type canonical\
+        \ is not used for the actual canonical URLs that are the target of \nthese\
+        \ references, but for the URIs that refer to them, and may have the version\
+        \ suffix in them. Like other URIs, \nelements of type canonical may also have\
+        \ #fragment references"
+    code:
+      type: string
+      description: |-
+        Indicates that the value is taken from a set of controlled strings defined elsewhere (see Using codes for further discussion).
+        Technically, a code is restricted to a string which has at least one character and no leading or trailing
+        whitespace, and where there is no whitespace other than single spaces in the contents
+        * Regex: `[^\s]+(\s[^\s]+)*`
+    date:
+      type: string
+      description: |-
+        A date, or partial date (e.g. just year or year + month) as used in human communication.
+        The format is YYYY, YYYY-MM, or YYYY-MM-DD, e.g. 2018, 1973-06, or 1905-08-23. There SHALL be no time zone.
+        Dates SHALL be valid dates
+        * Regex: `([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)(-(0[1-9]|1[0-2])(-(0[1-9]|[1-2][0-9]|3[0-1]))?)?`
+    dateTime:
+      type: string
+      description: |-
+        A date, date-time or partial date (e.g. just year or year + month) as used in human communication. The format
+        is YYYY, YYYY-MM, YYYY-MM-DD or YYYY-MM-DDThh:mm:ss+zz:zz, e.g. 2018, 1973-06, 1905-08-23, 2015-02-07T13:28:17-05:00
+        or 2017-01-01T00:00:00.000Z. If hours and minutes are specified, a time zone SHALL be populated.
+        Seconds must be provided due to schema type constraints but may be zero-filled and may be ignored at receiver
+        discretion. Dates SHALL be valid dates. The time "24:00" is not allowed. Leap Seconds are allowed.
+        * Regex: `([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)(-(0[1-9]|1[0-2])(-(0[1-9]|[1-2][0-9]|3[0-1])(T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]+)?(Z|(\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00)))?)?)?`
+    id:
+      type: string
+      description: |-
+        Any combination of upper- or lower-case ASCII letters ('A'..'Z', and 'a'..'z', numerals ('0'..'9'), '-' and '.',
+        with a length limit of 64 characters. (This might be an integer, an un-prefixed OID, UUID or any other identifier
+        pattern that meets these constraints.)
+        * Regex: `[A-Za-z0-9\-\.]{1,64}`
+    instant:
+      type: string
+      description: |-
+        An instant in time in the format YYYY-MM-DDThh:mm:ss.sss+zz:zz (e.g. 2015-02-07T13:28:17.239+02:00
+        or 2017-01-01T00:00:00Z). The time SHALL specified at least to the second and SHALL include a time zone.
+        Note: This is intended for when precisely observed times are required (typically system logs etc.), and not
+        human-reported times - for those, use date or dateTime (which can be as precise as instant, but is not required
+        to be). instant is a more constrained dateTime.
+        * Regex: `([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]+)?(Z|(\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00))`
+    integer:
+      type: integer
+      description: |-
+        A signed integer in the range −2,147,483,648..2,147,483,647 (32-bit; for larger values, use decimal)
+        * Regex: `[0]|[-+]?[1-9][0-9]*`
+      format: int64
+    integer64:
+      type: integer
+      description: |-
+        A signed integer in the range -9,223,372,036,854,775,808 to +9,223,372,036,854,775,807 (64-bit).
+        * Regex: `[0]|[-+]?[1-9][0-9]*`
+      format: int64
+    markdown:
+      type: string
+      description: "A FHIR string that may contain markdown syntax for optional processing\
+        \ by a markdown presentation engine, in the GFM extension of CommonMark format"
+    oid:
+      type: string
+      description: |-
+        An OID represented as a URI (RFC 3001 ); e.g. urn:oid:1.2.3.4.5
+        * Regex: `urn:oid:[0-2](\.(0|[1-9][0-9]*))+`
+    positiveInt:
+      type: integer
+      description: |-
+        Any positive integer in the range 1..2,147,483,647
+        * Regex:`+?[1-9][0-9]*`
+      format: int64
+    time:
+      type: string
+      description: "A time during the day, in the format hh:mm:ss. There is no date\
+        \ specified. \nSeconds must be provided due to schema type constraints but\
+        \ may be zero-filled and may be ignored at receiver discretion. \nThe time\
+        \ \"24:00\" SHALL NOT be used. A time zone SHALL NOT be present. \nTimes can\
+        \ be converted to a Duration since midnight.\t\n* Regex: `([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\\\
+        .[0-9]+)?`"
+    unsignedInt:
+      type: integer
+      description: "Any non-negative integer in the range 0..2,147,483,647 \n* Regex:\
+        \ `[0]|([1-9][0-9]*)`"
+      format: int64
+    uri:
+      type: string
+      description: "A Uniform Resource Identifier Reference (RFC 3986 ). Note: URIs\
+        \ are case sensitive. For UUID \n(urn:uuid:53fefa32-fcbb-4ff8-8a92-55ee120877b7)\
+        \ use all lowercase\n* Regex: `\\S*` (This regex is very permissive, but URIs\
+        \ must be valid. Implementers are welcome to use more\nspecific regex statements\
+        \ for a URI in specific contexts)"
+    urlType:
+      type: string
+      description: Description
+    uuid:
+      type: string
+      description: A UUID (aka GUID) represented as a URI; e.g. urn:uuid:c757873d-ec9a-4326-a141-556f43239520
+    xhtml:
+      type: string
+      description: Description
