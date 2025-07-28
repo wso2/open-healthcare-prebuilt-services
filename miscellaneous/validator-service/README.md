@@ -13,17 +13,28 @@ To get started with this service, you'll need to have Ballerina (Refer compatibi
 
 - `CORS_ALLOWED_ORIGINS` - An array of strings, where each string is a URL that is allowed to access the API (To allow your URL to access the pre-built service, include it in this array).
 
-3. Run the project.
+3. (Optional) To enable FHIR terminology validation, create a `Config.toml` file in the project root directory and set the following configuration as shown below:
+
+```toml
+[ballerinax.health.fhir.r4.validator.terminologyConfig]
+isTerminologyValidationEnabled=true                     # Enable terminology validation, set to false to disable
+terminologyServiceApi="http://localhost:9089/fhir/r4"   # Replace with the actual URL of your FHIR R4 terminology service
+tokenUrl=""                                             # Replace with the actual token URL
+clientId=""                                             # Replace with the actual client ID
+clientSecret=""                                         # Replace with the actual client secret
+```
+
+4. Run the project.
 
 ```ballerina
 bal run
 ```
 
-4. Invoke the APIs.
+5. Invoke the APIs.
 
 Sample request for FHIR patient read:
 
-```
+```bash
 curl -X POST -H "Content-Type: application/json" -d '{
   "resourceType": "Patient",
   "id": "example",
@@ -33,8 +44,6 @@ curl -X POST -H "Content-Type: application/json" -d '{
   },
 }' http://localhost:9090/validate
 ```
-
-
 
 ## API Reference
 
