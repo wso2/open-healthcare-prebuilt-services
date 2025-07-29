@@ -1,0 +1,4 @@
+<CodeSystem xmlns="http://hl7.org/fhir">
+    <!-- Missing required 'url' and 'content' fields, making this invalid -->
+    <status value="active"/>
+</CodeSystem>

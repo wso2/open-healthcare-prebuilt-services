@@ -1,0 +1,33 @@
+{
+  "resourceType": "ValueSet",
+  "id": "example-valueset-include-valueset",
+  "url": "http://example.org/fhir/ValueSet/example-include-valueset",
+  "version": "1.0.0",
+  "name": "ExampleIncludeValueSet",
+  "title": "Example ValueSet with Include ValueSet",
+  "status": "active",
+  "date": "2025-04-09",
+  "publisher": "Example Publisher",
+  "contact": [
+    {
+      "name": "Example Team",
+      "telecom": [
+        {
+          "system": "email",
+          "value": "support@example.org"
+        }
+      ]
+    }
+  ],
+  "description": "A ValueSet that includes other ValueSets using compose.include.valueSet.",
+  "compose": {
+    "include": [
+      {
+        "valueSet": [
+          "http://hl7.org/fhir/ValueSet/abstract-types",
+          "http://hl7.org/fhir/ValueSet/account-status"
+        ]
+      }
+    ]
+  }
+}

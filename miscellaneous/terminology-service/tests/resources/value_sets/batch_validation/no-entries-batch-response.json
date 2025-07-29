@@ -1,0 +1,21 @@
+{
+  "resourceType": "OperationOutcome",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/StructureDefinition/OperationOutcome"]
+  },
+  "issue": [
+    {
+      "severity": "error",
+      "code": "required",
+      "details": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/issue-type",
+            "code": "400"
+          }
+        ],
+        "text": "No entries in the bundle"
+      }
+    }
+  ]
+}

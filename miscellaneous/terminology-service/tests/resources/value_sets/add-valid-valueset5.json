@@ -1,0 +1,20 @@
+{
+  "resourceType": "ValueSet",
+  "id": "account-and-resource-status",
+  "url": "http://hl7.org/fhir/ValueSet/account-and-resource-status",
+  "name": "AccountAndAbstractTypes",
+  "title": "Account Status and Abstract Types",
+  "status": "active",
+  "version": "1.0.1",
+  "description": "A ValueSet that includes all codes from account-status and abstract-types CodeSystems.",
+  "compose": {
+    "include": [
+      {
+        "system": "http://hl7.org/fhir/account-status"
+      },
+      {
+        "system": "http://hl7.org/fhir/resource-status"
+      }
+    ]
+  }
+}

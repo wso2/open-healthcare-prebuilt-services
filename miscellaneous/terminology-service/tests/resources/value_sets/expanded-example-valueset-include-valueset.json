@@ -1,0 +1,73 @@
+{
+    "resourceType": "ValueSet",
+    "meta": {
+        "profile": [
+            "http://hl7.org/fhir/StructureDefinition/ValueSet"
+        ]
+    },
+    "date": "2025-04-09",
+    "description": "A ValueSet that includes other ValueSets using compose.include.valueSet.",
+    "title": "Example ValueSet with Include ValueSet",
+    "contact": [
+        {
+            "name": "Example Team",
+            "telecom": [
+                {
+                    "system": "email",
+                    "value": "support@example.org"
+                }
+            ]
+        }
+    ],
+    "id": "example-valueset-include-valueset",
+    "version": "1.0.0",
+    "url": "http://example.org/fhir/ValueSet/example-include-valueset",
+    "expansion": {
+        "contains": [
+            {
+                "code": "Any",
+                "display": "Any"
+            },
+            {
+                "code": "Type",
+                "display": "Type"
+            },
+            {
+                "code": "active",
+                "display": "Active"
+            },
+            {
+                "code": "on-hold",
+                "display": "On Hold"
+            },
+            {
+                "code": "entered-in-error",
+                "display": "Entered in error"
+            },
+            {
+                "code": "unknown",
+                "display": "Unknown"
+            },
+            {
+                "code": "inactive",
+                "display": "Inactive"
+            }
+        ],
+        "total": 7,
+        "offset": 0,
+        "timestamp": "2025-05-26T09:37:42.277707200Z"
+    },
+    "compose": {
+        "include": [
+            {
+                "valueSet": [
+                    "http://hl7.org/fhir/ValueSet/abstract-types",
+                    "http://hl7.org/fhir/ValueSet/account-status"
+                ]
+            }
+        ]
+    },
+    "name": "ExampleIncludeValueSet",
+    "publisher": "Example Publisher",
+    "status": "active"
+}

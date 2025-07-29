@@ -1,0 +1,48 @@
+{
+    "resourceType": "ValueSet",
+    "meta": {
+        "profile": [
+            "http://hl7.org/fhir/StructureDefinition/ValueSet"
+        ]
+    },
+    "description": "A ValueSet that includes all codes from account-status and abstract-types CodeSystems.",
+    "title": "Account Status and Abstract Types",
+    "id": "account-and-resource-status",
+    "version": "1.0.1",
+    "url": "http://hl7.org/fhir/ValueSet/account-and-resource-status",
+    "expansion": {
+        "contains": [
+            {
+                "code": "active",
+                "display": "Active"
+            },
+            {
+                "code": "inactive",
+                "display": "Inactive"
+            },
+            {
+                "code": "active",
+                "display": "active"
+            },
+            {
+                "code": "inactive",
+                "display": "inactive"
+            }
+        ],
+        "total": 4,
+        "offset": 0,
+        "timestamp": "2025-05-26T08:46:14.800651800Z"
+    },
+    "compose": {
+        "include": [
+            {
+                "system": "http://hl7.org/fhir/account-status"
+            },
+            {
+                "system": "http://hl7.org/fhir/resource-status"
+            }
+        ]
+    },
+    "name": "AccountAndAbstractTypes",
+    "status": "active"
+}
