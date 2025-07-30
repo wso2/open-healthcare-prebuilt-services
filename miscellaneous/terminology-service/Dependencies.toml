@@ -424,17 +424,6 @@ modules = [
 
 [[package]]
 org = "ballerinax"
-name = "cdc"
-version = "1.0.3"
-dependencies = [
-	{org = "ballerina", name = "crypto"},
-	{org = "ballerina", name = "data.jsondata"},
-	{org = "ballerina", name = "jballerina.java"},
-	{org = "ballerinai", name = "observe"}
-]
-
-[[package]]
-org = "ballerinax"
 name = "h2.driver"
 version = "1.2.0"
 modules = [
@@ -589,30 +578,6 @@ modules = [
 ]
 
 [[package]]
-org = "ballerinax"
-name = "postgresql"
-version = "1.16.1"
-dependencies = [
-	{org = "ballerina", name = "crypto"},
-	{org = "ballerina", name = "io"},
-	{org = "ballerina", name = "jballerina.java"},
-	{org = "ballerina", name = "sql"},
-	{org = "ballerina", name = "time"},
-	{org = "ballerinax", name = "cdc"}
-]
-modules = [
-	{org = "ballerinax", packageName = "postgresql", moduleName = "postgresql"}
-]
-
-[[package]]
-org = "ballerinax"
-name = "postgresql.driver"
-version = "1.6.1"
-modules = [
-	{org = "ballerinax", packageName = "postgresql.driver", moduleName = "postgresql.driver"}
-]
-
-[[package]]
 org = "wso2"
 name = "terminology_service"
 version = "0.1.1"
@@ -638,9 +603,7 @@ dependencies = [
 	{org = "ballerinax", name = "health.fhir.r4.parser"},
 	{org = "ballerinax", name = "health.fhir.r4.terminology"},
 	{org = "ballerinax", name = "java.jdbc"},
-	{org = "ballerinax", name = "persist.sql"},
-	{org = "ballerinax", name = "postgresql"},
-	{org = "ballerinax", name = "postgresql.driver"}
+	{org = "ballerinax", name = "persist.sql"}
 ]
 modules = [
 	{org = "wso2", packageName = "terminology_service", moduleName = "terminology_service"},

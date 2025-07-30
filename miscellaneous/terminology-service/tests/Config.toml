@@ -1,9 +1,7 @@
 db_type = "h2"
 
-[terminology_service_api.store]
-host = "localhost"
-port = 5432
-user = "postgres"
-password = "Asdf1234"
-database = "balterminologydb"
+[terminology_service.store]
+user = ""
+password = ""
+url = ""
 

@@ -3,13 +3,10 @@
 // This file is an auto-generated file by Ballerina persistence layer.
 // It should not be modified by hand.
 
-import ballerinax/postgresql;
+import ballerinax/java.jdbc;
 
-configurable int port = ?;
-configurable string host = ?;
+configurable string url = ?;
 configurable string user = ?;
-configurable string database = ?;
 configurable string password = ?;
-configurable postgresql:Options & readonly connectionOptions = {};
-configurable string? defaultSchema = ();
+configurable jdbc:Options & readonly connectionOptions = {};
 
