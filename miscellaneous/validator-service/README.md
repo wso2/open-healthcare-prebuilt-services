@@ -18,10 +18,10 @@ To get started with this service, you'll need to have Ballerina (Refer compatibi
 ```toml
 [ballerinax.health.fhir.r4.validator.terminologyConfig]
 isTerminologyValidationEnabled=true                     # Enable terminology validation, set to false to disable
-terminologyServiceApi="http://localhost:9089/fhir/r4"   # Replace with the actual URL of your FHIR R4 terminology service
-tokenUrl=""                                             # Replace with the actual token URL
-clientId=""                                             # Replace with the actual client ID
-clientSecret=""                                         # Replace with the actual client secret
+terminologyServiceApi="http://localhost:9089/fhir/r4"   # The base URL of your FHIR R4 terminology service used for validation (update this to match your service endpoint)
+tokenUrl=""                                             # Replace with the your token URL
+clientId=""                                             # Replace with the your client ID
+clientSecret=""                                         # Replace with the your client secret
 ```
 
 4. Run the project.
