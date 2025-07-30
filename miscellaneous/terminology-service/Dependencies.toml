@@ -476,7 +476,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4"
-version = "6.1.0"
+version = "6.1.1"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "http"},
@@ -614,7 +614,7 @@ modules = [
 
 [[package]]
 org = "wso2"
-name = "terminology_service_api"
+name = "terminology_service"
 version = "0.1.1"
 dependencies = [
 	{org = "ballerina", name = "data.jsondata"},
@@ -643,9 +643,9 @@ dependencies = [
 	{org = "ballerinax", name = "postgresql.driver"}
 ]
 modules = [
-	{org = "wso2", packageName = "terminology_service_api", moduleName = "terminology_service_api"},
-	{org = "wso2", packageName = "terminology_service_api", moduleName = "terminology_service_api.loinc_to_fhir"},
-	{org = "wso2", packageName = "terminology_service_api", moduleName = "terminology_service_api.snomed_to_fhir"},
-	{org = "wso2", packageName = "terminology_service_api", moduleName = "terminology_service_api.store"}
+	{org = "wso2", packageName = "terminology_service", moduleName = "terminology_service"},
+	{org = "wso2", packageName = "terminology_service", moduleName = "terminology_service.loinc_to_fhir"},
+	{org = "wso2", packageName = "terminology_service", moduleName = "terminology_service.snomed_to_fhir"},
+	{org = "wso2", packageName = "terminology_service", moduleName = "terminology_service.store"}
 ]
 

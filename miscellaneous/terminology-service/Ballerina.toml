@@ -1,6 +1,6 @@
 [package]
 org = "wso2"
-name = "terminology_service_api"
+name = "terminology_service"
 version = "0.1.1"
 distribution = "2201.12.3"
 template=true

@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-import terminology_service_api.store;
+import terminology_service.store;
 
 import ballerina/http;
 import ballerina/lang.regexp;

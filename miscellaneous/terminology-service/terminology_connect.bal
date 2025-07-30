@@ -14,8 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-import terminology_service_api.loinc_to_fhir as loinc;
-import terminology_service_api.snomed_to_fhir as snomed;
+import terminology_service.loinc_to_fhir as loinc;
+import terminology_service.snomed_to_fhir as snomed;
 
 import ballerina/data.jsondata;
 import ballerina/data.xmldata;
