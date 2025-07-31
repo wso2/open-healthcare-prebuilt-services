@@ -1,0 +1,7 @@
+db_type = "h2"
+
+[terminology_service.store]
+user = ""
+password = ""
+url = ""
+

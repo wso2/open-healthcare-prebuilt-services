@@ -1,0 +1,35 @@
+{
+  "resourceType": "ValueSet",
+  "id": "example-valueset-include-both",
+  "url": "http://example.org/fhir/ValueSet/example-include-both",
+  "version": "1.0.0",
+  "name": "ExampleIncludeBoth",
+  "title": "Example ValueSet with Include ValueSet and CodeSystem",
+  "status": "active",
+  "date": "2025-04-09",
+  "publisher": "Example Publisher",
+  "contact": [
+    {
+      "name": "Example Team",
+      "telecom": [
+        {
+          "system": "email",
+          "value": "support@example.org"
+        }
+      ]
+    }
+  ],
+  "description": "A ValueSet that includes both another ValueSet and a CodeSystem in compose.include.",
+  "compose": {
+    "include": [
+      {
+        "valueSet": [
+          "http://hl7.org/fhir/ValueSet/abstract-types"
+        ]
+      },
+      {
+        "system": "http://hl7.org/fhir/abstract-types"
+      }
+    ]
+  }
+}

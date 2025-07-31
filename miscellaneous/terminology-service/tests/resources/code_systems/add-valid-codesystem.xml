@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CodeSystem xmlns="http://hl7.org/fhir">
+  <id value="adverse-event-severity"/>
+  <meta>
+    <lastUpdated value="2020-04-09T21:10:28.568+00:00"/>
+  </meta>
+  <url value="http://terminology.hl7.org/CodeSystem/adverse-event-severity"/>
+  <identifier>
+    <system value="urn:ietf:rfc:3986"/>
+    <value value="urn:oid:2.16.840.1.113883.4.642.1.1256"/>
+  </identifier>
+  <version value="1.0.0"/>
+  <name value="AdverseEventSeverity"/>
+  <title value="AdverseEventSeverity"/>
+  <status value="draft"/>
+  <experimental value="false"/>
+  <date value="2020-04-09T21:10:28+00:00"/>
+  <publisher value="Health Level Seven International"/>
+  <property>
+    <code value="status"/>
+    <uri value="http://hl7.org/fhir/concept-properties#status"/>
+    <description value="Designation of a concept&#39;s state. Normally is not populated unless the state is retired."/>
+    <type value="code"/>
+  </property>
+  
+  <contact>
+    <telecom>
+      <system value="url"/>
+      <value value="http://hl7.org"/>
+    </telecom>
+    <telecom>
+      <system value="email"/>
+      <value value="hq@HL7.org"/>
+    </telecom>
+  </contact>
+  <description value="The severity of the adverse event itself, in direct relation to the subject."/>  <copyright value="This material derives from the HL7 Terminology (THO). THO is copyright ©1989+ Health Level Seven International and is made available under the CC0 designation. For more licensing information see: https://terminology.hl7.org/license.html"/>
+  <caseSensitive value="true"/>
+  <valueSet value="http://terminology.hl7.org/ValueSet/adverse-event-severity"/>
+  <content value="complete"/>
+  <filter>
+    <code value="status"/>
+    <description value="Filter concepts by their status property (e.g., active, retired)."/>
+    <operator value="="/>
+    <value value="active"/>
+  </filter>
+  <concept>
+    <code value="mild"/>
+    <display value="Mild"/>
+  </concept>
+  <concept>
+    <code value="moderate"/>
+    <display value="Moderate"/>
+  </concept>
+  <concept>
+    <code value="severe"/>
+    <display value="Severe"/>
+  </concept>
+</CodeSystem>

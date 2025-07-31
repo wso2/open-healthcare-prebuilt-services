@@ -1,0 +1,24 @@
+{
+    "resourceType": "OperationOutcome",
+    "meta": {
+        "profile": [
+            "http://hl7.org/fhir/StructureDefinition/OperationOutcome"
+        ]
+    },
+    "issue": [
+        {
+            "severity": "error",
+            "diagnostics": "01f0150d-2a7b-1cd0-8c79-3be444e08f11",
+            "code": "required",
+            "details": {
+                "coding": [
+                    {
+                        "system": "http://hl7.org/fhir/issue-type",
+                        "code": "400"
+                    }
+                ],
+                "text": "Invalid request payload"
+            }
+        }
+    ]
+}

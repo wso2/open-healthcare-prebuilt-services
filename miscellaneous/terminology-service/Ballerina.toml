@@ -1,0 +1,15 @@
+[package]
+org = "wso2"
+name = "terminology_service"
+version = "0.1.1"
+distribution = "2201.12.3"
+template=true
+
+[build-options]
+observabilityIncluded = true
+
+[[platform.java21.dependency]]
+groupId = "io.ballerina.stdlib"
+artifactId = "persist.sql-native"
+version = "1.6.0"
+

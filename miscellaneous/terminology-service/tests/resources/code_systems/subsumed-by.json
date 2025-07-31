@@ -1,0 +1,9 @@
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "valueCode": "subsumed-by",
+            "name": "outcome"
+        }
+    ]
+}

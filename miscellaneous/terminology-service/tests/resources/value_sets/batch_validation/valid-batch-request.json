@@ -1,0 +1,18 @@
+{
+  "resourceType": "Bundle",
+  "type": "batch",
+  "entry": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "/%24validate-code?system=http://hl7.org/fhir/ValueSet/account-status&code=inactive"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "/%24validate-code?system=http://hl7.org/fhir/ValueSet/account-status&code=active"
+      }
+    }
+  ]
+}

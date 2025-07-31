@@ -1,0 +1,30 @@
+{
+    "resourceType": "Parameters",
+    "parameter": [
+      {
+        "name": "name",
+        "valueString": "example-code-1"
+      },
+      {
+        "name": "display",
+        "valueString": "Example Code 1"
+      },
+      {
+        "name": "definition",
+        "valueString": "This is an example code 1."
+      },
+      {
+        "name": "name",
+        "valueString": "example-code-2"
+      },
+      {
+        "name": "display",
+        "valueString": "Example Code 2"
+      },
+      {
+        "name": "definition",
+        "valueString": "This is an example code 2."
+      }
+    ]
+  }
+  

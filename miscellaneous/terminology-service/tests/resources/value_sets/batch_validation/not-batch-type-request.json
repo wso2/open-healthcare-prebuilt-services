@@ -1,0 +1,12 @@
+{
+  "resourceType": "Bundle",
+  "type": "transaction",
+  "entry": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "/%24validate-code?system=http://hl7.org/fhir/ValueSet/account-status&code=inactive"
+      }
+    }
+  ]
+}

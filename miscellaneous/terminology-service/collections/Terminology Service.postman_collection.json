@@ -1,0 +1,819 @@
+{
+	"info": {
+		"_postman_id": "a2cc1065-2c7e-4c24-86cf-568c85d47f18",
+		"name": "Terminology Service (Ballerina)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "41953006"
+	},
+	"item": [
+		{
+			"name": "Code System",
+			"item": [
+				{
+					"name": "Get By ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/CodeSystem/account-status",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"CodeSystem",
+								"account-status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$lookup",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/CodeSystem/%24lookup?system=http://hl7.org/fhir/account-status&code=active",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"CodeSystem",
+								"%24lookup"
+							],
+							"query": [
+								{
+									"key": "system",
+									"value": "http://hl7.org/fhir/account-status"
+								},
+								{
+									"key": "code",
+									"value": "active"
+								},
+								{
+									"key": "version",
+									"value": "2.8",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$lookup (ID)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/CodeSystem/loinc/%24lookup?code=1963-8",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"CodeSystem",
+								"loinc",
+								"%24lookup"
+							],
+							"query": [
+								{
+									"key": "code",
+									"value": "1963-8"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$lookup",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"resourceType\": \"Parameters\",\r\n    \"parameter\": [\r\n        {\r\n            \"name\": \"coding\",\r\n            \"valueCoding\": {\r\n                \"system\": \"urn:oid:2.16.840.1.113883.6.238\",\r\n                \"code\": \"2184-0\"\r\n            }\r\n        }\r\n    ]\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/CodeSystem/%24lookup",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"CodeSystem",
+								"%24lookup"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$subsumes",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/CodeSystem/%24subsumes?codeA=2133-7&codeB=2186-5&system=urn:oid:2.16.840.1.113883.6.238",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"CodeSystem",
+								"%24subsumes"
+							],
+							"query": [
+								{
+									"key": "codeA",
+									"value": "2133-7"
+								},
+								{
+									"key": "codeB",
+									"value": "2186-5"
+								},
+								{
+									"key": "system",
+									"value": "urn:oid:2.16.840.1.113883.6.238"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$subsumes",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"resourceType\": \"Parameters\",\r\n  \"parameter\": [\r\n    {\r\n      \"name\": \"system\",\r\n      \"valueUri\": \"http://hl7.org/fhir/action-condition-kind\"\r\n    },\r\n    {\r\n      \"name\": \"version\",\r\n      \"valueString\": \"4.0.1\"\r\n    },\r\n    {\r\n      \"name\": \"codingA\",\r\n      \"valueCoding\": {\r\n        \"system\": \"http://hl7.org/fhir/action-condition-kind\",\r\n        \"code\": \"applicability\"\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"codingB\",\r\n      \"valueCoding\": {\r\n        \"system\": \"http://hl7.org/fhir/action-condition-kind\",\r\n        \"code\": \"start\"\r\n      }\r\n    }\r\n  ]\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/CodeSystem/%24subsumes",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"CodeSystem",
+								"%24subsumes"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add/Upload JSON",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"resourceType\": \"CodeSystem\",\r\n    \"id\": \"abstract-types\",\r\n    \"meta\": {\r\n        \"lastUpdated\": \"2019-11-01T09:29:23.356+11:00\"\r\n    },\r\n    \"extension\": [\r\n        {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/valueset-special-status\",\r\n            \"valueString\": \"This Code System is normative - it is generated based on the information defined in this specification. The definition will remain fixed  across versions, but the actual contents will change from version to version\"\r\n        },\r\n        {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status\",\r\n            \"valueCode\": \"normative\"\r\n        },\r\n        {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-normative-version\",\r\n            \"valueCode\": \"4.0.0\"\r\n        },\r\n        {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-fmm\",\r\n            \"valueInteger\": 5\r\n        },\r\n        {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-wg\",\r\n            \"valueCode\": \"fhir\"\r\n        }\r\n    ],\r\n    \"url\": \"http://hl7.org/fhir/abstract-types\",\r\n    \"version\": \"4.0.1\",\r\n    \"name\": \"AbstractType\",\r\n    \"title\": \"AbstractType\",\r\n    \"status\": \"active\",\r\n    \"experimental\": false,\r\n    \"date\": \"2019-11-01T09:29:23+11:00\",\r\n    \"publisher\": \"HL7 (FHIR Project)\",\r\n    \"contact\": [\r\n        {\r\n            \"telecom\": [\r\n                {\r\n                    \"system\": \"url\",\r\n                    \"value\": \"http://hl7.org/fhir\"\r\n                },\r\n                {\r\n                    \"system\": \"email\",\r\n                    \"value\": \"fhir@lists.hl7.org\"\r\n                }\r\n            ]\r\n        }\r\n    ],\r\n    \"description\": \"A list of the base types defined by this version of the FHIR specification - types that are defined, but for which only specializations actually are created.\",\r\n    \"caseSensitive\": true,\r\n    \"content\": \"complete\",\r\n    \"concept\": [\r\n        {\r\n            \"code\": \"Type\",\r\n            \"display\": \"Type\",\r\n            \"definition\": \"A place holder that means any kind of data type\"\r\n        },\r\n        {\r\n            \"code\": \"Any\",\r\n            \"display\": \"Any\",\r\n            \"definition\": \"A place holder that means any kind of resource\"\r\n        }\r\n    ]\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/CodeSystem",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"CodeSystem"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add/Upload XML",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<CodeSystem xmlns=\"http://hl7.org/fhir\">\r\n  <id value=\"adverse-event-severity\"/>\r\n  <meta>\r\n    <lastUpdated value=\"2020-04-09T21:10:28.568+00:00\"/>\r\n  </meta>\r\n  <url value=\"http://terminology.hl7.org/CodeSystem/adverse-event-severity\"/>\r\n  <identifier>\r\n    <system value=\"urn:ietf:rfc:3986\"/>\r\n    <value value=\"urn:oid:2.16.840.1.113883.4.642.1.1256\"/>\r\n  </identifier>\r\n  <version value=\"1.0.0\"/>\r\n  <name value=\"AdverseEventSeverity\"/>\r\n  <title value=\"AdverseEventSeverity\"/>\r\n  <status value=\"draft\"/>\r\n  <experimental value=\"false\"/>\r\n  <date value=\"2020-04-09T21:10:28+00:00\"/>\r\n  <publisher value=\"Health Level Seven International\"/>\r\n  \r\n  <contact>\r\n    <telecom>\r\n      <system value=\"url\"/>\r\n      <value value=\"http://hl7.org\"/>\r\n    </telecom>\r\n    <telecom>\r\n      <system value=\"email\"/>\r\n      <value value=\"hq@HL7.org\"/>\r\n    </telecom>\r\n  </contact>\r\n  <description value=\"The severity of the adverse event itself, in direct relation to the subject.\"/>  <copyright value=\"This material derives from the HL7 Terminology (THO). THO is copyright ©1989+ Health Level Seven International and is made available under the CC0 designation. For more licensing information see: https://terminology.hl7.org/license.html\"/>\r\n  <caseSensitive value=\"true\"/>\r\n  <valueSet value=\"http://terminology.hl7.org/ValueSet/adverse-event-severity\"/>\r\n  <content value=\"complete\"/>\r\n  <concept>\r\n    <code value=\"mild\"/>\r\n    <display value=\"Mild\"/>\r\n  </concept>\r\n  <concept>\r\n    <code value=\"moderate\"/>\r\n    <display value=\"Moderate\"/>\r\n  </concept>\r\n  <concept>\r\n    <code value=\"severe\"/>\r\n    <display value=\"Severe\"/>\r\n  </concept>\r\n</CodeSystem>",
+							"options": {
+								"raw": {
+									"language": "xml"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/CodeSystem",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"CodeSystem"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add/Upload ZIP",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "file",
+							"file": {
+								"src": "/C:/Users/Isuranga Sandun/Documents/Codes/LOINCtoFHIR/loinc-codesystem.zip"
+							}
+						},
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/CodeSystem",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"CodeSystem"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add/Upload JSON (Large File)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "file",
+							"file": {
+								"src": "/C:/Users/Isuranga Sandun/Documents/Codes/LOINCtoFHIR/loinc-codesystem/loinc-codesystem.json"
+							}
+						},
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/CodeSystem",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"CodeSystem"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Search",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/CodeSystem?url=http://hl7.org/fhir/abstract-types",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"CodeSystem"
+							],
+							"query": [
+								{
+									"key": "url",
+									"value": "http://hl7.org/fhir/abstract-types"
+								},
+								{
+									"key": "version",
+									"value": "4.0.1",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Value Set",
+			"item": [
+				{
+					"name": "Get By ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/ValueSet/example-valueset-include-valueset",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"ValueSet",
+								"example-valueset-include-valueset"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Search",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/ValueSet?url=http://example.org/fhir/ValueSet/example-include-valueset",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"ValueSet"
+							],
+							"query": [
+								{
+									"key": "url",
+									"value": "http://example.org/fhir/ValueSet/example-include-valueset"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$expand",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/ValueSet/%24expand?filter=active",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"ValueSet",
+								"%24expand"
+							],
+							"query": [
+								{
+									"key": "url",
+									"value": "http://example.org/fhir/ValueSet/example-include-valueset",
+									"disabled": true
+								},
+								{
+									"key": "filter",
+									"value": "active"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$expand (ID)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/ValueSet/account-status/%24expand?filter=account",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"ValueSet",
+								"account-status",
+								"%24expand"
+							],
+							"query": [
+								{
+									"key": "filter",
+									"value": "account"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$expand",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"resourceType\": \"Parameters\",\r\n  \"meta\": {\r\n    \"profile\": [\"http://hl7.org/fhir/StructureDefinition/Parameters\"]\r\n  },\r\n  \"parameter\": [\r\n    {\r\n      \"name\": \"coding\",\r\n      \"valueCoding\": {\r\n        \"system\": \"http://hl7.org/fhir/account-status\",\r\n        \"code\": \"inactive\",\r\n        \"display\": \"Inactive\"\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"valueSet\",\r\n      \"resource\": {\r\n        \"resourceType\": \"ValueSet\",\r\n        \"id\": \"account-status\",\r\n        \"meta\": {\r\n          \"lastUpdated\": \"2019-11-01T09:29:23.356+11:00\",\r\n          \"profile\": [\r\n            \"http://hl7.org/fhir/StructureDefinition/shareablevalueset\"\r\n          ]\r\n        },\r\n        \"text\": {\r\n          \"status\": \"generated\",\r\n          \"div\": \"<div xmlns=\\\"http://www.w3.org/1999/xhtml\\\"><h2>AccountStatus</h2><div><p>Indicates whether the account is available to be used.</p>\\n</div><p>This value set includes codes from the following code systems:</p><ul><li>Include all codes defined in <a href=\\\"codesystem-account-status.html\\\"><code>http://hl7.org/fhir/account-status</code></a></li></ul></div>\"\r\n        },\r\n        \"extension\": [\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-wg\",\r\n            \"valueCode\": \"pa\"\r\n          },\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status\",\r\n            \"valueCode\": \"trial-use\"\r\n          },\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-fmm\",\r\n            \"valueInteger\": 2\r\n          }\r\n        ],\r\n        \"url\": \"http://hl7.org/fhir/ValueSet/account-status\",\r\n        \"identifier\": [\r\n          {\r\n            \"system\": \"urn:ietf:rfc:3986\",\r\n            \"value\": \"urn:oid:2.16.840.1.113883.4.642.3.726\"\r\n          }\r\n        ],\r\n        \"version\": \"4.0.1\",\r\n        \"name\": \"AccountStatus\",\r\n        \"title\": \"AccountStatus\",\r\n        \"status\": \"draft\",\r\n        \"experimental\": false,\r\n        \"date\": \"2019-11-01T09:29:23+11:00\",\r\n        \"publisher\": \"HL7 (FHIR Project)\",\r\n        \"contact\": [\r\n          {\r\n            \"telecom\": [\r\n              {\r\n                \"system\": \"url\",\r\n                \"value\": \"http://hl7.org/fhir\"\r\n              },\r\n              {\r\n                \"system\": \"email\",\r\n                \"value\": \"fhir@lists.hl7.org\"\r\n              }\r\n            ]\r\n          }\r\n        ],\r\n        \"description\": \"Indicates whether the account is available to be used.\",\r\n        \"immutable\": true,\r\n        \"compose\": {\r\n          \"include\": [\r\n            {\r\n              \"system\": \"http://hl7.org/fhir/account-status\"\r\n            }\r\n          ]\r\n        }\r\n      }\r\n    }\r\n  ]\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/ValueSet/%24expand?filter=account",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"ValueSet",
+								"%24expand"
+							],
+							"query": [
+								{
+									"key": "filter",
+									"value": "account"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$validate-code",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/ValueSet/%24validate-code?system=http://example.org/fhir/ValueSet/valueset-x&code=2028-9",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"ValueSet",
+								"%24validate-code"
+							],
+							"query": [
+								{
+									"key": "system",
+									"value": "http://example.org/fhir/ValueSet/valueset-x"
+								},
+								{
+									"key": "code",
+									"value": "2028-9"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$validate-code (ID)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/ValueSet/account-status/%24validate-code?code=inactive&display=test",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"ValueSet",
+								"account-status",
+								"%24validate-code"
+							],
+							"query": [
+								{
+									"key": "code",
+									"value": "inactive"
+								},
+								{
+									"key": "display",
+									"value": "test"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$validate-code",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"resourceType\": \"Parameters\",\r\n  \"meta\": {\r\n    \"profile\": [\"http://hl7.org/fhir/StructureDefinition/Parameters\"]\r\n  },\r\n  \"parameter\": [\r\n    {\r\n      \"name\": \"codeableConcept\",\r\n      \"valueCodeableConcept\": {\r\n        \"coding\": [\r\n          {\r\n            \"system\": \"http://hl7.org/fhir/account-status\",\r\n            \"code\": \"active\",\r\n            \"display\": \"Active\"\r\n          }\r\n        ],\r\n        \"text\": \"Active Account Status\"\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"valueSet\",\r\n      \"resource\": {\r\n        \"resourceType\": \"ValueSet\",\r\n        \"id\": \"account-status\",\r\n        \"meta\": {\r\n          \"lastUpdated\": \"2019-11-01T09:29:23.356+11:00\",\r\n          \"profile\": [\r\n            \"http://hl7.org/fhir/StructureDefinition/shareablevalueset\"\r\n          ]\r\n        },\r\n        \"text\": {\r\n          \"status\": \"generated\",\r\n          \"div\": \"<div xmlns=\\\"http://www.w3.org/1999/xhtml\\\"><h2>AccountStatus</h2><div><p>Indicates whether the account is available to be used.</p>\\n</div><p>This value set includes codes from the following code systems:</p><ul><li>Include all codes defined in <a href=\\\"codesystem-account-status.html\\\"><code>http://hl7.org/fhir/account-status</code></a></li></ul></div>\"\r\n        },\r\n        \"extension\": [\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-wg\",\r\n            \"valueCode\": \"pa\"\r\n          },\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status\",\r\n            \"valueCode\": \"trial-use\"\r\n          },\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-fmm\",\r\n            \"valueInteger\": 2\r\n          }\r\n        ],\r\n        \"url\": \"http://hl7.org/fhir/ValueSet/account-status\",\r\n        \"identifier\": [\r\n          {\r\n            \"system\": \"urn:ietf:rfc:3986\",\r\n            \"value\": \"urn:oid:2.16.840.1.113883.4.642.3.726\"\r\n          }\r\n        ],\r\n        \"version\": \"4.0.1\",\r\n        \"name\": \"AccountStatus\",\r\n        \"title\": \"AccountStatus\",\r\n        \"status\": \"draft\",\r\n        \"experimental\": false,\r\n        \"date\": \"2019-11-01T09:29:23+11:00\",\r\n        \"publisher\": \"HL7 (FHIR Project)\",\r\n        \"contact\": [\r\n          {\r\n            \"telecom\": [\r\n              {\r\n                \"system\": \"url\",\r\n                \"value\": \"http://hl7.org/fhir\"\r\n              },\r\n              {\r\n                \"system\": \"email\",\r\n                \"value\": \"fhir@lists.hl7.org\"\r\n              }\r\n            ]\r\n          }\r\n        ],\r\n        \"description\": \"Indicates whether the account is available to be used.\",\r\n        \"immutable\": true,\r\n        \"compose\": {\r\n          \"include\": [\r\n            {\r\n              \"system\": \"http://hl7.org/fhir/account-status\"\r\n            }\r\n          ]\r\n        }\r\n      }\r\n    }\r\n  ]\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/ValueSet/%24validate-code",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"ValueSet",
+								"%24validate-code"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Batch Validation",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"resourceType\": \"Bundle\",\r\n  \"type\": \"batch\",\r\n  \"entry\": [\r\n    {\r\n      \"request\": {\r\n        \"method\": \"GET\",\r\n        \"url\": \"/%24validate-code?system=http://hl7.org/fhir/ValueSet/account-status&code=inactive\"\r\n      }\r\n    },\r\n    {\r\n      \"request\": {\r\n        \"method\": \"GET\",\r\n        \"url\": \"/%24validate-code?system=http://hl7.org/fhir/ValueSet/account-status&code=active\"\r\n      }\r\n    }\r\n  ]\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"resourceType\": \"ValueSet\",\r\n  \"id\": \"example-valueset-include-valueset\",\r\n  \"url\": \"http://example.org/fhir/ValueSet/example-include-valueset\",\r\n  \"version\": \"1.0.0\",\r\n  \"name\": \"ExampleIncludeValueSet\",\r\n  \"title\": \"Example ValueSet with Include ValueSet\",\r\n  \"status\": \"active\",\r\n  \"date\": \"2025-04-09\",\r\n  \"publisher\": \"Example Publisher\",\r\n  \"contact\": [\r\n    {\r\n      \"name\": \"Example Team\",\r\n      \"telecom\": [\r\n        {\r\n          \"system\": \"email\",\r\n          \"value\": \"support@example.org\"\r\n        }\r\n      ]\r\n    }\r\n  ],\r\n  \"description\": \"A ValueSet that includes other ValueSets using compose.include.valueSet.\",\r\n  \"compose\": {\r\n    \"include\": [\r\n      {\r\n        \"valueSet\": [\r\n          \"http://hl7.org/fhir/ValueSet/abstract-types\",\r\n          \"http://hl7.org/fhir/ValueSet/account-status\"\r\n        ]\r\n      }\r\n    ]\r\n  }\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:9089/fhir/r4/ValueSet",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "9089",
+							"path": [
+								"fhir",
+								"r4",
+								"ValueSet"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Upload FHIR",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "file",
+					"file": {
+						"src": "/C:/Users/Isuranga Sandun/Downloads/hl7.terminology.r4.zip"
+					}
+				},
+				"url": {
+					"raw": "http://localhost:9089/fhir/r4/upload",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "9089",
+					"path": [
+						"fhir",
+						"r4",
+						"upload"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Upload LOINC",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "x-terminology-type",
+						"value": "LOINC",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "file",
+					"file": {
+						"src": "/C:/Users/Isuranga Sandun/Documents/Codes/LOINCtoFHIR/Loinc_2.80.zip"
+					}
+				},
+				"url": {
+					"raw": "http://localhost:9089/fhir/r4/upload?loinc-version=2.80",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "9089",
+					"path": [
+						"fhir",
+						"r4",
+						"upload"
+					],
+					"query": [
+						{
+							"key": "loinc-version",
+							"value": "2.80"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "$find-code",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "x-terminology-type",
+						"value": "LOINC",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "file",
+					"file": {
+						"src": "/C:/Users/Isuranga Sandun/Documents/Codes/LOINCtoFHIR/Loinc_2.80.zip"
+					}
+				},
+				"url": {
+					"raw": "http://localhost:9089/fhir/r4/%24find-code?filter=active&_count=2&_offset=1",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "9089",
+					"path": [
+						"fhir",
+						"r4",
+						"%24find-code"
+					],
+					"query": [
+						{
+							"key": "filter",
+							"value": "active"
+						},
+						{
+							"key": "_count",
+							"value": "2"
+						},
+						{
+							"key": "_offset",
+							"value": "1"
+						},
+						{
+							"key": "property",
+							"value": "display",
+							"disabled": true
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "$find-code",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "x-terminology-type",
+						"value": "LOINC",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"parameter\": [\r\n    {\r\n      \"name\": \"filter\",\r\n      \"valueString\": \"active\"\r\n    },\r\n    {\r\n      \"name\": \"property\",\r\n      \"valueString\": \"display\"\r\n    },\r\n    {\r\n      \"name\": \"_count\",\r\n      \"valueInteger\": 2\r\n    },\r\n    {\r\n      \"name\": \"_offset\",\r\n      \"valueInteger\": 0\r\n    }\r\n  ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:9089/fhir/r4/%24find-code",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "9089",
+					"path": [
+						"fhir",
+						"r4",
+						"%24find-code"
+					],
+					"query": [
+						{
+							"key": "property",
+							"value": "display",
+							"disabled": true
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
