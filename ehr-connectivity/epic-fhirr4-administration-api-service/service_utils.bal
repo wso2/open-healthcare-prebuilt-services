@@ -52,7 +52,7 @@ isolated function executeFhirInteraction(string resourceType, r4:FHIRContext fhi
                 r4:TRANSIENT_EXCEPTION, cause = fhirResponse);
         }
         r4:SEARCH => {
-            fhir:FHIRResponse|fhir:FHIRError response = fhirConnectorObj->search(resourceType, getQueryParamsMap(
+            fhir:FHIRResponse|fhir:FHIRError response = fhirConnectorObj->search(resourceType, searchParameters = getQueryParamsMap(
                 fhirContext.getRequestSearchParameters()));
             if response is fhir:FHIRResponse {
                 return <r4:Bundle>check parseFhirResponse(response, targetModelType);
