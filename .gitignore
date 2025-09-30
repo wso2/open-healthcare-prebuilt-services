@@ -33,3 +33,6 @@ Cloud.toml
 
 # Mac configuration file
 .DS_Store
+
+# In-Memory DB Files
+~/
