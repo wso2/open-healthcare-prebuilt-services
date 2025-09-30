@@ -1,0 +1,35 @@
+[package]
+org = "ballerinax"
+name = "ballerina_fhir_server"
+version = "2.0.1"
+distribution = "2201.12.3"
+authors = ["Ballerina"]
+keywords = ["Healthcare", "FHIR", "r4"]
+template = true
+
+[build-options]
+observabilityIncluded = true
+
+[[tool.persist]]
+id = "generate-db-client"
+targetModule = "ballerina_fhir_server"
+options.datastore = "h2"
+filePath = "persist/model.bal"
+
+[[platform.java21.dependency]]
+groupId = "io.ballerina.stdlib"
+artifactId = "persist.sql-native"
+version = "1.6.0"
+
+[[platform.java21.dependency]]
+artifactId = "h2"
+version = "2.3.232"
+groupId = "com.h2database"
+
+[[dependency]]
+org = "ballerinax"
+name = "health.fhir.r4.international401"
+version = "3.0.1"
+repository="local"
+
+
