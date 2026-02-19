@@ -1,151 +1,12 @@
--- PostgreSQL FHIR Database Schema
--- We have tested this script with PostgreSQL version 17.7.
--- NOTE: Database creation has to be done manually before running this script.
--- Example commands to create the database:
--- DROP DATABASE IF EXISTS fhir_db;
--- CREATE DATABASE fhir_db;
--- 
--- After database creation, connect to 'fhir_db' and run the rest of this script
+-- 1. Drop the schema and everything inside it
+DROP SCHEMA public CASCADE;
 
--- FHIR resource tables
+-- 2. Recreate the schema
+CREATE SCHEMA IF NOT EXISTS public;
 
-DROP TABLE IF EXISTS "RESOURCE_HISTORY";
-DROP TABLE IF EXISTS "TestScriptTable";
-DROP TABLE IF EXISTS "TestReportTable";
-DROP TABLE IF EXISTS "RelatedPersonTable";
-DROP TABLE IF EXISTS "EvidanceVariableTable";
-DROP TABLE IF EXISTS "ValueSetTable";
-DROP TABLE IF EXISTS "DocumentManifestTable";
-DROP TABLE IF EXISTS "ImmunizationRecommendationTable";
-DROP TABLE IF EXISTS "DeviceMetricTable";
-DROP TABLE IF EXISTS "LocationTable";
-DROP TABLE IF EXISTS "ExplanationOfBenefitTable";
-DROP TABLE IF EXISTS "FlagTable";
-DROP TABLE IF EXISTS "MedicationStatementTable";
-DROP TABLE IF EXISTS "InsurancePlanTable";
-DROP TABLE IF EXISTS "MedicinalProductContraindicationTable";
-DROP TABLE IF EXISTS "ClaimResponseTable";
-DROP TABLE IF EXISTS "MedicinalProductAuthorizationTable";
-DROP TABLE IF EXISTS "ImagingStudyTable";
-DROP TABLE IF EXISTS "PractitionerRoleTable";
-DROP TABLE IF EXISTS "GroupTable";
-DROP TABLE IF EXISTS "PersonTable";
-DROP TABLE IF EXISTS "PractitionerTable";
-DROP TABLE IF EXISTS "ActivityDefinitionTable";
-DROP TABLE IF EXISTS "EvidenceTable";
-DROP TABLE IF EXISTS "DeviceTable";
-DROP TABLE IF EXISTS "FamilyMemberHistoryTable";
-DROP TABLE IF EXISTS "AdverseEventTable";
-DROP TABLE IF EXISTS "SupplyRequestTable";
-DROP TABLE IF EXISTS "ExampleScenarioTable";
-DROP TABLE IF EXISTS "InvoiceTable";
-DROP TABLE IF EXISTS "QuestionnaireResponseTable";
-DROP TABLE IF EXISTS "ObservationTable";
-DROP TABLE IF EXISTS "EffectEvidenceSynthesisTable";
-DROP TABLE IF EXISTS "OperationDefinitionTable";
-DROP TABLE IF EXISTS "MeasureReportTable";
-DROP TABLE IF EXISTS "SupplyDeliveryTable";
-DROP TABLE IF EXISTS "ServiceRequestTable";
-DROP TABLE IF EXISTS "BasicTable";
-DROP TABLE IF EXISTS "SubscriptionTable";
-DROP TABLE IF EXISTS "EnrollmentResponseTable";
-DROP TABLE IF EXISTS "DeviceRequestTable";
-DROP TABLE IF EXISTS "AppointmentTable";
-DROP TABLE IF EXISTS "NamingSystemTable";
-DROP TABLE IF EXISTS "StructureDefinitionTable";
-DROP TABLE IF EXISTS "ClinicalImpressionTable";
-DROP TABLE IF EXISTS "CommunicationTable";
-DROP TABLE IF EXISTS "OrganizationTable";
-DROP TABLE IF EXISTS "CoverageEligibilityResponseTable";
-DROP TABLE IF EXISTS "ResearchStudyTable";
-DROP TABLE IF EXISTS "BundleTable";
-DROP TABLE IF EXISTS "EncounterTable";
-DROP TABLE IF EXISTS "RiskAssessmentTable";
-DROP TABLE IF EXISTS "ListTable";
-DROP TABLE IF EXISTS "OrganizationAffiliationTable";
-DROP TABLE IF EXISTS "CUSTOM_EXTENSION_SEARCH_PARAMS";
-DROP TABLE IF EXISTS "SEARCH_PARAM_RES_EXPRESSIONS";
-DROP TABLE IF EXISTS "ChargeItemTable";
-DROP TABLE IF EXISTS "MedicationKnowledgeTable";
-DROP TABLE IF EXISTS "PlanDefinitionTable";
-DROP TABLE IF EXISTS "CarePlanTable";
-DROP TABLE IF EXISTS "VisionPrescriptionTable";
-DROP TABLE IF EXISTS "EpisodeOfCareTable";
-DROP TABLE IF EXISTS "CareTeamTable";
-DROP TABLE IF EXISTS "MedicationAdministrationTable";
-DROP TABLE IF EXISTS "ConsentTable";
-DROP TABLE IF EXISTS "DetectedIssueTable";
-DROP TABLE IF EXISTS "SubstanceSpecificationTable";
-DROP TABLE IF EXISTS "AllergyIntoleranceTable";
-DROP TABLE IF EXISTS "MedicinalProductIndicationTable";
-DROP TABLE IF EXISTS "MedicinalProductPharmaceuticalTable";
-DROP TABLE IF EXISTS "SlotTable";
-DROP TABLE IF EXISTS "VerificationResultTable";
-DROP TABLE IF EXISTS "SpecimenTable";
-DROP TABLE IF EXISTS "ResearchSubjectTable";
-DROP TABLE IF EXISTS "MedicationTable";
-DROP TABLE IF EXISTS "ResearchDefinitionTable";
-DROP TABLE IF EXISTS "HealthcareServiceTable";
-DROP TABLE IF EXISTS "PaymentNoticeTable";
-DROP TABLE IF EXISTS "ProvenanceTable";
-DROP TABLE IF EXISTS "GraphDefinitionTable";
-DROP TABLE IF EXISTS "MediaTable";
-DROP TABLE IF EXISTS "BodyStructureTable";
-DROP TABLE IF EXISTS "DiagnosticReportTable";
-DROP TABLE IF EXISTS "GoalTable";
-DROP TABLE IF EXISTS "CapabilityStatementTable";
-DROP TABLE IF EXISTS "DeviceUseStatementTable";
-DROP TABLE IF EXISTS "ScheduleTable";
-DROP TABLE IF EXISTS "MedicinalProductPackagedTable";
-DROP TABLE IF EXISTS "ProcedureTable";
-DROP TABLE IF EXISTS "LibraryTable";
-DROP TABLE IF EXISTS "CodeSystemTable";
-DROP TABLE IF EXISTS "CommunicationRequestTable";
-DROP TABLE IF EXISTS "DocumentReferenceTable";
-DROP TABLE IF EXISTS "RequestGroupTable";
-DROP TABLE IF EXISTS "ClaimTable";
-DROP TABLE IF EXISTS "MessageDefinitionTable";
-DROP TABLE IF EXISTS "RiskEvidenceSynthesisTable";
-DROP TABLE IF EXISTS "TaskTable";
-DROP TABLE IF EXISTS "ImplementationGuideTable";
-DROP TABLE IF EXISTS "StructureMapTable";
-DROP TABLE IF EXISTS "MedicinalProductUndesirableEffectTable";
-DROP TABLE IF EXISTS "CompartmentDefinitionTable";
-DROP TABLE IF EXISTS "EndpointTable";
-DROP TABLE IF EXISTS "TerminologyCapabilitiesTable";
-DROP TABLE IF EXISTS "ConditionTable";
-DROP TABLE IF EXISTS "CompositionTable";
-DROP TABLE IF EXISTS "ContractTable";
-DROP TABLE IF EXISTS "ImmunizationTable";
-DROP TABLE IF EXISTS "MedicationDispenseTable";
-DROP TABLE IF EXISTS "MolecularSequenceTable";
-DROP TABLE IF EXISTS "SearchParameterTable";
-DROP TABLE IF EXISTS "MedicationRequestTable";
-DROP TABLE IF EXISTS "EnrollmentRequestTable";
-DROP TABLE IF EXISTS "SpecimenDefinitionTable";
-DROP TABLE IF EXISTS "EventDefinitionTable";
-DROP TABLE IF EXISTS "ImmunizationEvaluationTable";
-DROP TABLE IF EXISTS "PaymentReconciliationTable";
-DROP TABLE IF EXISTS "MeasureTable";
-DROP TABLE IF EXISTS "ConceptMapTable";
-DROP TABLE IF EXISTS "ResearchElementDefinitionTable";
-DROP TABLE IF EXISTS "GuidanceResponseTable";
-DROP TABLE IF EXISTS "LinkageTable";
-DROP TABLE IF EXISTS "MedicinalProductTable";
-DROP TABLE IF EXISTS "DeviceDefinitionTable";
-DROP TABLE IF EXISTS "CoverageEligibilityRequestTable";
-DROP TABLE IF EXISTS "PatientTable";
-DROP TABLE IF EXISTS "CoverageTable";
-DROP TABLE IF EXISTS "SubstanceTable";
-DROP TABLE IF EXISTS "ChargeItemDefinitionTable";
-DROP TABLE IF EXISTS "MedicinalProductInteractionTable";
-DROP TABLE IF EXISTS "AccountTable";
-DROP TABLE IF EXISTS "MessageHeaderTable";
-DROP TABLE IF EXISTS "AuditEventTable";
-DROP TABLE IF EXISTS "NutritionOrderTable";
-DROP TABLE IF EXISTS "QuestionnaireTable";
-DROP TABLE IF EXISTS "REFERENCES";
-DROP TABLE IF EXISTS "AppointmentResponseTable";
+-- 3. Restore default permissions (optional but highly recommended)
+GRANT ALL ON SCHEMA public TO public;
+-- GRANT ALL ON SCHEMA public TO <>; -- Add specific user permissions as needed
 
 CREATE TABLE "REFERENCES" (
 	"ID" SERIAL,
@@ -160,6 +21,9 @@ CREATE TABLE "REFERENCES" (
 	"LAST_UPDATED" TIMESTAMP NOT NULL,
 	PRIMARY KEY("ID")
 );
+
+CREATE INDEX "IDX_REFERENCES_SOURCE" ON "REFERENCES" ("SOURCE_RESOURCE_TYPE", "SOURCE_RESOURCE_ID");
+CREATE INDEX "IDX_REFERENCES_TARGET" ON "REFERENCES" ("TARGET_RESOURCE_TYPE", "TARGET_RESOURCE_ID");
 
 CREATE TABLE "SEARCH_PARAM_RES_EXPRESSIONS" (
 	"ID" SERIAL,
@@ -188,6 +52,12 @@ CREATE TABLE "CUSTOM_EXTENSION_SEARCH_PARAMS" (
 	"VALUE_REFERENCE_ID" VARCHAR(191),
 	PRIMARY KEY("ID")
 );
+
+CREATE INDEX "IDX_CUST_PARAM_RES_TYPE" ON "CUSTOM_EXTENSION_SEARCH_PARAMS" ("RESOURCE_TYPE");
+CREATE INDEX "IDX_CUST_PARAM_NAME" ON "CUSTOM_EXTENSION_SEARCH_PARAMS" ("PARAM_NAME");
+CREATE INDEX "IDX_CUST_PARAM_STRING" ON "CUSTOM_EXTENSION_SEARCH_PARAMS" ("VALUE_STRING");
+CREATE INDEX "IDX_CUST_PARAM_TOKEN" ON "CUSTOM_EXTENSION_SEARCH_PARAMS" ("VALUE_TOKEN_SYSTEM", "VALUE_TOKEN_CODE");
+CREATE INDEX "IDX_CUST_PARAM_REF" ON "CUSTOM_EXTENSION_SEARCH_PARAMS" ("VALUE_REFERENCE_TYPE", "VALUE_REFERENCE_ID");
 
 CREATE TABLE "RESOURCE_HISTORY" (
 	"ID" BIGSERIAL,
@@ -2647,5 +2517,3 @@ CREATE TABLE "TestScriptTable" (
 	"RESOURCE_JSON" BYTEA NOT NULL,
 	PRIMARY KEY("TESTSCRIPTTABLE_ID")
 );
-
-

@@ -177,7 +177,7 @@ public class UpdateHandler {
             log:printDebug(string `Committing update transaction for ${resourceType}/${resourceId}`);
             self.transactionHandler.commitTransaction('transaction, resourceType, resourceId);
 
-            log:printInfo(string `Successfully updated ${resourceType}/${resourceId}`);
+            log:printDebug(string `Successfully updated ${resourceType}/${resourceId}`);
             return resourceId;
 
         } on fail error e {
@@ -295,7 +295,7 @@ public class UpdateHandler {
             log:printDebug(string `Committing patch transaction for ${resourceType}/${resourceId}`);
             self.transactionHandler.commitTransaction('transaction, resourceType, resourceId);
 
-            log:printInfo(string `Successfully patched ${resourceType}/${resourceId}`);
+            log:printDebug(string `Successfully patched ${resourceType}/${resourceId}`);
             return mergedResource;
 
         } on fail error e {
