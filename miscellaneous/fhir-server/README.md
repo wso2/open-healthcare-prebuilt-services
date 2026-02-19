@@ -301,7 +301,141 @@ documentTitle = "International Patient Summary"
 
 ## Database Management
 
-### Clear Database on Startup
+### Database Schema Overview
+
+The FHIR server uses a relational database with several types of tables:
+
+**Database Architecture:**
+
+```mermaid
+erDiagram
+    RESOURCE_TABLES ||--o{ REFERENCES : ""
+    RESOURCE_TABLES ||--o{ RESOURCE_HISTORY : ""
+    RESOURCE_TABLES ||--o{ CUSTOM_EXTENSION_SEARCH_PARAMS : ""
+    SEARCH_PARAM_RES_EXPRESSIONS ||--o{ CUSTOM_EXTENSION_SEARCH_PARAMS : ""
+    
+    RESOURCE_TABLES {
+        varchar RESOURCE_ID PK
+        longblob RESOURCE_JSON
+        int VERSION_ID
+        datetime CREATED_AT
+        datetime UPDATED_AT
+        datetime LAST_UPDATED
+        varchar searchable_fields
+    }
+    
+    REFERENCES {
+        int ID PK
+        varchar SOURCE_RESOURCE_TYPE
+        varchar SOURCE_RESOURCE_ID
+        varchar SOURCE_EXPRESSION
+        varchar TARGET_RESOURCE_TYPE
+        varchar TARGET_RESOURCE_ID
+        varchar DISPLAY_VALUE
+        datetime CREATED_AT
+    }
+    
+    RESOURCE_HISTORY {
+        bigint ID PK
+        varchar RESOURCE_TYPE
+        varchar RESOURCE_ID
+        int VERSION_ID
+        varchar OPERATION
+        datetime CREATED_AT
+        longblob RESOURCE_JSON
+    }
+    
+    CUSTOM_EXTENSION_SEARCH_PARAMS {
+        bigint ID PK
+        varchar RESOURCE_TYPE
+        varchar RESOURCE_ID
+        varchar PARAM_NAME
+        varchar PARAM_TYPE
+        text VALUE_STRING
+        decimal VALUE_NUMBER
+        datetime VALUE_DATE
+    }
+    
+    SEARCH_PARAM_RES_EXPRESSIONS {
+        int ID PK
+        varchar SEARCH_PARAM_NAME
+        varchar SEARCH_PARAM_TYPE
+        varchar RESOURCE_NAME
+        text EXPRESSION
+        boolean IS_CUSTOM
+    }
+```
+
+#### **Resource Tables** (e.g., `PatientTable`, `ObservationTable`, `MedicationRequestTable`)
+
+Each FHIR resource type has its own dedicated table with naming pattern: `[ResourceType]Table`
+
+**Purpose:** Store current state of FHIR resources
+- **Primary Key:** `[RESOURCETYPE]TABLE_ID` - Unique resource identifier
+- **RESOURCE_JSON:** Complete FHIR resource in JSON format (LONGBLOB)
+- **VERSION_ID:** Current version number (incremented on updates)
+- **Searchable Fields:** Resource-specific columns for querying (e.g., `name`, `identifier`, `status`, `date`)
+- **Timestamps:** `CREATED_AT`, `UPDATED_AT`, `LAST_UPDATED`
+
+**Example:** `PatientTable` stores active patient resources with columns like `name`, `identifier`, `gender`, `birthdate` for search queries.
+
+#### **RESOURCE_HISTORY Table**
+
+**Purpose:** Version history tracking - stores complete snapshots of resources at each modification
+
+**Key Fields:**
+- **RESOURCE_TYPE:** Type of resource (Patient, Observation, etc.)
+- **RESOURCE_ID:** Resource identifier
+- **VERSION_ID:** Sequential version number (1, 2, 3, ...)
+- **OPERATION:** Type of change (`CREATE`, `UPDATE`, `DELETE`)
+- **CREATED_AT:** When this version was created
+- **RESOURCE_JSON:** Complete resource snapshot at this version
+
+**Usage:** Enables `GET /[Resource]/[id]/_history` and `GET /[Resource]/[id]/_history/[vid]` operations
+
+#### **REFERENCES Table**
+
+**Purpose:** Resource relationship tracking for `_include` and `_revinclude` search parameters
+
+**Key Fields:**
+- **SOURCE_RESOURCE_TYPE/ID:** Resource making the reference (e.g., MedicationRequest)
+- **SOURCE_EXPRESSION:** FHIR path where reference occurs (e.g., `MedicationRequest.medication`)
+- **TARGET_RESOURCE_TYPE/ID:** Referenced resource (e.g., Medication/med-123)
+- **DISPLAY_VALUE:** Human-readable reference display text
+
+**Usage:** 
+- Powers `_include` queries: "Get MedicationRequest and include referenced Medications"
+- Powers `_revinclude` queries: "Get Patient and include all Observations that reference this patient"
+- Enables `$everything` operation to fetch complete patient record
+
+#### **SEARCH_PARAM_RES_EXPRESSIONS Table**
+
+**Purpose:** Defines searchable parameters for each resource type (standard FHIR + custom extensions)
+
+**Key Fields:**
+- **SEARCH_PARAM_NAME:** Parameter name (e.g., `identifier`, `status`, `birthdate`)
+- **SEARCH_PARAM_TYPE:** Data type (`string`, `token`, `date`, `reference`, `number`)
+- **RESOURCE_NAME:** Applicable resource type
+- **EXPRESSION:** FHIRPath expression to extract value
+- **IS_CUSTOM:** `true` for extension-based parameters, `false` for standard FHIR
+
+**Usage:** Maps search parameter names to resource fields, enabling dynamic query building
+
+#### **CUSTOM_EXTENSION_SEARCH_PARAMS Table**
+
+**Purpose:** Stores extracted values from custom FHIR extensions for searching
+
+**Key Fields:**
+- **RESOURCE_TYPE/ID:** Resource containing the extension
+- **PARAM_NAME:** Custom search parameter name
+- **PARAM_TYPE:** Value type (`string`, `number`, `date`, `token`, `reference`)
+- **VALUE_*:** Type-specific value columns for efficient querying
+
+**Usage:** Enables searching on custom extensions without parsing JSON for every query
+
+**Example:** Search for resources with custom extension `ethnicity=asian` using stored values
+
+### Clear H2 Database on Startup
 ```toml
 [ballerina_fhir_server.handlers]
 clearDataOnStartup = true  # WARNING: Deletes all existing data
@@ -309,10 +443,12 @@ clearDataOnStartup = true  # WARNING: Deletes all existing data
 
 ### Database Schema Initialization
 
-**H2:** Database is created automatically.
+**H2:** 
+
+- Database is created automatically.
 
 **PostgreSQL:**
-- Need to create a database (eg: fhir_db) in Posgres and execute the scripts/schema-postgresql.sql to create the tables.
+- Need to create a database (eg: fhir_db) in Postgres and execute the scripts/schema-postgresql.sql to create the tables.
 
 ## Switching Database
 
