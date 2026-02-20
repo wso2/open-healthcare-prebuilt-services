@@ -145,19 +145,11 @@ public class CreateHandler {
         // Validate JDBC client
         jdbc:Client jdbcClient = check utils:getValidatedJdbcClient(self.jdbcClient);
         
-        // Get primary key value to check for duplicates
+        // Get primary key value
         string primaryKeyColumn = mapperUtils:getPrimaryKeyColumn(resourceType);
         any resourceIdValue = insertModel[primaryKeyColumn];
         string resourceId = resourceIdValue is string ? resourceIdValue : resourceIdValue.toString();
-        
-        // Check if resource already exists
-        log:printDebug(string `Checking if ${resourceType}/${resourceId} already exists`);
-        boolean exists = check utils:validateReferenceExists(self.jdbcClient, resourceType, resourceId);
-        if exists {
-            log:printWarn(string `Duplicate resource creation attempted: ${resourceType}/${resourceId}`);
-            return error(string `Resource already exists: ${resourceType}/${resourceId}. Use PUT to update the resource.`);
-        }
-        
+
         // Extract column names and values from insertModel
         string[] columnNames = insertModel.keys();
         anydata[] columnValues = insertModel.toArray();
@@ -189,12 +181,20 @@ public class CreateHandler {
         string completeQueryStr = "INSERT INTO \"" + tableName + "\"(" + columnNamesStr + ") VALUES (" + valuesStr + ")";
         log:printDebug(string `Executing INSERT query for ${resourceType}/${resourceId}`);
         
-        // Execute raw SQL by creating a custom ParameterizedQuery implementation
+        // Execute raw SQL by creating a custom ParameterizedQuery implementation.
+        // No pre-check SELECT — let the PK constraint detect duplicates to save a round-trip.
         utils:RawSQLQuery rawQuery = new(completeQueryStr);
         sql:ExecutionResult|error result = jdbcClient->execute(rawQuery);
         
         if result is error {
-            log:printError(string `Database insert failed for ${resourceType}/${resourceId}: ${result.message()}`);
+            string errMsg = result.message();
+            // Translate PK / unique-constraint violation into a meaningful FHIR error
+            string lowerMsg = errMsg.toLowerAscii();
+            if lowerMsg.includes("duplicate") || lowerMsg.includes("unique") || lowerMsg.includes("primary key") {
+                log:printWarn(string `Duplicate resource creation attempted: ${resourceType}/${resourceId}`);
+                return error(string `Resource already exists: ${resourceType}/${resourceId}. Use PUT to update the resource.`);
+            }
+            log:printError(string `Database insert failed for ${resourceType}/${resourceId}: ${errMsg}`);
             return result;
         }
         

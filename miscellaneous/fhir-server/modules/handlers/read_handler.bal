@@ -39,7 +39,7 @@ public class ReadHandler {
             return searchResults;
         }
 
-        log:printInfo(string `Search completed for ${resourceType}`);
+        log:printDebug(string `Search completed for ${resourceType}`);
         return searchResults;
     }
 

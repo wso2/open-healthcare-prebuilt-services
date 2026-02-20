@@ -265,105 +265,63 @@ public isolated function saveReferences(jdbc:Client? jdbcClient, json[] referenc
         return;
     }
 
-    log:printDebug(string `Saving ${references.length()} reference(s) for ${sourceResType}/${sourceResId}`);
+    log:printDebug(string `Saving references for ${sourceResType}/${sourceResId}`);
+
+    jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
+
+    // Build one parameterised INSERT per reference row using sql: template literals so
+    // batchExecute sees the same SQL structure for every row (only bound values differ).
+    sql:ParameterizedQuery[] queries = [];
+
+    // Get current timestamp once for all rows.
+    // Pass as time:Civil so the JDBC driver binds it as a proper timestamp type —
+    // passing a string causes PostgreSQL to reject it with "character varying vs timestamp".
+    time:Civil currentTime = time:utcToCivil(time:utcNow());
 
     foreach json referenceEntry in references {
-
-        // referenceEntry is a map with param name as key
-        if referenceEntry is map<json> {
-            foreach var [paramName, paramValue] in referenceEntry.entries() {
-
-                // Handle array of references
-                if paramValue is json[] {
-                    foreach json singleRef in paramValue {
-                        error? result = saveSingleReference(jdbcClient, sourceResType, sourceResId, paramName, singleRef, 'transaction);
-                        if result is error {
-                            return result;
-                        }
-                    }
+        if !(referenceEntry is map<json>) {
+            continue;
+        }
+        foreach var [paramName, paramValue] in (<map<json>>referenceEntry).entries() {
+            json[] refs = paramValue is json[] ? <json[]>paramValue : [paramValue];
+            foreach json singleRef in refs {
+                if !(singleRef is map<json>) {
+                    log:printDebug(string `Skipping non-object reference: ${singleRef.toString()}`);
+                    continue;
                 }
-                // Handle single reference
-                else {
-                    error? result = saveSingleReference(jdbcClient, sourceResType, sourceResId, paramName, paramValue, 'transaction);
-                    if result is error {
-                        return result;
-                    }
+                map<json> refMap = <map<json>>singleRef;
+                json refString = refMap["reference"];
+                if !(refString is string) || refString == "" {
+                    log:printDebug("Empty or invalid reference, skipping");
+                    continue;
                 }
+                string[] refParts = regex:split(<string>refString, "/");
+                if refParts.length() != 2 {
+                    return error(string `Invalid reference format: ${refString}. Expected format: ResourceType/id`);
+                }
+                string targetResourceType = refParts[0];
+                string targetResourceId = refParts[1];
+                json displayJson = refMap["display"];
+                string displayValue = displayJson is string ? displayJson : "";
+
+                // Use sql: template literal so all rows share the same query structure.
+                // batchExecute requires identical SQL templates — only bound values may differ.
+                sql:ParameterizedQuery insertQuery = `INSERT INTO "REFERENCES" ("SOURCE_RESOURCE_TYPE", "SOURCE_RESOURCE_ID", "SOURCE_EXPRESSION", "TARGET_RESOURCE_TYPE", "TARGET_RESOURCE_ID", "DISPLAY_VALUE", "CREATED_AT", "UPDATED_AT", "LAST_UPDATED") VALUES (${sourceResType}, ${sourceResId}, ${paramName}, ${targetResourceType}, ${targetResourceId}, ${displayValue}, ${currentTime}, ${currentTime}, ${currentTime})`;
+                queries.push(insertQuery);
             }
         }
     }
 
-    log:printDebug(string `Successfully saved all references for ${sourceResType}/${sourceResId}`);
-}
-
-public isolated function saveSingleReference(jdbc:Client? jdbcClient, string sourceResType, string sourceResId, string sourceExpression, json fhirReference, TransactionContext 'transaction) returns error? {
-    jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
-
-    // Extract reference details
-    if !(fhirReference is map<json>) {
-        log:printDebug(string `Skipping non-object reference: ${fhirReference.toString()}`);
+    if queries.length() == 0 {
+        log:printDebug("No valid reference rows to insert");
         return;
     }
 
-    map<json> refMap = <map<json>>fhirReference;
+    _ = check validatedClient->batchExecute(queries);
+    // Mark references as saved so rollback can delete by source in one statement
+    'transaction.referencesSaved = true;
 
-    // Get reference string (e.g., "Patient/123")
-    json refString = refMap["reference"];
-    if !(refString is string) || refString == "" {
-        log:printDebug("Empty or invalid reference, skipping");
-        return;
-    }
-
-    // Parse reference string
-    string[] refParts = regex:split(<string>refString, "/");
-    if refParts.length() != 2 {
-        return error(string `Invalid reference format: ${refString}. Expected format: ResourceType/id`);
-    }
-
-    string targetResourceType = refParts[0];
-    string targetResourceId = refParts[1];
-
-    // Get display value (optional)
-    json displayJson = refMap["display"];
-    string displayValue = displayJson is string ? displayJson : "";
-    
-    // Escape single quotes in string values
-    string escapedSourceResType = escapeSql(sourceResType);
-    string escapedSourceResId = escapeSql(sourceResId);
-    string escapedSourceExpression = escapeSql(sourceExpression);
-    string escapedTargetResourceType = escapeSql(targetResourceType);
-    string escapedTargetResourceId = escapeSql(targetResourceId);
-    string escapedDisplayValue = escapeSql(displayValue);
-    
-    // Get current timestamp
-    time:Civil currentTime = time:utcToCivil(time:utcNow());
-    // Civil record has optional second field with milliseconds in decimal
-    decimal seconds = currentTime.second ?: 0.0d;
-    string timestamp = string `${currentTime.year}-${formatTwoDigits(currentTime.month)}-${formatTwoDigits(currentTime.day)} ${formatTwoDigits(currentTime.hour)}:${formatTwoDigits(currentTime.minute)}:${formatSeconds(seconds)}`;
-
-    // Build INSERT query for REFERENCES table
-    string insertQuery = string `INSERT INTO "REFERENCES" ("SOURCE_RESOURCE_TYPE", "SOURCE_RESOURCE_ID", "SOURCE_EXPRESSION", "TARGET_RESOURCE_TYPE", "TARGET_RESOURCE_ID", "DISPLAY_VALUE", "CREATED_AT", "UPDATED_AT", "LAST_UPDATED") VALUES ('${escapedSourceResType}', '${escapedSourceResId}', '${escapedSourceExpression}', '${escapedTargetResourceType}', '${escapedTargetResourceId}', '${escapedDisplayValue}', '${timestamp}', '${timestamp}', '${timestamp}')`;
-    
-    // Execute query using RawSQLQuery
-    RawSQLQuery query = new(insertQuery);
-    sql:ExecutionResult result = check validatedClient->execute(query);
-    
-    // Get the generated ID
-    int|string? generatedId = result.lastInsertId;
-    int savedRefId;
-    
-    if generatedId is int {
-        savedRefId = generatedId;
-    } else if generatedId is string {
-        savedRefId = check int:fromString(generatedId);
-    } else {
-        return error("Failed to get generated ID for reference");
-    }
-
-    // Track in transaction context for rollback
-    'transaction.savedReferenceIds.push(savedRefId);
-
-    log:printDebug(string `Saved reference [${savedRefId}]: ${sourceResType}/${sourceResId} --(${sourceExpression})--> ${targetResourceType}/${targetResourceId}`);
+    log:printDebug(string `Batch-inserted ${queries.length()} reference(s) for ${sourceResType}/${sourceResId}`);
 }
 
 // Helper function to format numbers to two digits

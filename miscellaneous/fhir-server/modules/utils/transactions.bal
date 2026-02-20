@@ -7,7 +7,9 @@ import ballerinax/java.jdbc;
 
 public type TransactionContext record {|
     string? mainResourceId = ();
-    int[] savedReferenceIds = [];
+    // Track whether references were saved so rollback can delete by source instead of by ID.
+    // This allows saveReferences() to use a single batchExecute() call.
+    boolean referencesSaved = false;
     int[] deletedReferenceIds = [];
     record {|anydata...;|}? backupResource = ();
     record {|anydata...;|}[]? backupReferences = ();
@@ -20,7 +22,7 @@ public class TransactionHandler {
         log:printDebug("Beginning new transaction");
         return {
             mainResourceId: (),
-            savedReferenceIds: [],
+            referencesSaved: false,
             deletedReferenceIds: [],
             backupResource: (),
             committed: false
@@ -39,17 +41,17 @@ public class TransactionHandler {
         int deletedRefs = 0;
         int failedRefs = 0;
 
-        // Delete newly created references using JDBC
-        if jdbcClient is jdbc:Client {
-            foreach int refId in 'transaction.savedReferenceIds.reverse() {
-                string deleteQuery = string `DELETE FROM "REFERENCES" WHERE "ID" = ${refId}`;
-                sql:ExecutionResult|error result = jdbcClient->execute(new RawSQLQuery(deleteQuery));
-                if result is error {
-                    log:printError(string `Failed to delete reference ${refId} during rollback: ${result.message()}`);
-                    failedRefs += 1;
-                } else {
-                    deletedRefs += 1;
-                }
+        // Delete newly created references by source (one DELETE instead of N per-ID deletes)
+        if jdbcClient is jdbc:Client && 'transaction.referencesSaved && 'transaction.mainResourceId is string {
+            string resourceId = <string>'transaction.mainResourceId;
+            string resourceType2 = resourceType; // parameter-shadowing workaround
+            string deleteQuery = string `DELETE FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = '${escapeSql(resourceType2)}' AND "SOURCE_RESOURCE_ID" = '${escapeSql(resourceId)}'`;
+            sql:ExecutionResult|error result = jdbcClient->execute(new RawSQLQuery(deleteQuery));
+            if result is error {
+                log:printError(string `Failed to delete references for ${resourceType2}/${resourceId} during rollback: ${result.message()}`);
+                failedRefs += 1;
+            } else {
+                deletedRefs += (<int>(result.affectedRowCount ?: 0));
             }
         }
 
@@ -113,9 +115,9 @@ public class TransactionHandler {
         'transaction.committed = true;
         log:printDebug(string `Transaction committed for ${resourceType}/${resourceId}`);
 
-        if 'transaction.savedReferenceIds.length() > 0 {
+        if 'transaction.referencesSaved {
             log:printDebug(string `   - Main resource: ${<string>'transaction.mainResourceId}`);
-            log:printDebug(string `   - References saved: ${'transaction.savedReferenceIds.length()}`);
+            log:printDebug("   - References saved: true");
         }
 
         if 'transaction.deletedReferenceIds.length() > 0 {
@@ -145,14 +147,13 @@ public class TransactionHandler {
             }
         }
 
-        // Delete newly created references using JDBC
-        if jdbcClient is jdbc:Client {
-            foreach int refId in 'transaction.savedReferenceIds.reverse() {
-                string deleteQuery = string `DELETE FROM "REFERENCES" WHERE "ID" = ${refId}`;
-                sql:ExecutionResult|error result = jdbcClient->execute(new RawSQLQuery(deleteQuery));
-                if result is error {
-                    log:printError(string `Failed to delete reference ${refId} during rollback: ${result.message()}`);
-                }
+        // Delete newly created references by source (one DELETE instead of N per-ID deletes)
+        if jdbcClient is jdbc:Client && 'transaction.referencesSaved && 'transaction.mainResourceId is string {
+            string resourceId = <string>'transaction.mainResourceId;
+            string deleteQuery = string `DELETE FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = '${escapeSql(resourceType)}' AND "SOURCE_RESOURCE_ID" = '${escapeSql(resourceId)}'`;
+            sql:ExecutionResult|error result = jdbcClient->execute(new RawSQLQuery(deleteQuery));
+            if result is error {
+                log:printError(string `Failed to delete references for ${resourceType}/${resourceId} during rollback: ${result.message()}`);
             }
         }
 
