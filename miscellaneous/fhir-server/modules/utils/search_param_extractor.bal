@@ -565,14 +565,38 @@ isolated function getSearchParamExpressions(
     return expressions;
 }
 
-// Cache for search parameter expressions to avoid DB hits on every request
+// Cache for CUSTOM search parameter expressions (IS_CUSTOM=true)
 // Key: ResourceType, Value: Array of SearchParamExpression
 isolated map<SearchParamExpression[]> searchParamCache = {};
+
+// Cache for ALL search parameter expressions (used by FHIRMapper for column mapping)
+// Key: ResourceType, Value: Array of SearchParamExpression
+isolated map<SearchParamExpression[]> allSearchParamCache = {};
 
 // Clear cache function (to be called when SearchParameters are updated)
 public isolated function clearSearchParamCache() {
     log:printDebug("Clearing search parameter cache");
     lock {
         searchParamCache.removeAll();
+    }
+    lock {
+        allSearchParamCache.removeAll();
+    }
+}
+
+// Get all-params cache entry for a resource type
+public isolated function getCachedAllSearchParamExpressions(string resourceType) returns SearchParamExpression[]? {
+    lock {
+        if allSearchParamCache.hasKey(resourceType) {
+            return allSearchParamCache.get(resourceType).cloneReadOnly();
+        }
+    }
+    return ();
+}
+
+// Populate all-params cache for a resource type
+public isolated function cacheAllSearchParamExpressions(string resourceType, SearchParamExpression[] expressions) {
+    lock {
+        allSearchParamCache[resourceType] = expressions.cloneReadOnly();
     }
 }

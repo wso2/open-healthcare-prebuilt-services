@@ -153,7 +153,6 @@ public class CreateMapper {
         }
 
         log:printDebug(string `Using generic mapping for ${resourceType}`);
-        log:printDebug(string `Extracted values: ${extractedValues.toString()}`);
 
         // Determine resource ID based on configuration
         string resourceId;

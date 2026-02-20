@@ -118,92 +118,101 @@ public isolated function formatTimestampISO8601(time:Civil timestamp) returns st
     return string `${timestamp.year}-${padZero(timestamp.month)}-${padZero(timestamp.day)}T${padZero(timestamp.hour)}:${padZero(timestamp.minute)}:${padZero(wholeSeconds)}.000Z`;
 }
 
-// Validate if a referenced resource exists in the database using generic JDBC query
+// Validate if a referenced resource exists in the database.
+// Uses SELECT 1 LIMIT 1 which is cheaper than COUNT(*) as the DB stops at the first match.
 public isolated function validateReferenceExists(jdbc:Client? jdbcClient, string resourceType, string resourceId) returns boolean|error {
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
-    
-    // Get table name and primary key column using functions from mapper_utils.bal
+
     string tableName = getTableName(resourceType);
     string primaryKeyColumn = getPrimaryKeyColumn(resourceType);
-    
-    // Build SELECT COUNT query with escaped resourceId
-    string countQuery = string `SELECT COUNT(*) as count FROM "${tableName}" WHERE "${primaryKeyColumn}" = '${escapeSql(resourceId)}'`;
-    
-    // Execute query using RawSQLQuery
-    RawSQLQuery query = new(countQuery);
-    stream<record {int count;}, sql:Error?> resultStream = validatedClient->query(query);
-    
-    // Get the count
-    record {int count;}[] results = check from var result in resultStream select result;
-    
-    if results.length() == 0 {
-        return false;
-    }
-    
-    return results[0].count > 0;
+
+    string existsQuery = string `SELECT 1 as found FROM "${tableName}" WHERE "${primaryKeyColumn}" = '${escapeSql(resourceId)}' LIMIT 1`;
+    RawSQLQuery query = new(existsQuery);
+    stream<record {int found;}, sql:Error?> resultStream = validatedClient->query(query);
+    record {int found;}[] results = check from var result in resultStream select result;
+    return results.length() > 0;
 }
 
-// Validate all references before saving
+// Validate all references before saving.
+// Optimised: deduplicates references and issues one IN-clause query per referenced
+// resource type instead of one query per individual reference.
 public isolated function validateReferences(jdbc:Client? jdbcClient, json[] references) returns error? {
     if references.length() == 0 {
-        log:printDebug("No references to validate");
         return;
     }
 
-    log:printDebug(string `Validating ${references.length()} reference(s)`);
+    jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
+
+    // Collect unique (resourceType -> set of IDs) from all reference entries
+    map<map<boolean>> byType = {};
+    string? firstBadFormat = ();
 
     foreach json referenceEntry in references {
         if referenceEntry is map<json> {
             foreach var [_, paramValue] in referenceEntry.entries() {
-                // Handle array of references
-                if paramValue is json[] {
-                    foreach json ref in paramValue {
-                        error? result = validateSingleReference(jdbcClient, ref);
-                        if result is error {
-                            return result;
-                        }
+                json[] refs = paramValue is json[] ? <json[]>paramValue : [paramValue];
+                foreach json ref in refs {
+                    if !(ref is map<json>) {
+                        continue;
                     }
-                } else {
-                    // Single reference
-                    error? result = validateSingleReference(jdbcClient, paramValue);
-                    if result is error {
-                        return result;
+                    map<json> refMap = <map<json>>ref;
+                    json refString = refMap["reference"];
+                    if !(refString is string) || refString == "" {
+                        continue;
                     }
+                    string[] parts = regex:split(<string>refString, "/");
+                    if parts.length() != 2 {
+                        firstBadFormat = <string>refString;
+                        continue;
+                    }
+                    string rType = parts[0];
+                    string rId   = parts[1];
+                    if !byType.hasKey(rType) {
+                        byType[rType] = {};
+                    }
+                    byType[rType][rId] = true;
                 }
             }
         }
     }
-    
+
+    if firstBadFormat is string {
+        return error(string `Invalid reference format: ${firstBadFormat}. Expected format: ResourceType/id`);
+    }
+
+    // One query per resource type with an IN clause over all referenced IDs
+    foreach var [resourceType, idSet] in byType.entries() {
+        string[] ids = idSet.keys();
+        string tableName      = getTableName(resourceType);
+        string primaryKeyCol  = getPrimaryKeyColumn(resourceType);
+
+        // Build  WHERE pk IN ('id1','id2',...)
+        string[] quotedIds = from string id in ids select string `'${escapeSql(id)}'`;
+        string idList = string:'join(", ", ...quotedIds);
+        string batchQuery = string `SELECT "${primaryKeyCol}" FROM "${tableName}" WHERE "${primaryKeyCol}" IN (${idList})`;
+
+        RawSQLQuery query = new(batchQuery);
+        stream<record {|string...;|}, sql:Error?> resultStream = validatedClient->query(query);
+        record {|string...;|}[] rows = check from var row in resultStream select row;
+
+        // Build a set of found IDs
+        map<boolean> foundIds = {};
+        foreach record {|string...;|} row in rows {
+            string? foundId = row[primaryKeyCol];
+            if foundId is string {
+                foundIds[foundId] = true;
+            }
+        }
+
+        // Report the first missing reference
+        foreach string id in ids {
+            if !foundIds.hasKey(id) {
+                return error(string `Referenced resource does not exist: ${resourceType}/${id}`);
+            }
+        }
+    }
+
     log:printDebug("All references validated successfully");
-}
-
-// Validate a single reference object
-isolated function validateSingleReference(jdbc:Client? jdbcClient, json fhirReference) returns error? {
-    if !(fhirReference is map<json>) {
-        return;
-    }
-
-    map<json> refMap = <map<json>>fhirReference;
-    json refString = refMap["reference"];
-    
-    if !(refString is string) || refString == "" {
-        return;
-    }
-
-    // Parse reference string
-    string[] refParts = regex:split(<string>refString, "/");
-    if refParts.length() != 2 {
-        return error(string `Invalid reference format: ${refString}. Expected format: ResourceType/id`);
-    }
-
-    string targetResourceType = refParts[0];
-    string targetResourceId = refParts[1];
-
-    // Check if resource exists
-    boolean exists = check validateReferenceExists(jdbcClient, targetResourceType, targetResourceId);
-    if !exists {
-        return error(string `Referenced resource does not exist: ${targetResourceType}/${targetResourceId}`);
-    }
 }
 
 // Delete main resource using generic JDBC query

@@ -93,12 +93,17 @@ public class FHIRMapper {
     }
 
     private isolated function getSearchParamExpressions(jdbc:Client jdbcClient, string resourceName) returns utils:SearchParamExpression[]|error? {
+        // Check the shared cache first to avoid a DB round-trip on every POST request
+        utils:SearchParamExpression[]? cached = utils:getCachedAllSearchParamExpressions(resourceName);
+        if cached is utils:SearchParamExpression[] {
+            return cached;
+        }
+
         sql:ParameterizedQuery pq = `SELECT "ID", "SEARCH_PARAM_NAME", "SEARCH_PARAM_TYPE", "RESOURCE_NAME", "EXPRESSION" FROM "SEARCH_PARAM_RES_EXPRESSIONS" WHERE "RESOURCE_NAME" = ${resourceName}`;
         stream<SearchParamRow, error?> result = jdbcClient->query(pq);
 
         utils:SearchParamExpression[] expressions = [];
         error? e = ();
-        // Iterate the stream and collect results, handling errors per row
         do {
             var next = result.next();
             while !(next is ()) {
@@ -106,7 +111,6 @@ public class FHIRMapper {
                     e = next;
                     break;
                 } else {
-                    // next.value is already SearchParamRow type from the stream
                     SearchParamRow val = next.value;
                     utils:SearchParamExpression expr = {
                         SEARCH_PARAM_NAME: val.SEARCH_PARAM_NAME,
@@ -124,6 +128,8 @@ public class FHIRMapper {
         if e is error {
             return e;
         }
+        // Populate cache so subsequent requests are served from memory
+        utils:cacheAllSearchParamExpressions(resourceName, expressions);
         return expressions;
     }
 }

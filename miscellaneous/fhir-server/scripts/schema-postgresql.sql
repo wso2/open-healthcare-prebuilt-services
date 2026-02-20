@@ -6,7 +6,7 @@ CREATE SCHEMA IF NOT EXISTS public;
 
 -- 3. Restore default permissions (optional but highly recommended)
 GRANT ALL ON SCHEMA public TO public;
--- GRANT ALL ON SCHEMA public TO <>; -- Add specific user permissions as needed
+-- GRANT ALL ON SCHEMA public TO postgres; -- Add specific user permissions as needed
 
 CREATE TABLE "REFERENCES" (
 	"ID" SERIAL,
@@ -34,6 +34,10 @@ CREATE TABLE "SEARCH_PARAM_RES_EXPRESSIONS" (
 	"IS_CUSTOM" BOOLEAN DEFAULT FALSE,
 	PRIMARY KEY("ID")
 );
+
+CREATE INDEX "IDX_SPRE_RESOURCE_NAME" ON "SEARCH_PARAM_RES_EXPRESSIONS" ("RESOURCE_NAME");
+CREATE INDEX "IDX_SPRE_RESOURCE_PARAM" ON "SEARCH_PARAM_RES_EXPRESSIONS" ("RESOURCE_NAME", "SEARCH_PARAM_NAME");
+CREATE INDEX "IDX_SPRE_IS_CUSTOM" ON "SEARCH_PARAM_RES_EXPRESSIONS" ("RESOURCE_NAME", "IS_CUSTOM");
 
 -- Stores extracted values from custom extensions for searching
 -- Only contains parameters with IS_CUSTOM=true (extension-based search parameters)
