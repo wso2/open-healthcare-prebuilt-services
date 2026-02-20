@@ -12,6 +12,10 @@ configurable string dbPassword = "";
 public configurable string dbType = "h2"; // Default to H2 for backward compatibility
 configurable boolean clearDataOnStartup = false;
 
+// Connection pool settings
+configurable int dbPoolMaxSize = 50;     // max open connections
+configurable int dbPoolMinIdle = 10;     // idle connections kept warm
+
 public class DBHandler {
     private final DatabaseProvider databaseProvider;
     private jdbc:Client|sql:Error jdbcClient;
@@ -31,8 +35,11 @@ public class DBHandler {
         // Set the active database provider for global access (used by utils)
         setActiveDatabaseProvider(provider);
         
-        // Initialize JDBC client
-        self.jdbcClient = new (dbUrl, dbUser, dbPassword);
+        sql:ConnectionPool connectionPool = {
+            maxOpenConnections: dbPoolMaxSize,
+            minIdleConnections: dbPoolMinIdle
+        };
+        self.jdbcClient = new (dbUrl, dbUser, dbPassword, connectionPool = connectionPool);
         
         self.dropQueries = [];
         self.createQueries = [];
