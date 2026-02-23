@@ -49,20 +49,24 @@ public class CreateHandler {
             json[] references = mapper.getReferences();
             log:printDebug(string `Extracted ${references.length()} reference(s) from ${resourceType}`);
 
-            // Validate all references BEFORE saving main resource
-            log:printDebug(string `Validating ${references.length()} reference(s) for ${resourceType}`);
-            error? validationResult = utils:validateReferences(self.jdbcClient, references);
-            if validationResult is error {
-                log:printError(string `Reference validation failed: ${validationResult.message()}`);
-                return validationResult;
-            }
-
             // Save main resource
             log:printDebug(string `Saving main ${resourceType} record`);
             string resourceId = check self.saveMainResource(resourceType, insertModel);
             'transaction.mainResourceId = resourceId;
 
             log:printDebug(string `Created ${resourceType} with ID: ${resourceId}`);
+
+            // Register in RESOURCE_TABLE so the DB FK on REFERENCES is satisfiable.
+            // This replaces the old application-level validateReferences SELECT round-trip.
+            error? rtResult = utils:saveToResourceTable(self.jdbcClient, resourceType, resourceId);
+            if rtResult is error {
+                log:printError(string `Failed to register ${resourceType}/${resourceId} in RESOURCE_TABLE: ${rtResult.message()}`);
+                error? rollbackResult = self.transactionHandler.rollbackCreateTransaction(self.jdbcClient, 'transaction, resourceType);
+                if (rollbackResult is error) {
+                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
+                }
+                return rtResult;
+            }
 
             // Special handling for SearchParameter resources - sync to expressions table
             if resourceType == "SearchParameter" {
@@ -113,6 +117,12 @@ public class CreateHandler {
                 error? rollbackResult = self.transactionHandler.rollbackCreateTransaction(self.jdbcClient, 'transaction, resourceType);
                 if (rollbackResult is error) {
                     log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
+                }
+                // Translate a DB FK violation into a descriptive client error so the
+                // service layer can return 422 instead of 500.
+                string refMsg = refResult.message();
+                if refMsg.includes("violates foreign key constraint") || refMsg.includes("FK_REFERENCES_TARGET") {
+                    return error(string `Unresolved reference: one or more TARGET resources referenced by ${resourceType}/${resourceId} do not exist. Ensure all referenced resources are created first.`);
                 }
                 return refResult;
             }

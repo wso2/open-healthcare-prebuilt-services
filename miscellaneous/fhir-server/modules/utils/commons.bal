@@ -118,101 +118,33 @@ public isolated function formatTimestampISO8601(time:Civil timestamp) returns st
     return string `${timestamp.year}-${padZero(timestamp.month)}-${padZero(timestamp.day)}T${padZero(timestamp.hour)}:${padZero(timestamp.minute)}:${padZero(wholeSeconds)}.000Z`;
 }
 
-// Validate if a referenced resource exists in the database.
-// Uses SELECT 1 LIMIT 1 which is cheaper than COUNT(*) as the DB stops at the first match.
-public isolated function validateReferenceExists(jdbc:Client? jdbcClient, string resourceType, string resourceId) returns boolean|error {
+// Check whether a resource exists by looking it up in RESOURCE_TABLE.
+// Replaces the old per-type-table validateReferenceExists with a single generic query.
+public isolated function resourceExists(jdbc:Client? jdbcClient, string resourceType, string resourceId) returns boolean|error {
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
-
-    string tableName = getTableName(resourceType);
-    string primaryKeyColumn = getPrimaryKeyColumn(resourceType);
-
-    string existsQuery = string `SELECT 1 as found FROM "${tableName}" WHERE "${primaryKeyColumn}" = '${escapeSql(resourceId)}' LIMIT 1`;
-    RawSQLQuery query = new(existsQuery);
-    stream<record {int found;}, sql:Error?> resultStream = validatedClient->query(query);
-    record {int found;}[] results = check from var result in resultStream select result;
-    return results.length() > 0;
+    sql:ParameterizedQuery q = `SELECT 1 FROM "RESOURCE_TABLE" WHERE "ID" = ${resourceId} AND "TYPE" = ${resourceType} LIMIT 1`;
+    stream<record {int '1;}, sql:Error?> resultStream = validatedClient->query(q);
+    record {int '1;}[] rows = check from var r in resultStream select r;
+    return rows.length() > 0;
 }
 
-// Validate all references before saving.
-// Optimised: deduplicates references and issues one IN-clause query per referenced
-// resource type instead of one query per individual reference.
-public isolated function validateReferences(jdbc:Client? jdbcClient, json[] references) returns error? {
-    if references.length() == 0 {
-        return;
-    }
-
+// Insert a row into RESOURCE_TABLE so the DB can enforce FK constraints on REFERENCES.
+// Called immediately after a new resource is persisted in its own table.
+public isolated function saveToResourceTable(jdbc:Client? jdbcClient, string resourceType, string resourceId) returns error? {
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
+    sql:ParameterizedQuery insertQuery = `INSERT INTO "RESOURCE_TABLE" ("ID", "TYPE") VALUES (${resourceId}, ${resourceType}) ON CONFLICT DO NOTHING`;
+    _ = check validatedClient->execute(insertQuery);
+    log:printDebug(string `Registered ${resourceType}/${resourceId} in RESOURCE_TABLE`);
+}
 
-    // Collect unique (resourceType -> set of IDs) from all reference entries
-    map<map<boolean>> byType = {};
-    string? firstBadFormat = ();
-
-    foreach json referenceEntry in references {
-        if referenceEntry is map<json> {
-            foreach var [_, paramValue] in referenceEntry.entries() {
-                json[] refs = paramValue is json[] ? <json[]>paramValue : [paramValue];
-                foreach json ref in refs {
-                    if !(ref is map<json>) {
-                        continue;
-                    }
-                    map<json> refMap = <map<json>>ref;
-                    json refString = refMap["reference"];
-                    if !(refString is string) || refString == "" {
-                        continue;
-                    }
-                    string[] parts = regex:split(<string>refString, "/");
-                    if parts.length() != 2 {
-                        firstBadFormat = <string>refString;
-                        continue;
-                    }
-                    string rType = parts[0];
-                    string rId   = parts[1];
-                    if !byType.hasKey(rType) {
-                        byType[rType] = {};
-                    }
-                    byType[rType][rId] = true;
-                }
-            }
-        }
-    }
-
-    if firstBadFormat is string {
-        return error(string `Invalid reference format: ${firstBadFormat}. Expected format: ResourceType/id`);
-    }
-
-    // One query per resource type with an IN clause over all referenced IDs
-    foreach var [resourceType, idSet] in byType.entries() {
-        string[] ids = idSet.keys();
-        string tableName      = getTableName(resourceType);
-        string primaryKeyCol  = getPrimaryKeyColumn(resourceType);
-
-        // Build  WHERE pk IN ('id1','id2',...)
-        string[] quotedIds = from string id in ids select string `'${escapeSql(id)}'`;
-        string idList = string:'join(", ", ...quotedIds);
-        string batchQuery = string `SELECT "${primaryKeyCol}" FROM "${tableName}" WHERE "${primaryKeyCol}" IN (${idList})`;
-
-        RawSQLQuery query = new(batchQuery);
-        stream<record {|string...;|}, sql:Error?> resultStream = validatedClient->query(query);
-        record {|string...;|}[] rows = check from var row in resultStream select row;
-
-        // Build a set of found IDs
-        map<boolean> foundIds = {};
-        foreach record {|string...;|} row in rows {
-            string? foundId = row[primaryKeyCol];
-            if foundId is string {
-                foundIds[foundId] = true;
-            }
-        }
-
-        // Report the first missing reference
-        foreach string id in ids {
-            if !foundIds.hasKey(id) {
-                return error(string `Referenced resource does not exist: ${resourceType}/${id}`);
-            }
-        }
-    }
-
-    log:printDebug("All references validated successfully");
+// Remove the row from RESOURCE_TABLE for a deleted resource.
+// The ON DELETE CASCADE on REFERENCES means child rows are cleaned up automatically.
+// Called after the main resource row has been successfully deleted.
+public isolated function deleteFromResourceTable(jdbc:Client? jdbcClient, string resourceType, string resourceId) returns error? {
+    jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
+    sql:ParameterizedQuery deleteQuery = `DELETE FROM "RESOURCE_TABLE" WHERE "ID" = ${resourceId} AND "TYPE" = ${resourceType}`;
+    _ = check validatedClient->execute(deleteQuery);
+    log:printDebug(string `Removed ${resourceType}/${resourceId} from RESOURCE_TABLE`);
 }
 
 // Delete main resource using generic JDBC query

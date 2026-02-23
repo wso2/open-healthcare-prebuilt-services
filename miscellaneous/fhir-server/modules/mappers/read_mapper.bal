@@ -719,8 +719,7 @@ public class ReadMapper {
             return error("JDBC client is not initialized");
         }
 
-        // Use the existing validateReferenceExists from commons
-        return utils:validateReferenceExists(jdbcClient, resourceType, resourceId);
+        return utils:resourceExists(jdbcClient, resourceType, resourceId);
     }
 
     // Get resource count by type

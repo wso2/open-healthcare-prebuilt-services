@@ -309,11 +309,17 @@ The FHIR server uses a relational database with several types of tables:
 
 ```mermaid
 erDiagram
-    RESOURCE_TABLES ||--o{ REFERENCES : ""
+    RESOURCE_TABLE ||--o{ REFERENCES : "FK: TARGET_RESOURCE_TYPE+TARGET_RESOURCE_ID"
+    RESOURCE_TABLE ||--o{ RESOURCE_TABLES : "logical: every row in ResourceTable has an entry here"
     RESOURCE_TABLES ||--o{ RESOURCE_HISTORY : ""
     RESOURCE_TABLES ||--o{ CUSTOM_EXTENSION_SEARCH_PARAMS : ""
     SEARCH_PARAM_RES_EXPRESSIONS ||--o{ CUSTOM_EXTENSION_SEARCH_PARAMS : ""
-    
+
+    RESOURCE_TABLE {
+        varchar ID PK
+        varchar TYPE PK
+    }
+
     RESOURCE_TABLES {
         varchar RESOURCE_ID PK
         longblob RESOURCE_JSON
@@ -323,18 +329,18 @@ erDiagram
         datetime LAST_UPDATED
         varchar searchable_fields
     }
-    
+
     REFERENCES {
         int ID PK
         varchar SOURCE_RESOURCE_TYPE
         varchar SOURCE_RESOURCE_ID
         varchar SOURCE_EXPRESSION
-        varchar TARGET_RESOURCE_TYPE
-        varchar TARGET_RESOURCE_ID
+        varchar TARGET_RESOURCE_TYPE FK
+        varchar TARGET_RESOURCE_ID FK
         varchar DISPLAY_VALUE
         datetime CREATED_AT
     }
-    
+
     RESOURCE_HISTORY {
         bigint ID PK
         varchar RESOURCE_TYPE
@@ -344,7 +350,7 @@ erDiagram
         datetime CREATED_AT
         longblob RESOURCE_JSON
     }
-    
+
     CUSTOM_EXTENSION_SEARCH_PARAMS {
         bigint ID PK
         varchar RESOURCE_TYPE
@@ -355,7 +361,7 @@ erDiagram
         decimal VALUE_NUMBER
         datetime VALUE_DATE
     }
-    
+
     SEARCH_PARAM_RES_EXPRESSIONS {
         int ID PK
         varchar SEARCH_PARAM_NAME
@@ -379,6 +385,23 @@ Each FHIR resource type has its own dedicated table with naming pattern: `[Resou
 
 **Example:** `PatientTable` stores active patient resources with columns like `name`, `identifier`, `gender`, `birthdate` for search queries.
 
+#### **RESOURCE_TABLE Table**
+
+**Purpose:** Super-table that maintains a single registry of every resource (`ID`, `TYPE`) that exists in the system. Acts as the authoritative source of truth for resource existence.
+
+**Key Fields:**
+- **ID:** Resource identifier (composite PK with TYPE)
+- **TYPE:** FHIR resource type (e.g., `Patient`, `Practitioner`, `Organization`)
+
+**Design rationale:** Because each FHIR resource type has its own table (`PatientTable`, `PractitionerTable`, etc.), a foreign key constraint from `REFERENCES` cannot point to a single concrete table. `RESOURCE_TABLE` solves this by holding one row per resource across all types, allowing the database to enforce referential integrity on the `REFERENCES` table via a composite FK (`TARGET_RESOURCE_TYPE`, `TARGET_RESOURCE_ID`) → (`TYPE`, `ID`).
+
+**Lifecycle:**
+- **CREATE** — a row is inserted into `RESOURCE_TABLE` immediately after the resource is persisted in its own type-table
+- **DELETE** — the row is deleted from `RESOURCE_TABLE` after the main resource is removed; the `ON DELETE CASCADE` on `REFERENCES` automatically removes any rows in `REFERENCES` that targeted the deleted resource
+- **UPDATE (PUT/PATCH)** — no change needed; the `ID` and `TYPE` are immutable
+
+**Benefit:** Eliminates the application-level `validateReferences` SELECT query on every POST/PUT/PATCH. Reference existence is now enforced by the database itself with zero extra round-trips.
+
 #### **RESOURCE_HISTORY Table**
 
 **Purpose:** Version history tracking - stores complete snapshots of resources at each modification
@@ -400,10 +423,14 @@ Each FHIR resource type has its own dedicated table with naming pattern: `[Resou
 **Key Fields:**
 - **SOURCE_RESOURCE_TYPE/ID:** Resource making the reference (e.g., MedicationRequest)
 - **SOURCE_EXPRESSION:** FHIR path where reference occurs (e.g., `MedicationRequest.medication`)
-- **TARGET_RESOURCE_TYPE/ID:** Referenced resource (e.g., Medication/med-123)
+- **TARGET_RESOURCE_TYPE/ID:** Referenced resource (e.g., Medication/med-123) — composite FK → `RESOURCE_TABLE(TYPE, ID)` with `ON DELETE CASCADE`
 - **DISPLAY_VALUE:** Human-readable reference display text
 
-**Usage:** 
+**Referential integrity:** The composite FK `(TARGET_RESOURCE_TYPE, TARGET_RESOURCE_ID) → RESOURCE_TABLE(TYPE, ID)` means:
+- The database rejects an INSERT into `REFERENCES` if the target resource does not exist (returns 422 to the client)
+- When a resource is deleted, all `REFERENCES` rows pointing to it as a target are automatically deleted via `ON DELETE CASCADE`
+
+**Usage:**
 - Powers `_include` queries: "Get MedicationRequest and include referenced Medications"
 - Powers `_revinclude` queries: "Get Patient and include all Observations that reference this patient"
 - Enables `$everything` operation to fetch complete patient record

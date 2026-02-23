@@ -790,6 +790,11 @@ isolated function performResourceCreate(string resourceType, json resourceJson) 
                 return r4:createFHIRError(errorMsg, r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_CONFLICT);
             }
 
+            // Check if error is an unresolved reference (FK violation translated in create_handler)
+            if errorMsg.includes("Unresolved reference") || errorMsg.includes("violates foreign key constraint") || errorMsg.includes("FK_REFERENCES_TARGET") {
+                return r4:createFHIRError(errorMsg, r4:ERROR, r4:INVALID, httpStatusCode = http:STATUS_UNPROCESSABLE_ENTITY);
+            }
+
             // Check if error is related to invalid references (validation failure)
             if errorMsg.includes("does not exist") || errorMsg.includes("Invalid reference") {
                 return r4:createFHIRError(errorMsg, r4:ERROR, r4:INVALID, httpStatusCode = http:STATUS_BAD_REQUEST);
@@ -829,6 +834,11 @@ isolated function performResourceUpdate(string resourceType, string id, json res
                 return r4:createFHIRError(string `${resourceType}/${id} not found`, r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_NOT_FOUND);
             }
 
+            // Check if error is an unresolved reference (FK violation)
+            if errorMsg.includes("Unresolved reference") || errorMsg.includes("violates foreign key constraint") || errorMsg.includes("FK_REFERENCES_TARGET") {
+                return r4:createFHIRError(errorMsg, r4:ERROR, r4:INVALID, httpStatusCode = http:STATUS_UNPROCESSABLE_ENTITY);
+            }
+
             // Check if error is related to invalid references (validation failure)
             if errorMsg.includes("does not exist") || errorMsg.includes("Invalid reference") {
                 return r4:createFHIRError(errorMsg, r4:ERROR, r4:INVALID, httpStatusCode = http:STATUS_BAD_REQUEST);
@@ -857,6 +867,11 @@ isolated function performResourcePatch(string resourceType, string id, json patc
         } else {
             string errorMsg = result.message();
             log:printError(string `Patch failed: ${errorMsg}`);
+
+            // Check if error is an unresolved reference (FK violation)
+            if errorMsg.includes("Unresolved reference") || errorMsg.includes("violates foreign key constraint") || errorMsg.includes("FK_REFERENCES_TARGET") {
+                return r4:createFHIRError(errorMsg, r4:ERROR, r4:INVALID, httpStatusCode = http:STATUS_UNPROCESSABLE_ENTITY);
+            }
 
             // Check if error is related to invalid references (validation failure)
             if errorMsg.includes("does not exist") || errorMsg.includes("Invalid reference") {
