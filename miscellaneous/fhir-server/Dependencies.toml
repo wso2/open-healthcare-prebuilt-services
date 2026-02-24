@@ -5,7 +5,7 @@
 
 [ballerina]
 dependencies-toml-version = "2"
-distribution-version = "2201.12.10"
+distribution-version = "2201.12.11"
 
 [[package]]
 org = "ballerina"
@@ -429,7 +429,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.clients.fhir"
-version = "3.0.1"
+version = "3.0.2"
 dependencies = [
 	{org = "ballerina", name = "file"},
 	{org = "ballerina", name = "ftp"},
@@ -469,7 +469,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4.international401"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "log"},
