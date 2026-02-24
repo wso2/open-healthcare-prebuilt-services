@@ -132,7 +132,13 @@ public isolated function resourceExists(jdbc:Client? jdbcClient, string resource
 // Called immediately after a new resource is persisted in its own table.
 public isolated function saveToResourceTable(jdbc:Client? jdbcClient, string resourceType, string resourceId) returns error? {
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
-    sql:ParameterizedQuery insertQuery = `INSERT INTO "RESOURCE_TABLE" ("ID", "TYPE") VALUES (${resourceId}, ${resourceType}) ON CONFLICT DO NOTHING`;
+    // H2 does not support ON CONFLICT DO NOTHING;
+    sql:ParameterizedQuery insertQuery;
+    if dbType.toLowerAscii().trim() == "h2" {
+        insertQuery = `MERGE INTO "RESOURCE_TABLE" ("ID", "TYPE") KEY("ID", "TYPE") VALUES (${resourceId}, ${resourceType})`;
+    } else {
+        insertQuery = `INSERT INTO "RESOURCE_TABLE" ("ID", "TYPE") VALUES (${resourceId}, ${resourceType}) ON CONFLICT DO NOTHING`;
+    }
     _ = check validatedClient->execute(insertQuery);
     log:printDebug(string `Registered ${resourceType}/${resourceId} in RESOURCE_TABLE`);
 }
@@ -200,14 +206,7 @@ public isolated function saveReferences(jdbc:Client? jdbcClient, json[] referenc
     log:printDebug(string `Saving references for ${sourceResType}/${sourceResId}`);
 
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
-
-    // Build one parameterised INSERT per reference row using sql: template literals so
-    // batchExecute sees the same SQL structure for every row (only bound values differ).
     sql:ParameterizedQuery[] queries = [];
-
-    // Get current timestamp once for all rows.
-    // Pass as time:Civil so the JDBC driver binds it as a proper timestamp type —
-    // passing a string causes PostgreSQL to reject it with "character varying vs timestamp".
     time:Civil currentTime = time:utcToCivil(time:utcNow());
 
     foreach json referenceEntry in references {
@@ -236,8 +235,6 @@ public isolated function saveReferences(jdbc:Client? jdbcClient, json[] referenc
                 json displayJson = refMap["display"];
                 string displayValue = displayJson is string ? displayJson : "";
 
-                // Use sql: template literal so all rows share the same query structure.
-                // batchExecute requires identical SQL templates — only bound values may differ.
                 sql:ParameterizedQuery insertQuery = `INSERT INTO "REFERENCES" ("SOURCE_RESOURCE_TYPE", "SOURCE_RESOURCE_ID", "SOURCE_EXPRESSION", "TARGET_RESOURCE_TYPE", "TARGET_RESOURCE_ID", "DISPLAY_VALUE", "CREATED_AT", "UPDATED_AT", "LAST_UPDATED") VALUES (${sourceResType}, ${sourceResId}, ${paramName}, ${targetResourceType}, ${targetResourceId}, ${displayValue}, ${currentTime}, ${currentTime}, ${currentTime})`;
                 queries.push(insertQuery);
             }
@@ -250,7 +247,6 @@ public isolated function saveReferences(jdbc:Client? jdbcClient, json[] referenc
     }
 
     _ = check validatedClient->batchExecute(queries);
-    // Mark references as saved so rollback can delete by source in one statement
     'transaction.referencesSaved = true;
 
     log:printDebug(string `Batch-inserted ${queries.length()} reference(s) for ${sourceResType}/${sourceResId}`);

@@ -8,9 +8,6 @@ CREATE SCHEMA IF NOT EXISTS public;
 GRANT ALL ON SCHEMA public TO public;
 -- GRANT ALL ON SCHEMA public TO postgres; -- Add specific user permissions as needed
 
--- Super-table that tracks every known resource (ID, TYPE).
--- The REFERENCES table holds a composite FK against this table so DB enforces
--- reference existence without an application-level SELECT round-trip.
 CREATE TABLE "RESOURCE_TABLE" (
 	"ID"   VARCHAR(255) NOT NULL,
 	"TYPE" VARCHAR(100) NOT NULL,
@@ -52,8 +49,6 @@ CREATE INDEX "IDX_SPRE_RESOURCE_NAME" ON "SEARCH_PARAM_RES_EXPRESSIONS" ("RESOUR
 CREATE INDEX "IDX_SPRE_RESOURCE_PARAM" ON "SEARCH_PARAM_RES_EXPRESSIONS" ("RESOURCE_NAME", "SEARCH_PARAM_NAME");
 CREATE INDEX "IDX_SPRE_IS_CUSTOM" ON "SEARCH_PARAM_RES_EXPRESSIONS" ("RESOURCE_NAME", "IS_CUSTOM");
 
--- Stores extracted values from custom extensions for searching
--- Only contains parameters with IS_CUSTOM=true (extension-based search parameters)
 CREATE TABLE "CUSTOM_EXTENSION_SEARCH_PARAMS" (
 	"ID" BIGSERIAL,
 	"RESOURCE_TYPE" VARCHAR(64) NOT NULL,

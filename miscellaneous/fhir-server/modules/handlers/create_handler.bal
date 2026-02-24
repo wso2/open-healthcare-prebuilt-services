@@ -191,14 +191,11 @@ public class CreateHandler {
         string completeQueryStr = "INSERT INTO \"" + tableName + "\"(" + columnNamesStr + ") VALUES (" + valuesStr + ")";
         log:printDebug(string `Executing INSERT query for ${resourceType}/${resourceId}`);
         
-        // Execute raw SQL by creating a custom ParameterizedQuery implementation.
-        // No pre-check SELECT — let the PK constraint detect duplicates to save a round-trip.
         utils:RawSQLQuery rawQuery = new(completeQueryStr);
         sql:ExecutionResult|error result = jdbcClient->execute(rawQuery);
         
         if result is error {
             string errMsg = result.message();
-            // Translate PK / unique-constraint violation into a meaningful FHIR error
             string lowerMsg = errMsg.toLowerAscii();
             if lowerMsg.includes("duplicate") || lowerMsg.includes("unique") || lowerMsg.includes("primary key") {
                 log:printWarn(string `Duplicate resource creation attempted: ${resourceType}/${resourceId}`);

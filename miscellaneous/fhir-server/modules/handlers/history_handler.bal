@@ -23,16 +23,11 @@ public class HistoryHandler {
         // Get RESOURCE_JSON from current version
         byte[] resourceJsonBytes = check currentVersion.get("RESOURCE_JSON").ensureType();
 
-        // Read the VERSION_ID directly from the record that was just written/read —
-        // this avoids a MAX(VERSION_ID) round-trip on every create/update/delete.
-        // create_mapper always sets VERSION_ID=1, update_mapper increments it, and
-        // the delete backup record carries the existing VERSION_ID from the SELECT.
         anydata rawVersion = currentVersion["VERSION_ID"];
         int newVersionId = rawVersion is int ? rawVersion : check int:fromString(rawVersion.toString());
 
         log:printDebug(string `New history version for ${resourceType}/${resourceId}: ${newVersionId}`);
         
-        // Get current timestamp - use formatTimestamp for consistency and safety
         time:Civil now = time:utcToCivil(time:utcNow());
         string timestamp = string `'${utils:formatTimestamp(now)}'`;
         

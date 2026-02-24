@@ -7,8 +7,6 @@ import ballerinax/java.jdbc;
 
 public type TransactionContext record {|
     string? mainResourceId = ();
-    // Track whether references were saved so rollback can delete by source instead of by ID.
-    // This allows saveReferences() to use a single batchExecute() call.
     boolean referencesSaved = false;
     int[] deletedReferenceIds = [];
     record {|anydata...;|}? backupResource = ();
@@ -41,7 +39,6 @@ public class TransactionHandler {
         int deletedRefs = 0;
         int failedRefs = 0;
 
-        // Delete newly created references by source (one DELETE instead of N per-ID deletes)
         if jdbcClient is jdbc:Client && 'transaction.referencesSaved && 'transaction.mainResourceId is string {
             string resourceId = <string>'transaction.mainResourceId;
             string resourceType2 = resourceType; // parameter-shadowing workaround
@@ -147,7 +144,6 @@ public class TransactionHandler {
             }
         }
 
-        // Delete newly created references by source (one DELETE instead of N per-ID deletes)
         if jdbcClient is jdbc:Client && 'transaction.referencesSaved && 'transaction.mainResourceId is string {
             string resourceId = <string>'transaction.mainResourceId;
             string deleteQuery = string `DELETE FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = '${escapeSql(resourceType)}' AND "SOURCE_RESOURCE_ID" = '${escapeSql(resourceId)}'`;
