@@ -50,8 +50,8 @@ configurable IpsConfig ips = {
     documentTitle: "International Patient Summary"
 };
 
-configurable int exportServicePort = 9091;
-configurable string exportServiceBaseUrl = "http://localhost:9091";
+configurable int exportServicePort = 9090;
+configurable string exportServiceBaseUrl = "http://localhost:9090/fhir/r4";
 configurable string serverName = "Ballerina FHIR Server";
 
 # Generic types to wrap all implemented profiles for each resource.
@@ -1349,7 +1349,7 @@ function initiateExportOperation(string resourceType, r4:FHIRContext fhirContext
     // Return 202 Accepted with Content-Location header
     http:Response response = new;
     response.statusCode = 202;
-    response.setHeader("Content-Location", string `${exportServiceBaseUrl}/fhir/_export/status/${jobId}`);
+    response.setHeader("Content-Location", string `${exportServiceBaseUrl}/_export/status/${jobId}`);
 
     log:printDebug(string `${resourceType}: Export - Job ${jobId} initiated`);
     return response;
@@ -1462,7 +1462,7 @@ function processExportJob(string jobId, string resourceType, string? patientId =
 
             outputFiles.push({
                 'type: "Bundle",
-                url: string `${exportServiceBaseUrl}/fhir/_export/download/${jobId}/${fileName}`,
+                url: string `${exportServiceBaseUrl}/_export/download/${jobId}/${fileName}`,
                 count: totalCount
             });
 
@@ -1488,7 +1488,7 @@ function processExportJob(string jobId, string resourceType, string? patientId =
 
                     outputFiles.push({
                         'type: resType,
-                        url: string `${exportServiceBaseUrl}/fhir/_export/download/${jobId}/${fileName}`,
+                        url: string `${exportServiceBaseUrl}/_export/download/${jobId}/${fileName}`,
                         count: resources.length()
                     });
 
@@ -1830,7 +1830,7 @@ isolated function performValidateOperation(string resourceType, Parameters param
 }
 
 // # Export Endpoints Service (for async bulk data export)
-service /fhir/_export on new http:Listener(exportServicePort) {
+service /fhir/r4/_export on httpListener {
 
     // Check export job status
     resource function get status/[string jobId]() returns http:Response|r4:FHIRError {

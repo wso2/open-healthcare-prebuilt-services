@@ -2,7 +2,7 @@
 org = "ballerinax"
 name = "ballerina_fhir_server"
 version = "2.0.1"
-distribution = "2201.13.1"
+distribution = "2201.12.11"
 authors = ["Ballerina"]
 keywords = ["Healthcare", "FHIR", "r4"]
 template = true
@@ -19,16 +19,4 @@ groupId = "com.h2database"
 artifactId = "postgresql"
 version = "42.7.9"
 groupId = "org.postgresql"
-
-# [[dependency]]
-# org = "ballerinax"
-# name = "health.fhir.r4.international401"
-# version = "3.0.1"
-# repository="local"
-
-# [[dependency]]
-# org = "ballerinax"
-# name = "health.fhir.r4utils.fhirpath"
-# version = "4.0.0"
-
 

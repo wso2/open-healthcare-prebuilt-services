@@ -39,3 +39,6 @@ Cloud.toml
 
 # Ignore database files
 /db/.*
+
+# Ignore export files
+miscellaneous/fhir-server/data/exports/*
