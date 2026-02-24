@@ -110,6 +110,14 @@ public class DeleteHandler {
                 return deleteResult;
             }
 
+            // Remove from RESOURCE_TABLE so cascaded REFERENCES rows (target side)
+            // pointing to this resource are also cleaned up via ON DELETE CASCADE.
+            error? rtResult = utils:deleteFromResourceTable(self.jdbcClient, resourceType, resourceId);
+            if rtResult is error {
+                // Non-fatal: log the error but continue — main resource is already gone
+                log:printWarn(string `Failed to remove ${resourceType}/${resourceId} from RESOURCE_TABLE: ${rtResult.message()}`);
+            }
+
             // Commit Transaction
             log:printDebug(string `Committing delete transaction for ${resourceType}/${resourceId}`);
             self.transactionHandler.commitTransaction('transaction, resourceType, resourceId);
@@ -129,7 +137,7 @@ public class DeleteHandler {
 
     // Check if resource exists
     private isolated function checkResourceExists(string resourceType, string resourceId) returns boolean|error {
-        return utils:validateReferenceExists(self.jdbcClient, resourceType, resourceId);
+        return utils:resourceExists(self.jdbcClient, resourceType, resourceId);
     }
 
     // Find all references where this resource is the SOURCE

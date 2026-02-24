@@ -80,6 +80,9 @@ public isolated function syncSearchParameterToExpressions(jdbc:Client? jdbcClien
         log:printInfo(string `Successfully synced SearchParameter '${code}' for resource type '${resourceName}'`);
     }
     
+    // Clear the search parameter cache
+    clearSearchParamCache();
+    
     return;
 }
 
@@ -99,6 +102,10 @@ public isolated function removeSearchParameterFromExpressions(jdbc:Client? jdbcC
     `;
     
     sql:ExecutionResult result = check validatedClient->execute(deleteQuery);
+    
+    // Clear the search parameter cache
+    clearSearchParamCache();
+    
     int affectedRows = result.affectedRowCount ?: 0;
     log:printInfo(string `Removed ${affectedRows} SearchParameter expression(s) for '${code}'`);
     

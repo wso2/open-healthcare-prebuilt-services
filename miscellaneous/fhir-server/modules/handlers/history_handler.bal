@@ -22,24 +22,12 @@ public class HistoryHandler {
 
         // Get RESOURCE_JSON from current version
         byte[] resourceJsonBytes = check currentVersion.get("RESOURCE_JSON").ensureType();
-        
-        // Get the latest VERSION_ID from history table for this resource and increment by 1
-        string maxVersionQuery = string `SELECT MAX("VERSION_ID") as "MAX_VERSION" FROM "RESOURCE_HISTORY" WHERE "RESOURCE_TYPE" = '${utils:escapeSql(resourceType)}' AND "RESOURCE_ID" = '${utils:escapeSql(resourceId)}'`;
-        sql:ParameterizedQuery versionQuery = new utils:RawSQLQuery(maxVersionQuery);
-        
-        stream<record {|int? MAX_VERSION;|}, sql:Error?> versionStream = jdbcConn->query(versionQuery);
-        record {|int? MAX_VERSION;|}[] versionResults = check from var result in versionStream
-            select result;
-        
-        // If no history exists, start with version 1, otherwise increment the latest version
-        int newVersionId = 1;
-        if versionResults.length() > 0 && versionResults[0].MAX_VERSION is int {
-            newVersionId = <int>versionResults[0].MAX_VERSION + 1;
-        }
-        
+
+        anydata rawVersion = currentVersion["VERSION_ID"];
+        int newVersionId = rawVersion is int ? rawVersion : check int:fromString(rawVersion.toString());
+
         log:printDebug(string `New history version for ${resourceType}/${resourceId}: ${newVersionId}`);
         
-        // Get current timestamp - use formatTimestamp for consistency and safety
         time:Civil now = time:utcToCivil(time:utcNow());
         string timestamp = string `'${utils:formatTimestamp(now)}'`;
         

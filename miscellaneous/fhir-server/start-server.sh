@@ -53,8 +53,14 @@ echo "Server will be available at: http://localhost:9090"
 echo "Press Ctrl+C to stop the server"
 echo ""
 
-# Run the Ballerina service
-bal run
+# Log file with timestamp so each run gets its own file
+mkdir -p logs
+LOG_FILE="logs/fhir-server-$(date +%Y%m%d-%H%M%S).log"
+echo "Logs are being saved to: $LOG_FILE"
+echo ""
+
+# Run the Ballerina service — tee writes to both stdout and the log file
+bal run 2>&1 | tee "$LOG_FILE"
 
 echo ""
-echo "Server stopped."
+echo "Server stopped. Logs saved to: $LOG_FILE"

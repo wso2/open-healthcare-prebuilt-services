@@ -5,20 +5,198 @@ A comprehensive FHIR R4 server implementation built with Ballerina, featuring bu
 ## Features
 
 ### Core FHIR API Support
-- **CRUD Operations**: Create, Read, Update, Delete for FHIR R4 resources
-- **History Tracking**: Resource version history with `_history` endpoint support
-- **Search Capabilities**: Advanced search with query parameters
+#### **1. Metadata request**: Endpoint to get server capability statement
 
-### Custom Profiling
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server as FHIR Server
+    participant Registry as FHIR Registry
+    
+    Client->>Server: GET /fhir/r4/metadata
+    Server->>Registry: Generate CapabilityStatement
+    Note over Registry: Lists supported resources,<br/>operations, search parameters,<br/>and profiles
+    Registry-->>Server: CapabilityStatement
+    Server-->>Client: 200 OK<br/>CapabilityStatement JSON
+```
+
+#### **2. CRUD Operations**: Create, Read, Update, Delete for FHIR R4 resources
+
+```mermaid
+flowchart LR
+    subgraph Client["CRUD Operations"]
+        REQ["HTTP Request<br/>/fhir/r4/&lt;RESOURCE&gt;"]
+    end
+
+    subgraph Router["FHIR R4 Service Router"]
+        GETID["GET /id<br/>Read Resource"]
+        POST["POST /<br/>Create Resource"]
+        PUT["PUT /id<br/>Update Resource"]
+        PATCH["PATCH /id<br/>Partial Update"]
+        DELETE["DELETE /id<br/>Delete Resource"]
+        
+        GETID ~~~ POST ~~~ PUT ~~~ PATCH ~~~ DELETE
+    end
+
+    subgraph Processing["Request Handler"]
+        HANDLERS["Business Logic<br/>Handlers & Mappers<br/>FHIR Validation"]
+    end
+
+    subgraph Storage["Data Storage"]
+        DB[("Database<br/>PostgreSQL/H2")]
+        
+        DB
+    end
+
+    %% Horizontal Flow
+    REQ --> Router
+    Router --> Processing
+    Processing --> Storage
+```
+
+#### **3. History Tracking**: Resource version history with `_history` endpoint support
+
+```mermaid
+flowchart LR
+    subgraph Client["History Operations"]
+        REQ["HTTP Request<br/>/fhir/r4/&lt;RESOURCE&gt;"]
+    end
+
+    subgraph Router["FHIR R4 Service Router"]
+        HIST2["GET /_history<br/>All History"]
+        HIST1["GET /id/_history<br/>Resource History"]
+        GETHIST["GET /id/_history/vid<br/>Read Version"]
+        
+        HIST2 ~~~ HIST1 ~~~ GETHIST
+    end
+
+    subgraph Processing["Request Handler"]
+        HANDLERS["History Handler<br/>Version Tracking"]
+    end
+
+    subgraph Storage["Data Storage"]
+        DB[("Database<br/>PostgreSQL/H2")]
+        
+        DB
+    end
+
+    %% Horizontal Flow
+    REQ --> Router
+    Router --> Processing
+    Processing --> Storage
+```
+
+**History Version Management:**
+- **What's Stored:** Complete resource snapshot (full JSON) is saved to `RESOURCE_HISTORY` table for every:
+  - CREATE operation - Initial version
+  - UPDATE operation - Before the update is applied
+  - DELETE operation - Final version before deletion
+
+#### **4. Search Capabilities**: Advanced search with query parameters
+
+**Supported Search Parameters:**
+- **Common Parameters:**
+  - `_id` - Search by resource ID
+  - `_lastUpdated` - Search by last modification date
+  - `_profile` - Search by resource profile
+  - `_count` - Limit number of results (pagination)
+  
+- **Include Parameters:**
+  - `_include` - Include referenced resources in results (e.g., `_include=Patient:organization`)
+  - `_include=*` - Include all referenced resources (wildcard)
+  - `_revinclude` - Include resources that reference the search results (e.g., `_revinclude=Provenance:target`)
+  - `_revinclude=*` - Include all resources that reference results (wildcard)
+
+- **Resource-Specific Parameters:** Each resource type supports FHIR-defined search parameters (e.g., `name`, `identifier`, `status`, `date`, etc.) as defined in the FHIR R4 specification
+
+**Example Search Queries:**
+```
+GET /fhir/r4/Patient?name=John&_count=10
+GET /fhir/r4/Patient?_id=patient-123
+GET /fhir/r4/MedicationRequest?patient=Patient/123&_include=MedicationRequest:medication
+GET /fhir/r4/Patient?_id=123&_revinclude=Observation:subject
+```
+
+#### **5. FHIR Operations**
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server as FHIR Server
+    participant Validator as FHIR Validator
+    participant DB as Database
+    
+    Note over Client,DB: $validate Operation (All Resources)
+    Client->>Server: POST /[Resource]/$validate
+    Server->>Validator: Validate against profiles
+    Validator-->>Server: OperationOutcome
+    Server-->>Client: Validation result
+    
+    Note over Client,DB: $everything Operation
+    Client->>Server: GET /Patient/[id]/$everything
+    Server->>DB: Fetch Patient + all related resources
+    Note over DB: Queries: Patient, Encounter,<br/>Observation, Condition,<br/>MedicationRequest, etc.
+    DB-->>Server: Bundle with all resources
+    Server-->>Client: Complete patient record
+    
+    Note over Client,DB: $summary Operation (IPS)
+    Client->>Server: GET /Patient/[id]/$summary
+    Server->>DB: Fetch IPS sections
+    Note over DB: Queries: Condition, AllergyIntolerance,<br/>Medication, Immunization,<br/>Procedure, Observation
+    DB-->>Server: Organized by IPS sections
+    Server-->>Client: International Patient Summary
+    
+    Note over Client,DB: $export Operation (Async)
+    Client->>Server: GET /Patient/[id]/$export<br/>(Port 9090)
+    Server-->>Client: 202 Accepted + job URL
+    Client->>Server: GET /fhir/_export/status/[jobId]<br/>(Port 9091)
+    Server-->>Client: Export status
+    Client->>Server: GET /fhir/_export/download/[jobId]/[file]<br/>(Port 9091)
+    Server-->>Client: NDJSON export file
+```
+
+- **$validate** - Available for ALL resource types
+  - Validates resource against FHIR R4 specification and custom profiles
+  - Endpoint: `POST /fhir/r4/[ResourceType]/$validate`
+
+- **$everything** - Available for:
+  - **Patient** - Retrieves complete patient record including all related clinical data
+  - **Encounter** - Retrieves encounter with all associated resources
+  - **EpisodeOfCare** - Retrieves episode with all related resources
+  - **Group** - Retrieves group members and related data
+  - **Practitioner** - Retrieves practitioner with associated resources
+  - Endpoint: `GET /fhir/r4/[ResourceType]/[id]/$everything`
+
+- **$summary** (IPS) - Available for:
+  - **Patient** only - Generates International Patient Summary
+  - Includes: Problems, Allergies, Medications, Immunizations, Procedures, Results
+  - Endpoint: `GET /fhir/r4/Patient/[id]/$summary`
+
+- **$export** - Available for:
+  - **Patient** - Bulk export of patient data in NDJSON format
+  - Asynchronous operation with job tracking
+  - Endpoint: `GET /fhir/r4/Patient/[id]/$export`
+  - **Export File Management:**
+    - Export files are created in `./data/exports/[jobId]/` directory
+    - Each export job creates a separate directory with NDJSON files
+    - **Important:** Export files are NOT automatically deleted
+    - Consider implementing a scheduled cleanup job to remove old export directories
+    - Recommended: Set up a cron job or scheduled task to periodically delete exports older than your retention policy (e.g., 24 hours, 7 days)
+
+
+
+**Example Requests:**
+```
+POST /fhir/r4/Observation/$validate - Validate an Observation resource
+GET /fhir/r4/Patient/123/$everything - Get complete patient record
+GET /fhir/r4/Patient/123/$summary - Generate IPS for patient
+GET /fhir/r4/Patient/123/$export - Export patient data
+```
+
+#### 6. **Custom Profiling**
 - **StructureDefinition**: Create and manage custom FHIR profiles
 - **Custom SearchParameters**: Define domain-specific search parameters
 - **Resource Creation**: Validate resources against custom profiles
-
-### FHIR Operations
-- **$validate**: Validate any FHIR resource against profiles and constraints
-- **$everything**: Retrieve complete patient record (Patient, Encounter, Observation, etc.)
-- **$summary**: Generate International Patient Summary (IPS) for patients
-- **$export**: Bulk data export for patient resources (NDJSON format)
 
 ### Database Support
 - **H2 Database**: Built-in embedded database (default configuration)
@@ -28,7 +206,7 @@ A comprehensive FHIR R4 server implementation built with Ballerina, featuring bu
 
 ### Prerequisites
 
-- [Ballerina](https://ballerina.io/downloads/) 2201.13.1 or later
+- [Ballerina](https://ballerina.io/downloads/) 2201.12.10 or later
 - Java 21 or later
 - H2 or Postgre 17 or later
 
@@ -123,24 +301,181 @@ documentTitle = "International Patient Summary"
 
 ## Database Management
 
-### Clear Database on Startup
+### Database Schema Overview
+
+The FHIR server uses a relational database with several types of tables:
+
+**Database Architecture:**
+
+```mermaid
+erDiagram
+    RESOURCE_TABLE ||--o{ REFERENCES : "FK: TARGET_RESOURCE_TYPE+TARGET_RESOURCE_ID"
+    RESOURCE_TABLE ||--o{ RESOURCE_TABLES : "logical: every row in ResourceTable has an entry here"
+    RESOURCE_TABLES ||--o{ RESOURCE_HISTORY : ""
+    RESOURCE_TABLES ||--o{ CUSTOM_EXTENSION_SEARCH_PARAMS : ""
+    SEARCH_PARAM_RES_EXPRESSIONS ||--o{ CUSTOM_EXTENSION_SEARCH_PARAMS : ""
+
+    RESOURCE_TABLE {
+        varchar ID PK
+        varchar TYPE PK
+    }
+
+    RESOURCE_TABLES {
+        varchar RESOURCE_ID PK
+        longblob RESOURCE_JSON
+        int VERSION_ID
+        datetime CREATED_AT
+        datetime UPDATED_AT
+        datetime LAST_UPDATED
+        varchar searchable_fields
+    }
+
+    REFERENCES {
+        int ID PK
+        varchar SOURCE_RESOURCE_TYPE
+        varchar SOURCE_RESOURCE_ID
+        varchar SOURCE_EXPRESSION
+        varchar TARGET_RESOURCE_TYPE FK
+        varchar TARGET_RESOURCE_ID FK
+        varchar DISPLAY_VALUE
+        datetime CREATED_AT
+    }
+
+    RESOURCE_HISTORY {
+        bigint ID PK
+        varchar RESOURCE_TYPE
+        varchar RESOURCE_ID
+        int VERSION_ID
+        varchar OPERATION
+        datetime CREATED_AT
+        longblob RESOURCE_JSON
+    }
+
+    CUSTOM_EXTENSION_SEARCH_PARAMS {
+        bigint ID PK
+        varchar RESOURCE_TYPE
+        varchar RESOURCE_ID
+        varchar PARAM_NAME
+        varchar PARAM_TYPE
+        text VALUE_STRING
+        decimal VALUE_NUMBER
+        datetime VALUE_DATE
+    }
+
+    SEARCH_PARAM_RES_EXPRESSIONS {
+        int ID PK
+        varchar SEARCH_PARAM_NAME
+        varchar SEARCH_PARAM_TYPE
+        varchar RESOURCE_NAME
+        text EXPRESSION
+        boolean IS_CUSTOM
+    }
+```
+
+#### **Resource Tables** (e.g., `PatientTable`, `ObservationTable`, `MedicationRequestTable`)
+
+Each FHIR resource type has its own dedicated table with naming pattern: `[ResourceType]Table`
+
+**Purpose:** Store current state of FHIR resources
+- **Primary Key:** `[RESOURCETYPE]TABLE_ID` - Unique resource identifier
+- **RESOURCE_JSON:** Complete FHIR resource in JSON format (LONGBLOB)
+- **VERSION_ID:** Current version number (incremented on updates)
+- **Searchable Fields:** Resource-specific columns for querying (e.g., `name`, `identifier`, `status`, `date`)
+- **Timestamps:** `CREATED_AT`, `UPDATED_AT`, `LAST_UPDATED`
+
+**Example:** `PatientTable` stores active patient resources with columns like `name`, `identifier`, `gender`, `birthdate` for search queries.
+
+#### **RESOURCE_TABLE Table**
+
+**Purpose:** Super-table that maintains a single registry of every resource (`ID`, `TYPE`) that exists in the system. Acts as the authoritative source of truth for resource existence.
+
+**Key Fields:**
+- **ID:** Resource identifier (composite PK with TYPE)
+- **TYPE:** FHIR resource type (e.g., `Patient`, `Practitioner`, `Organization`)
+
+**Design rationale:** Because each FHIR resource type has its own table (`PatientTable`, `PractitionerTable`, etc.), a foreign key constraint from `REFERENCES` cannot point to a single concrete table. `RESOURCE_TABLE` solves this by holding one row per resource across all types, allowing the database to enforce referential integrity on the `REFERENCES` table via a composite FK (`TARGET_RESOURCE_TYPE`, `TARGET_RESOURCE_ID`) → (`TYPE`, `ID`).
+
+**Lifecycle:**
+- **CREATE** — a row is inserted into `RESOURCE_TABLE` immediately after the resource is persisted in its own type-table
+- **DELETE** — the row is deleted from `RESOURCE_TABLE` after the main resource is removed; the `ON DELETE CASCADE` on `REFERENCES` automatically removes any rows in `REFERENCES` that targeted the deleted resource
+- **UPDATE (PUT/PATCH)** — no change needed; the `ID` and `TYPE` are immutable
+
+**Benefit:** Eliminates the application-level `validateReferences` SELECT query on every POST/PUT/PATCH. Reference existence is now enforced by the database itself with zero extra round-trips.
+
+#### **RESOURCE_HISTORY Table**
+
+**Purpose:** Version history tracking - stores complete snapshots of resources at each modification
+
+**Key Fields:**
+- **RESOURCE_TYPE:** Type of resource (Patient, Observation, etc.)
+- **RESOURCE_ID:** Resource identifier
+- **VERSION_ID:** Sequential version number (1, 2, 3, ...)
+- **OPERATION:** Type of change (`CREATE`, `UPDATE`, `DELETE`)
+- **CREATED_AT:** When this version was created
+- **RESOURCE_JSON:** Complete resource snapshot at this version
+
+**Usage:** Enables `GET /[Resource]/[id]/_history` and `GET /[Resource]/[id]/_history/[vid]` operations
+
+#### **REFERENCES Table**
+
+**Purpose:** Resource relationship tracking for `_include` and `_revinclude` search parameters
+
+**Key Fields:**
+- **SOURCE_RESOURCE_TYPE/ID:** Resource making the reference (e.g., MedicationRequest)
+- **SOURCE_EXPRESSION:** FHIR path where reference occurs (e.g., `MedicationRequest.medication`)
+- **TARGET_RESOURCE_TYPE/ID:** Referenced resource (e.g., Medication/med-123) — composite FK → `RESOURCE_TABLE(TYPE, ID)` with `ON DELETE CASCADE`
+- **DISPLAY_VALUE:** Human-readable reference display text
+
+**Referential integrity:** The composite FK `(TARGET_RESOURCE_TYPE, TARGET_RESOURCE_ID) → RESOURCE_TABLE(TYPE, ID)` means:
+- The database rejects an INSERT into `REFERENCES` if the target resource does not exist (returns 422 to the client)
+- When a resource is deleted, all `REFERENCES` rows pointing to it as a target are automatically deleted via `ON DELETE CASCADE`
+
+**Usage:**
+- Powers `_include` queries: "Get MedicationRequest and include referenced Medications"
+- Powers `_revinclude` queries: "Get Patient and include all Observations that reference this patient"
+- Enables `$everything` operation to fetch complete patient record
+
+#### **SEARCH_PARAM_RES_EXPRESSIONS Table**
+
+**Purpose:** Defines searchable parameters for each resource type (standard FHIR + custom extensions)
+
+**Key Fields:**
+- **SEARCH_PARAM_NAME:** Parameter name (e.g., `identifier`, `status`, `birthdate`)
+- **SEARCH_PARAM_TYPE:** Data type (`string`, `token`, `date`, `reference`, `number`)
+- **RESOURCE_NAME:** Applicable resource type
+- **EXPRESSION:** FHIRPath expression to extract value
+- **IS_CUSTOM:** `true` for extension-based parameters, `false` for standard FHIR
+
+**Usage:** Maps search parameter names to resource fields, enabling dynamic query building
+
+#### **CUSTOM_EXTENSION_SEARCH_PARAMS Table**
+
+**Purpose:** Stores extracted values from custom FHIR extensions for searching
+
+**Key Fields:**
+- **RESOURCE_TYPE/ID:** Resource containing the extension
+- **PARAM_NAME:** Custom search parameter name
+- **PARAM_TYPE:** Value type (`string`, `number`, `date`, `token`, `reference`)
+- **VALUE_*:** Type-specific value columns for efficient querying
+
+**Usage:** Enables searching on custom extensions without parsing JSON for every query
+
+**Example:** Search for resources with custom extension `ethnicity=asian` using stored values
+
+### Clear H2 Database on Startup
 ```toml
 [ballerina_fhir_server.handlers]
 clearDataOnStartup = true  # WARNING: Deletes all existing data
 ```
 
-### Manual Schema Initialization
+### Database Schema Initialization
 
-**H2:**
-```bash
-# Schema is auto-created on first run
-# Manual schema: scripts/schema-h2.sql
-```
+**H2:** 
+
+- Database is created automatically.
 
 **PostgreSQL:**
-```bash
-psql -U postgres -d fhir_db -f scripts/schema-postgresql.sql
-```
+- Need to create a database (eg: fhir_db) in Postgres and execute the scripts/schema-postgresql.sql to create the tables.
 
 ## Switching Database
 

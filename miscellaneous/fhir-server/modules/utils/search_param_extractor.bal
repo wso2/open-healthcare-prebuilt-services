@@ -197,7 +197,7 @@ isolated function extractFromExtensionArray(
         json[] extensions = <json[]>extensionsJson;
         ExtractedSearchParam[] params = [];
         
-        // Search for matching extension
+        // Search for matching extension optimized with map
         foreach json ext in extensions {
             if ext is map<json> {
                 map<json> extMap = <map<json>>ext;
@@ -355,6 +355,12 @@ isolated function saveExtractedSearchParams(
     ExtractedSearchParam[] params
 ) returns error? {
     
+    if params.length() == 0 {
+        return;
+    }
+
+    sql:ParameterizedQuery[] queries = [];
+    
     foreach ExtractedSearchParam param in params {
         sql:ParameterizedQuery insertQuery = `
             INSERT INTO "CUSTOM_EXTENSION_SEARCH_PARAMS" 
@@ -376,9 +382,10 @@ isolated function saveExtractedSearchParams(
                 ${param.valueReferenceId}
             )
         `;
-        
-        _ = check jdbcClient->execute(insertQuery);
+        queries.push(insertQuery);
     }
+        
+    _ = check jdbcClient->batchExecute(queries);
 }
 
 # Delete all search parameters for a resource
@@ -457,6 +464,18 @@ isolated function getCustomSearchParamExpressions(
     string resourceType
 ) returns SearchParamExpression[]|error {
     
+    // Check cache first
+    SearchParamExpression[]? cachedExpressions = ();
+    lock {
+        if searchParamCache.hasKey(resourceType) {
+            cachedExpressions = searchParamCache.get(resourceType).cloneReadOnly();
+        }
+    }
+    
+    if cachedExpressions is SearchParamExpression[] {
+        return cachedExpressions;
+    }
+
     sql:ParameterizedQuery query = `
         SELECT "SEARCH_PARAM_NAME", "SEARCH_PARAM_TYPE", "RESOURCE_NAME", "EXPRESSION" 
         FROM "SEARCH_PARAM_RES_EXPRESSIONS" 
@@ -483,6 +502,11 @@ isolated function getCustomSearchParamExpressions(
             });
         };
     
+    // Cache the result
+    lock {
+        searchParamCache[resourceType] = expressions.cloneReadOnly();
+    }
+    
     return expressions;
 }
 
@@ -496,6 +520,18 @@ isolated function getSearchParamExpressions(
     string resourceType
 ) returns SearchParamExpression[]|error {
     
+    // Check cache first
+    SearchParamExpression[]? cachedExpressions = ();
+    lock {
+        if searchParamCache.hasKey(resourceType) {
+            cachedExpressions = searchParamCache.get(resourceType).cloneReadOnly();
+        }
+    }
+    
+    if cachedExpressions is SearchParamExpression[] {
+        return cachedExpressions;
+    }
+
     sql:ParameterizedQuery query = `
         SELECT "SEARCH_PARAM_NAME", "SEARCH_PARAM_TYPE", "RESOURCE_NAME", "EXPRESSION" 
         FROM "SEARCH_PARAM_RES_EXPRESSIONS" 
@@ -521,5 +557,46 @@ isolated function getSearchParamExpressions(
             });
         };
     
+    // Cache the result
+    lock {
+        searchParamCache[resourceType] = expressions.cloneReadOnly();
+    }
+    
     return expressions;
+}
+
+// Cache for CUSTOM search parameter expressions (IS_CUSTOM=true)
+// Key: ResourceType, Value: Array of SearchParamExpression
+isolated map<SearchParamExpression[]> searchParamCache = {};
+
+// Cache for ALL search parameter expressions (used by FHIRMapper for column mapping)
+// Key: ResourceType, Value: Array of SearchParamExpression
+isolated map<SearchParamExpression[]> allSearchParamCache = {};
+
+// Clear cache function (to be called when SearchParameters are updated)
+public isolated function clearSearchParamCache() {
+    log:printDebug("Clearing search parameter cache");
+    lock {
+        searchParamCache.removeAll();
+    }
+    lock {
+        allSearchParamCache.removeAll();
+    }
+}
+
+// Get all-params cache entry for a resource type
+public isolated function getCachedAllSearchParamExpressions(string resourceType) returns SearchParamExpression[]? {
+    lock {
+        if allSearchParamCache.hasKey(resourceType) {
+            return allSearchParamCache.get(resourceType).cloneReadOnly();
+        }
+    }
+    return ();
+}
+
+// Populate all-params cache for a resource type
+public isolated function cacheAllSearchParamExpressions(string resourceType, SearchParamExpression[] expressions) {
+    lock {
+        allSearchParamCache[resourceType] = expressions.cloneReadOnly();
+    }
 }

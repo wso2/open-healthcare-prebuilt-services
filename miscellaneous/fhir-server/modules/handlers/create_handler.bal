@@ -49,20 +49,24 @@ public class CreateHandler {
             json[] references = mapper.getReferences();
             log:printDebug(string `Extracted ${references.length()} reference(s) from ${resourceType}`);
 
-            // Validate all references BEFORE saving main resource
-            log:printDebug(string `Validating ${references.length()} reference(s) for ${resourceType}`);
-            error? validationResult = utils:validateReferences(self.jdbcClient, references);
-            if validationResult is error {
-                log:printError(string `Reference validation failed: ${validationResult.message()}`);
-                return validationResult;
-            }
-
             // Save main resource
             log:printDebug(string `Saving main ${resourceType} record`);
             string resourceId = check self.saveMainResource(resourceType, insertModel);
             'transaction.mainResourceId = resourceId;
 
             log:printDebug(string `Created ${resourceType} with ID: ${resourceId}`);
+
+            // Register in RESOURCE_TABLE so the DB FK on REFERENCES is satisfiable.
+            // This replaces the old application-level validateReferences SELECT round-trip.
+            error? rtResult = utils:saveToResourceTable(self.jdbcClient, resourceType, resourceId);
+            if rtResult is error {
+                log:printError(string `Failed to register ${resourceType}/${resourceId} in RESOURCE_TABLE: ${rtResult.message()}`);
+                error? rollbackResult = self.transactionHandler.rollbackCreateTransaction(self.jdbcClient, 'transaction, resourceType);
+                if (rollbackResult is error) {
+                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
+                }
+                return rtResult;
+            }
 
             // Special handling for SearchParameter resources - sync to expressions table
             if resourceType == "SearchParameter" {
@@ -114,6 +118,12 @@ public class CreateHandler {
                 if (rollbackResult is error) {
                     log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
                 }
+                // Translate a DB FK violation into a descriptive client error so the
+                // service layer can return 422 instead of 500.
+                string refMsg = refResult.message();
+                if refMsg.includes("violates foreign key constraint") || refMsg.includes("FK_REFERENCES_TARGET") {
+                    return error(string `Unresolved reference: one or more TARGET resources referenced by ${resourceType}/${resourceId} do not exist. Ensure all referenced resources are created first.`);
+                }
                 return refResult;
             }
 
@@ -145,19 +155,11 @@ public class CreateHandler {
         // Validate JDBC client
         jdbc:Client jdbcClient = check utils:getValidatedJdbcClient(self.jdbcClient);
         
-        // Get primary key value to check for duplicates
+        // Get primary key value
         string primaryKeyColumn = mapperUtils:getPrimaryKeyColumn(resourceType);
         any resourceIdValue = insertModel[primaryKeyColumn];
         string resourceId = resourceIdValue is string ? resourceIdValue : resourceIdValue.toString();
-        
-        // Check if resource already exists
-        log:printDebug(string `Checking if ${resourceType}/${resourceId} already exists`);
-        boolean exists = check utils:validateReferenceExists(self.jdbcClient, resourceType, resourceId);
-        if exists {
-            log:printWarn(string `Duplicate resource creation attempted: ${resourceType}/${resourceId}`);
-            return error(string `Resource already exists: ${resourceType}/${resourceId}. Use PUT to update the resource.`);
-        }
-        
+
         // Extract column names and values from insertModel
         string[] columnNames = insertModel.keys();
         anydata[] columnValues = insertModel.toArray();
@@ -189,12 +191,17 @@ public class CreateHandler {
         string completeQueryStr = "INSERT INTO \"" + tableName + "\"(" + columnNamesStr + ") VALUES (" + valuesStr + ")";
         log:printDebug(string `Executing INSERT query for ${resourceType}/${resourceId}`);
         
-        // Execute raw SQL by creating a custom ParameterizedQuery implementation
         utils:RawSQLQuery rawQuery = new(completeQueryStr);
         sql:ExecutionResult|error result = jdbcClient->execute(rawQuery);
         
         if result is error {
-            log:printError(string `Database insert failed for ${resourceType}/${resourceId}: ${result.message()}`);
+            string errMsg = result.message();
+            string lowerMsg = errMsg.toLowerAscii();
+            if lowerMsg.includes("duplicate") || lowerMsg.includes("unique") || lowerMsg.includes("primary key") {
+                log:printWarn(string `Duplicate resource creation attempted: ${resourceType}/${resourceId}`);
+                return error(string `Resource already exists: ${resourceType}/${resourceId}. Use PUT to update the resource.`);
+            }
+            log:printError(string `Database insert failed for ${resourceType}/${resourceId}: ${errMsg}`);
             return result;
         }
         

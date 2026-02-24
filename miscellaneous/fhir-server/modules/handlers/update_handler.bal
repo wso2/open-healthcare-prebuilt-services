@@ -84,21 +84,8 @@ public class UpdateHandler {
             // Get extracted references after mapping
             json[] references = self.updateMapper.getReferences();
 
-            // Validate all references BEFORE patching main resource
-            log:printDebug(string `Validating ${references.length()} reference(s) for ${resourceType}/${resourceId}`);
-            error? validationResult = utils:validateReferences(self.jdbcClient, references);
-            if validationResult is error {
-                log:printError(string `Reference validation failed for ${resourceType}/${resourceId}: ${validationResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                    self.jdbcClient, 'transaction, resourceType
-                );
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return validationResult;
-            }
-
             // Update main resource
+            // Note: reference existence is enforced by the DB FK on RESOURCE_TABLE — no app-level SELECT needed.
             log:printDebug(string `Updating main ${resourceType}/${resourceId} record`);
             error? updateResult = self.updateMainResource(resourceType, resourceId, updateModel);
 
@@ -170,6 +157,10 @@ public class UpdateHandler {
                 if (rollbackResult is error) {
                     log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
                 }
+                string refMsg = refResult.message();
+                if refMsg.includes("violates foreign key constraint") || refMsg.includes("FK_REFERENCES_TARGET") {
+                    return error(string `Unresolved reference: one or more TARGET resources referenced by ${resourceType}/${resourceId} do not exist. Ensure all referenced resources are created first.`);
+                }
                 return refResult;
             }
 
@@ -177,7 +168,7 @@ public class UpdateHandler {
             log:printDebug(string `Committing update transaction for ${resourceType}/${resourceId}`);
             self.transactionHandler.commitTransaction('transaction, resourceType, resourceId);
 
-            log:printInfo(string `Successfully updated ${resourceType}/${resourceId}`);
+            log:printDebug(string `Successfully updated ${resourceType}/${resourceId}`);
             return resourceId;
 
         } on fail error e {
@@ -248,21 +239,8 @@ public class UpdateHandler {
             // Get extracted references after mapping
             json[] references = self.updateMapper.getReferences();
 
-            // Validate all references BEFORE updating main resource
-            log:printDebug(string `Validating ${references.length()} reference(s) for ${resourceType}/${resourceId}`);
-            error? validationResult = utils:validateReferences(self.jdbcClient, references);
-            if validationResult is error {
-                log:printError(string `Reference validation failed for ${resourceType}/${resourceId}: ${validationResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                    self.jdbcClient, 'transaction, resourceType
-                );
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return validationResult;
-            }
-
             // Update main resource
+            // Note: reference existence is enforced by the DB FK on RESOURCE_TABLE — no app-level SELECT needed.
             log:printDebug(string `Updating main resource`);
             error? updateResult = self.updateMainResource(resourceType, resourceId, updateModel);
 
@@ -288,6 +266,10 @@ public class UpdateHandler {
                 if (rollbackResult is error) {
                     log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
                 }
+                string refMsg = refResult.message();
+                if refMsg.includes("violates foreign key constraint") || refMsg.includes("FK_REFERENCES_TARGET") {
+                    return error(string `Unresolved reference: one or more TARGET resources referenced by ${resourceType}/${resourceId} do not exist. Ensure all referenced resources are created first.`);
+                }
                 return refResult;
             }
 
@@ -295,7 +277,7 @@ public class UpdateHandler {
             log:printDebug(string `Committing patch transaction for ${resourceType}/${resourceId}`);
             self.transactionHandler.commitTransaction('transaction, resourceType, resourceId);
 
-            log:printInfo(string `Successfully patched ${resourceType}/${resourceId}`);
+            log:printDebug(string `Successfully patched ${resourceType}/${resourceId}`);
             return mergedResource;
 
         } on fail error e {
@@ -312,8 +294,7 @@ public class UpdateHandler {
 
     // Check if resource exists
     private isolated function checkResourceExists(string resourceType, string resourceId) returns boolean|error {
-        // Use generic JDBC validation
-        return utils:validateReferenceExists(self.jdbcClient, resourceType, resourceId);
+        return utils:resourceExists(self.jdbcClient, resourceType, resourceId);
     }
 
     // Backup resource for rollback

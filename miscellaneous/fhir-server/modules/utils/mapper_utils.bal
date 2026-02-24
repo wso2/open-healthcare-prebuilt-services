@@ -114,14 +114,12 @@ public isolated function getTableColumns(jdbc:Client jdbcClient, string tableNam
     string[] columns = [];
     check from record {|string COLUMN_NAME;|} columnRecord in columnStream
         do {
-            log:printDebug(string `Found column: ${columnRecord.COLUMN_NAME}`);
             columns.push(columnRecord.COLUMN_NAME);
         };
     
     check columnStream.close();
     
     log:printDebug(string `Total columns found for ${tableName}: ${columns.length()}`);
-    log:printDebug(string `Columns: ${columns.toString()}`);
     
     // Store in cache for future requests (thread-safe write)
     lock {

@@ -159,10 +159,15 @@ public class ReadMapper {
                     if matchingResourceIds is () {
                         matchingResourceIds = ids;
                     } else {
-                        // Intersect with previously found IDs
+                        // Intersect with previously found IDs using map for O(1) lookup
+                        map<boolean> idMap = {};
+                        foreach string id in matchingResourceIds {
+                            idMap[id] = true;
+                        }
+
                         string[] intersection = [];
                         foreach string id in ids {
-                            if self.arrayContains(matchingResourceIds, id) {
+                            if idMap.hasKey(id) {
                                 intersection.push(id);
                             }
                         }
@@ -189,10 +194,15 @@ public class ReadMapper {
         // Combine reference and custom resource IDs if both exist
         string[]? finalResourceIds = ();
         if matchingResourceIds is string[] && customResourceIds is string[] {
-            // Intersect both lists
+            // Intersect both lists efficiently
+            map<boolean> matchingMap = {};
+            foreach string id in matchingResourceIds {
+                matchingMap[id] = true;
+            }
+
             string[] intersection = [];
             foreach string id in customResourceIds {
-                if self.arrayContains(matchingResourceIds, id) {
+                if matchingMap.hasKey(id) {
                     intersection.push(id);
                 }
             }
@@ -709,8 +719,7 @@ public class ReadMapper {
             return error("JDBC client is not initialized");
         }
 
-        // Use the existing validateReferenceExists from commons
-        return utils:validateReferenceExists(jdbcClient, resourceType, resourceId);
+        return utils:resourceExists(jdbcClient, resourceType, resourceId);
     }
 
     // Get resource count by type
