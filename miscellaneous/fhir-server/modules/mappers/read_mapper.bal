@@ -6,6 +6,7 @@ import ballerina/sql;
 import ballerina/time;
 import ballerinax/health.fhir.r4;
 import ballerinax/java.jdbc;
+import ballerina/log;
 
 // Server base URL configuration
 configurable string baseUrl = "http://localhost:9090";
@@ -419,6 +420,16 @@ public class ReadMapper {
             }
         }
 
+        // Calculate total count before pagination
+        int totalCount = 0;
+        string countQuery = string `SELECT COUNT(*) AS "COUNT" FROM "${tableName}"${whereClause}`;
+        log:printDebug(string `Executing count query for resource type: ${resourceType}`);
+        sql:ParameterizedQuery cQuery = new RawSQLQuery(countQuery);
+        record {|int COUNT;|}? countResult = check jdbcClient->queryRow(cQuery);
+        if countResult != () {
+            totalCount = countResult.COUNT;
+        }
+
         // Add pagination clause
         string paginationClause = "";
         if paginationContext is r4:PaginationContext {
@@ -611,7 +622,7 @@ public class ReadMapper {
         json bundle = {
             "resourceType": "Bundle",
             "type": "searchset",
-            "total": entries.length(),
+            "total": totalCount,
             "entry": entries
         };
 
@@ -626,6 +637,15 @@ public class ReadMapper {
 
         string tableName = utils:getTableName(resourceType);
         string primaryKey = utils:getPrimaryKeyColumn(resourceType);
+
+        int totalCount = 0;
+        string countQuery = string `SELECT COUNT(*) AS "COUNT" FROM "${tableName}"`;
+        log:printDebug(string `Getting total count for all resources of type: ${resourceType}`);
+        sql:ParameterizedQuery cQuery = new RawSQLQuery(countQuery);
+        record {|int COUNT;|}? countResult = check jdbcClient->queryRow(cQuery);
+        if countResult != () {
+            totalCount = countResult.COUNT;
+        }
 
         string limitClause = 'limit is int ? string ` LIMIT ${'limit}` : "";
         string sqlQuery = string `SELECT "${primaryKey}", "RESOURCE_JSON", "VERSION_ID", "LAST_UPDATED" FROM "${tableName}"${limitClause}`;
@@ -675,7 +695,7 @@ public class ReadMapper {
         json bundle = {
             "resourceType": "Bundle",
             "type": "collection",
-            "total": entries.length(),
+            "total": totalCount,
             "entry": entries
         };
 
