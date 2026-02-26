@@ -6,6 +6,7 @@ import ballerina/sql;
 import ballerina/time;
 import ballerinax/health.fhir.r4;
 import ballerinax/java.jdbc;
+import ballerina/log;
 
 // Server base URL configuration
 configurable string baseUrl = "http://localhost:9090";
@@ -422,6 +423,7 @@ public class ReadMapper {
         // Calculate total count before pagination
         int totalCount = 0;
         string countQuery = string `SELECT COUNT(*) AS "COUNT" FROM "${tableName}"${whereClause}`;
+        log:printDebug(string `Executing count query for resource type: ${resourceType}`);
         sql:ParameterizedQuery cQuery = new RawSQLQuery(countQuery);
         record {|int COUNT;|}? countResult = check jdbcClient->queryRow(cQuery);
         if countResult != () {
@@ -638,6 +640,7 @@ public class ReadMapper {
 
         int totalCount = 0;
         string countQuery = string `SELECT COUNT(*) AS "COUNT" FROM "${tableName}"`;
+        log:printDebug(string `Getting total count for all resources of type: ${resourceType}`);
         sql:ParameterizedQuery cQuery = new RawSQLQuery(countQuery);
         record {|int COUNT;|}? countResult = check jdbcClient->queryRow(cQuery);
         if countResult != () {
