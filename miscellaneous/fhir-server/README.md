@@ -253,10 +253,6 @@ dbPassword = ""
 # dbUrl = "jdbc:postgresql://localhost:5432/fhir_db"
 # dbUser = "<dbUser>"
 # dbPassword = "<dbPassword>"
-# Set to true to clear all data and reinitialize the database on startup
-# Set to false to keep existing data from previous runs
-clearDataOnStartup = false
-
 # Resource ID Generation Configuration
 [ballerina_fhir_server.utils]
 # Database type (MUST match handlers.dbType above)
@@ -294,10 +290,6 @@ documentTitle = "International Patient Summary"
 **ID Generation:**
 - `useServerGeneratedIds = true`: Server auto-generates resource IDs (ignores client-provided IDs)
 - `useServerGeneratedIds = false`: Uses client-provided IDs (returns error if missing)
-
-**Clear Data:**
-- `clearDataOnStartup = true`: **WARNING** - Deletes all data and reinitializes schema on every server start
-- `clearDataOnStartup = false`: Keeps existing data across restarts
 
 ## Database Management
 
@@ -461,12 +453,6 @@ Each FHIR resource type has its own dedicated table with naming pattern: `[Resou
 **Usage:** Enables searching on custom extensions without parsing JSON for every query
 
 **Example:** Search for resources with custom extension `ethnicity=asian` using stored values
-
-### Clear H2 Database on Startup
-```toml
-[ballerina_fhir_server.handlers]
-clearDataOnStartup = true  # WARNING: Deletes all existing data
-```
 
 ### Database Schema Initialization
 

@@ -10,7 +10,6 @@ configurable string dbUrl = "jdbc:h2:./db/BAL_FHIR_DB";
 configurable string dbUser = "sa";
 configurable string dbPassword = "";
 public configurable string dbType = "h2"; // Default to H2 for backward compatibility
-configurable boolean clearDataOnStartup = false;
 
 // Connection pool settings
 configurable int dbPoolMaxSize = 50;     // max open connections
@@ -20,7 +19,6 @@ public class DBHandler {
     private final DatabaseProvider databaseProvider;
     private jdbc:Client|sql:Error jdbcClient;
 
-    private sql:ParameterizedQuery[] dropQueries;
     private sql:ParameterizedQuery[] createQueries;
 
     public function init() returns error? {
@@ -31,17 +29,16 @@ public class DBHandler {
             return provider;
         }
         self.databaseProvider = provider;
-        
+
         // Set the active database provider for global access (used by utils)
         setActiveDatabaseProvider(provider);
-        
+
         sql:ConnectionPool connectionPool = {
             maxOpenConnections: dbPoolMaxSize,
             minIdleConnections: dbPoolMinIdle
         };
         self.jdbcClient = new (dbUrl, dbUser, dbPassword, connectionPool = connectionPool);
-        
-        self.dropQueries = [];
+
         self.createQueries = [];
     }
 
@@ -53,73 +50,49 @@ public class DBHandler {
         return self.databaseProvider.isDatabaseExists(jdbcClient);
     }
 
-    public function initDatabase(jdbc:Client jdbcClient) returns boolean|error? {
+    public function initDatabase(jdbc:Client jdbcClient) returns error? {
         boolean|error dbExists = self.isDBExsists(jdbcClient);
-        
-        if (dbExists is error) {
-            return false;
-        } else if (dbExists == true) {
-            // Database exists - check if we should clear it
-            if (clearDataOnStartup) {
-                log:printWarn("Clearing existing database data as clearDataOnStartup is enabled...");
-                // Truncate all tables instead of dropping and recreating
-                error? truncateResult = self.truncateAllTables(jdbcClient);
-                if (truncateResult is error) {
-                    log:printError("An error occurred while truncating tables: " + truncateResult.message());
-                    return false;
-                }
-                
-                // Populate search parameters after truncating
-                error? isSearchParamsPopulated = self.populateSearchParamExpressionTable(jdbcClient);
-                if (isSearchParamsPopulated is error) {
-                    log:printError("An error occurred while populating SEARCH_PARAM_RES_EXPRESSIONS: " + isSearchParamsPopulated.message());
-                    return false;
-                } else {
-                    log:printInfo("Database cleared and SEARCH_PARAM_RES_EXPRESSIONS table populated successfully!");
-                    return true;
-                }
-            } else {
-                log:printInfo("Database already exists. Skipping table creation to preserve existing data.");
-                
-                // For PostgreSQL, populate search params if table is empty
-                if (self.databaseProvider.getDatabaseType() == "postgresql") {
-                    error? isSearchParamsPopulated = self.populateSearchParamExpressionTableIfEmpty(jdbcClient);
-                    if (isSearchParamsPopulated is error) {
-                        log:printError("An error occurred while populating SEARCH_PARAM_RES_EXPRESSIONS: " + isSearchParamsPopulated.message());
-                        return false;
-                    }
-                }
-                return true;
-            }
+
+        if dbExists is error {
+            log:printError("Failed to check database state: " + dbExists.message());
+            return dbExists;
         }
-        
-        // Initialize database for first time (H2 only - creates tables)
-        error? isError = self.retreiveQueriesFromSchema();
 
-        if (isError is error) {
-            log:printError("An error occured when reading the db schema: " + isError.message());
-            return false;
-        } else {
-            foreach sql:ParameterizedQuery dropQuery in self.dropQueries {
-                sql:ParameterizedQuery query1 = dropQuery;
-                _ = check jdbcClient->execute(query1);
+        if dbExists {
+            log:printInfo("Database tables already exist. Starting server with existing data.");
+
+            error? isSearchParamsPopulated = self.populateSearchParamExpressionTableIfEmpty(jdbcClient);
+            if isSearchParamsPopulated is error {
+                log:printError("Failed to populate SEARCH_PARAM_RES_EXPRESSIONS: " + isSearchParamsPopulated.message());
+                return isSearchParamsPopulated;
             }
+            return;
+        }
 
-            foreach sql:ParameterizedQuery createQuery in self.createQueries {
-                sql:ParameterizedQuery query2 = createQuery;
-                _ = check jdbcClient->execute(query2);
+        log:printInfo(string `No existing tables found. Creating database schema for the first time (${self.databaseProvider.getDatabaseType()})...`);
+
+        error? schemaError = self.retreiveQueriesFromSchema();
+        if schemaError is error {
+            log:printError("Failed to read database schema file: " + schemaError.message());
+            return schemaError;
+        }
+
+        foreach sql:ParameterizedQuery createQuery in self.createQueries {
+            sql:ParameterizedQuery query = createQuery;
+            sql:ExecutionResult|sql:Error execResult = jdbcClient->execute(query);
+            if execResult is sql:Error {
+                log:printError("Failed to create database tables: " + execResult.message());
+                return execResult;
             }
         }
 
-        // Populate search parameters for H2 first-time initialization
         error? isSearchParamsPopulated = self.populateSearchParamExpressionTable(jdbcClient);
-        if (isSearchParamsPopulated is error) {
-            log:printError("An error occured while populating the SEARCH_PARAM_EXPRESSION_TABLE: " + isSearchParamsPopulated.message());
-            return false;
-        } else {
-            log:printDebug("SEARCH_PARAM_EXPRESSION TABLE populated successfully!");
-            return true;
+        if isSearchParamsPopulated is error {
+            log:printError("Failed to populate SEARCH_PARAM_RES_EXPRESSIONS: " + isSearchParamsPopulated.message());
+            return isSearchParamsPopulated;
         }
+
+        log:printInfo("Database schema created and initialized successfully.");
     }
 
     private function convertToParameterizedQuery(readonly & string[] strQuery) returns sql:ParameterizedQuery {
@@ -141,11 +114,7 @@ public class DBHandler {
             if trimmed == "" {
                 continue;
             }
-
-            // Handle DROP queries
-            if trimmed.startsWith("DROP") && trimmed.endsWith(";") {
-                readonly & string[] tempArr = [trimmed];
-                self.dropQueries.push(self.convertToParameterizedQuery(tempArr));
+            if trimmed.startsWith("DROP") {
                 continue;
             }
 
@@ -175,59 +144,6 @@ public class DBHandler {
                 }
             }
         }
-    }
-
-    private function truncateAllTables(jdbc:Client jdbcClient) returns error? {
-        log:printInfo("Truncating all tables...");
-        
-        // Get list of tables from schema
-        string schemaFilePath = self.databaseProvider.getSchemaFilePath();
-        string[] readLines = check io:fileReadLines(schemaFilePath);
-        
-        string[] tableNames = [];
-        
-        // Extract table names from CREATE TABLE statements
-        foreach string line in readLines {
-            string trimmed = string:trim(line);
-            if trimmed.startsWith("CREATE TABLE") {
-                // Extract table name between quotes
-                int? firstQuote = trimmed.indexOf("\"");
-                if firstQuote is int {
-                    int? secondQuote = trimmed.indexOf("\"", firstQuote + 1);
-                    if secondQuote is int {
-                        string tableName = trimmed.substring(firstQuote + 1, secondQuote);
-                        tableNames.push(tableName);
-                    }
-                }
-            }
-        }
-        
-        log:printInfo(string `Found ${tableNames.length()} tables to truncate`);
-        
-        // Truncate tables in reverse order to handle foreign key constraints
-        int i = tableNames.length();
-        while (i > 0) {
-            i -= 1;
-            string tableName = tableNames[i];
-            
-            // Use TRUNCATE with CASCADE for PostgreSQL, or DELETE for H2
-            string dbType = self.databaseProvider.getDatabaseType();
-            string truncateQuery = "";
-            
-            if (dbType == "postgresql") {
-                truncateQuery = string `TRUNCATE TABLE "${tableName}" CASCADE`;
-            } else {
-                // H2 doesn't support TRUNCATE CASCADE, use DELETE
-                truncateQuery = string `DELETE FROM "${tableName}"`;
-            }
-            
-            sql:ParameterizedQuery query = new utils:RawSQLQuery(truncateQuery);
-            _ = check jdbcClient->execute(query);
-            log:printDebug(string `Truncated table: ${tableName}`);
-        }
-        
-        log:printInfo("All tables truncated successfully");
-        return ();
     }
 
     private function populateSearchParamExpressionTableIfEmpty(jdbc:Client jdbcClient) returns error? {
