@@ -149,9 +149,9 @@ sequenceDiagram
     Note over Client,DB: $export Operation (Async)
     Client->>Server: GET /Patient/[id]/$export<br/>(Port 9090)
     Server-->>Client: 202 Accepted + job URL
-    Client->>Server: GET /fhir/_export/status/[jobId]<br/>
+    Client->>Server: GET /fhir/_export/status/[jobId]
     Server-->>Client: Export status
-    Client->>Server: GET /fhir/_export/download/[jobId]/[file]<br/>
+    Client->>Server: GET /fhir/_export/download/[jobId]/[file]
     Server-->>Client: NDJSON export file
 ```
 
