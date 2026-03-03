@@ -25,16 +25,16 @@ service / on new http:Listener(9090) {
     #
     # + fhirPathRequest - Request for the API
     # + return - Result Map of Fhirpath evaluations
-    isolated resource function post fhirpath (@http:Payload FhirPathRequest fhirPathRequest) returns http:Response {
-        map<fhirpath:FhirPathResult> outcome = {};
+    isolated resource function post fhirpath (@http:Payload FhirPathRequest fhirPathRequest) returns http:Response|error {
+        map<json> outcome = {};
         map<json> fhirResource = fhirPathRequest.fhirResource;
         string[]|string fhirPath = fhirPathRequest.fhirPath;
         if fhirPath is string[] {
             foreach string individualFhirPath in fhirPath {
-                outcome[individualFhirPath] = fhirpath:getFhirPathResult(fhirResource, individualFhirPath);
+                outcome[individualFhirPath] = check fhirpath:getValuesFromFhirPath(fhirResource, individualFhirPath);
             }
         } else {
-            outcome[fhirPath] = fhirpath:getFhirPathResult(fhirResource, fhirPath);
+            outcome[fhirPath] = check fhirpath:getValuesFromFhirPath(fhirResource, fhirPath);
         }
         http:Response response = new;
         response.setJsonPayload(outcome.toJson());
