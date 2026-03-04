@@ -15,6 +15,7 @@
 // under the License.
 
 import ballerina/http;
+import ballerina/log;
 import ballerinax/health.fhir.r4utils.fhirpath as fhirpath;
 
 # A service representing a network-accessible API for the fhirpath evaluation.
@@ -26,6 +27,7 @@ service / on new http:Listener(9090) {
     # + fhirPathRequest - Request containing the FHIR resource and FHIRPath expression(s)
     # + return - Result map of FHIRPath evaluations or an error response
     isolated resource function post fhirpath/get(@http:Payload FhirPathGetRequest fhirPathRequest) returns http:Response {
+        log:printInfo("Received FHIRPath get request");
         map<json> outcome = {};
         json fhirResource = fhirPathRequest.fhirResource;
         string[]|string fhirPath = fhirPathRequest.fhirPath;
@@ -61,6 +63,7 @@ service / on new http:Listener(9090) {
     # + fhirPathRequest - Request containing the FHIR resource, FHIRPath expression, and value to set
     # + return - Updated FHIR resource or an error response
     isolated resource function post fhirpath/'set(@http:Payload FhirPathSetRequest fhirPathRequest) returns http:Response {
+        log:printInfo("Received FHIRPath set request");
         json fhirResource = fhirPathRequest.fhirResource;
         string fhirPath = fhirPathRequest.fhirPath;
         json value = fhirPathRequest.value;

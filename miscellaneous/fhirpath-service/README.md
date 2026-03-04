@@ -62,7 +62,7 @@ curl -X POST http://localhost:9090/fhirpath/get \
   }'
 ```
 
-#### Example Response
+#### Example Response — Single FHIRPath Expression
 
 ```json
 {
@@ -93,7 +93,7 @@ curl -X POST http://localhost:9090/fhirpath/get \
   }'
 ```
 
-#### Example Response
+#### Example Response — Multiple FHIRPath Expressions
 
 ```json
 {
@@ -153,7 +153,7 @@ curl -X POST http://localhost:9090/fhirpath/set \
   }'
 ```
 
-#### Example Response
+#### Example Response — Update a Value
 
 ```json
 {
