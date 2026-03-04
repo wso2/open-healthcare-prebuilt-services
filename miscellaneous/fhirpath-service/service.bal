@@ -21,32 +21,88 @@ import ballerinax/health.fhir.r4utils.fhirpath as fhirpath;
 # Bound to port `9090`.
 service / on new http:Listener(9090) {
 
-    # API to evaluate Fhirpath expressions.
+    # API to evaluate Fhirpath expressions and retrieve values from a FHIR resource.
     #
-    # + fhirPathRequest - Request for the API
-    # + return - Result Map of Fhirpath evaluations
-    isolated resource function post fhirpath (@http:Payload FhirPathRequest fhirPathRequest) returns http:Response {
-        map<fhirpath:FhirPathResult> outcome = {};
-        map<json> fhirResource = fhirPathRequest.fhirResource;
+    # + fhirPathRequest - Request containing the FHIR resource and FHIRPath expression(s)
+    # + return - Result map of FHIRPath evaluations or an error response
+    isolated resource function post fhirpath/get(@http:Payload FhirPathGetRequest fhirPathRequest) returns http:Response {
+        map<json> outcome = {};
+        json fhirResource = fhirPathRequest.fhirResource;
         string[]|string fhirPath = fhirPathRequest.fhirPath;
+        boolean validateInputFHIRResource = fhirPathRequest.validateInputFHIRResource ?: false;
+
         if fhirPath is string[] {
             foreach string individualFhirPath in fhirPath {
-                outcome[individualFhirPath] = fhirpath:getFhirPathResult(fhirResource, individualFhirPath);
+                json|error result = fhirpath:getValuesFromFhirPath(fhirResource, individualFhirPath,
+                        validateInputFHIRResource = validateInputFHIRResource);
+                if result is error {
+                    outcome[individualFhirPath] = {"error": result.message()};
+                } else {
+                    outcome[individualFhirPath] = result;
+                }
             }
         } else {
-            outcome[fhirPath] = fhirpath:getFhirPathResult(fhirResource, fhirPath);
+            json|error result = fhirpath:getValuesFromFhirPath(fhirResource, fhirPath,
+                    validateInputFHIRResource = validateInputFHIRResource);
+            if result is error {
+                outcome[fhirPath] = {"error": result.message()};
+            } else {
+                outcome[fhirPath] = result;
+            }
         }
+
         http:Response response = new;
         response.setJsonPayload(outcome.toJson());
         return response;
     }
+
+    # API to set values in a FHIR resource at specified FHIRPath locations.
+    #
+    # + fhirPathRequest - Request containing the FHIR resource, FHIRPath expression, and value to set
+    # + return - Updated FHIR resource or an error response
+    isolated resource function post fhirpath/'set(@http:Payload FhirPathSetRequest fhirPathRequest) returns http:Response {
+        json fhirResource = fhirPathRequest.fhirResource;
+        string fhirPath = fhirPathRequest.fhirPath;
+        json value = fhirPathRequest.value;
+        boolean validateInputFHIRResource = fhirPathRequest.validateInputFHIRResource ?: false;
+        boolean validateOutputFHIRResource = fhirPathRequest.validateOutputFHIRResource ?: false;
+
+        json|error result = fhirpath:setValuesToFhirPath(fhirResource, fhirPath, value,
+                validateInputFHIRResource = validateInputFHIRResource,
+                validateOutputFHIRResource = validateOutputFHIRResource);
+        http:Response response = new;
+        if result is error {
+            response.statusCode = http:STATUS_BAD_REQUEST;
+            response.setJsonPayload({"error": result.message()});
+        } else {
+            response.setJsonPayload(result);
+        }
+        return response;
+    }
 }
 
-# Record to hold FhirPath request parameters.
+# Record to hold FhirPath GET request parameters.
 #
-# + fhirResource - Fhir Resource
-# + fhirPath - Fhir Path
-public type FhirPathRequest record {|
-    map<json> fhirResource;
+# + fhirResource - FHIR Resource as JSON
+# + fhirPath - FHIRPath expression(s) to evaluate
+# + validateInputFHIRResource - Optional flag to validate the input FHIR resource (defaults to false)
+public type FhirPathGetRequest record {|
+    json fhirResource;
     string[]|string fhirPath;
+    boolean validateInputFHIRResource?;
+|};
+
+# Record to hold FhirPath SET request parameters.
+#
+# + fhirResource - FHIR Resource as JSON
+# + fhirPath - FHIRPath expression indicating where to set the value
+# + value - The value to set at the specified path
+# + validateInputFHIRResource - Optional flag to validate the input FHIR resource (defaults to false)
+# + validateOutputFHIRResource - Optional flag to validate the output FHIR resource after modification (defaults to false)
+public type FhirPathSetRequest record {|
+    json fhirResource;
+    string fhirPath;
+    json value;
+    boolean validateInputFHIRResource?;
+    boolean validateOutputFHIRResource?;
 |};
