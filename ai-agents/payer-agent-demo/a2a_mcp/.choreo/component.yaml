@@ -1,0 +1,62 @@
+# Configuration file for A2A MCP Server
+schemaVersion: 1.2
+
+# Incoming connection details for the component
+endpoints:
+  # MCP Server endpoint for agent-to-agent communication
+  - name: a2a-mcp-server
+    displayName: A2A MCP Communication Server
+    implementation: service  # Required: specifies this is a service implementation
+    service:
+      basePath: /
+      port: 3001
+    type: REST
+    networkVisibilities: 
+      - Public
+      - Organization
+      - Project
+    # Optional: Add OpenAPI schema if available
+    # schemaFilePath: openapi.yaml
+
+# Runtime configurations
+configurations:
+  # Environment variables required by the service
+  env:
+    # Policy Reviewer service URL
+    - name: POLICY_REVIEWER_URL
+      valueFrom:
+        connectionRef:
+          name: policy-reviewer-connection
+          key: ServiceURL
+    
+    # Medical Reviewer service URL
+    - name: MEDICAL_REVIEWER_URL
+      valueFrom:
+        connectionRef:
+          name: medical-reviewer-connection
+          key: ServiceURL
+    
+    # Optional: Python environment configuration
+    - name: PYTHON_ENV
+      valueFrom:
+        configForm:
+          displayName: Python Environment
+          required: false
+          type: string
+    
+    # Optional: Log level configuration
+    - name: LOG_LEVEL
+      valueFrom:
+        configForm:
+          displayName: Log Level
+          required: false
+          type: string
+    
+    # Port configuration
+    - name: PORT
+      valueFrom:
+        configForm:
+          displayName: Server Port
+          required: false
+          type: string
+          default: "3001"
