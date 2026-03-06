@@ -53,9 +53,10 @@ isolated function executeFhirInteraction(string resourceType, r4:FHIRContext fhi
                 r4:TRANSIENT_EXCEPTION, cause = fhirResponse);
         }
         r4:SEARCH => {
-            fhir:FHIRResponse|fhir:FHIRError response = fhirConnectorObj->search(resourceType, getQueryParamsMap(
+            fhir:FHIRResponse|fhir:FHIRError response = fhirConnectorObj->search(resourceType, fhir:GET ,getQueryParamsMap(
                 fhirContext.getRequestSearchParameters()));
             if response is fhir:FHIRResponse {
+                log:printDebug("FHIR search completed successfully for resource type: " + resourceType);
                 return <r4:Bundle>check parseFhirResponse(response, targetModelType);
             }
             log:printError("Error occurred while retrieving the response from Cerner.", response);
