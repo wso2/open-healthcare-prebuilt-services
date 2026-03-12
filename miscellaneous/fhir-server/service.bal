@@ -367,10 +367,12 @@ const string EXPORT_DIR = "./data/exports/";
 const string JOB_METADATA_FILE = "job-metadata.json";
 
 function init() returns error? {
-    boolean|error? dbStatus = dbHandler.initDatabase(jdbcClient);
-    if (dbStatus is boolean && dbStatus == true) {
-        log:printInfo("DB Init Successfully");
+    error? dbStatus = dbHandler.initDatabase(jdbcClient);
+    if dbStatus is error {
+        log:printError("Database initialization failed, stopping server: " + dbStatus.message());
+        return dbStatus;
     }
+    log:printInfo("DB Init Successfully");
 
     // Load all StructureDefinitions from database and register them in FHIR registry
     error? profileLoadStatus = loadCustomProfiles();
