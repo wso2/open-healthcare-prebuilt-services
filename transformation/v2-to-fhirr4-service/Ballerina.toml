@@ -4,7 +4,8 @@ name = "Hl7v2ToFhirR4Service"
 version = "1.2.0"
 distribution = "2201.10.2"
 authors = ["Ballerina"]
-keywords = ["Healthcare","FHIR","HL7V2", "Transform"]
+keywords = ["Area/Healthcare", "Industry/Healthcare", "Type/Template", "HL7V2 to FHIR", "FHIR", "HL7V2"]
+template = true
 
 [build-options]
 observabilityIncluded = true
