@@ -1,12 +1,7 @@
--- 1. Drop the schema and everything inside it
-DROP SCHEMA public CASCADE;
 
--- 2. Recreate the schema
 CREATE SCHEMA IF NOT EXISTS public;
 
--- 3. Restore default permissions (optional but highly recommended)
 GRANT ALL ON SCHEMA public TO public;
--- GRANT ALL ON SCHEMA public TO postgres; -- Add specific user permissions as needed
 
 CREATE TABLE "RESOURCE_TABLE" (
 	"ID"   VARCHAR(255) NOT NULL,
