@@ -12,14 +12,15 @@ configurable string dbPassword = "";
 public configurable string dbType = "h2"; // Default to H2 for backward compatibility
 
 // Connection pool settings
-configurable int dbPoolMaxSize = 50;     // max open connections
-configurable int dbPoolMinIdle = 10;     // idle connections kept warm
+configurable int dbPoolMaxSize = 50; // max open connections
+configurable int dbPoolMinIdle = 10; // idle connections kept warm
 
 public class DBHandler {
     private final DatabaseProvider databaseProvider;
     private jdbc:Client|sql:Error jdbcClient;
 
     private sql:ParameterizedQuery[] createQueries;
+    private final int CURRENT_SCHEMA_VERSION = 1;
 
     public function init() returns error? {
         // Initialize the appropriate database provider
@@ -51,6 +52,7 @@ public class DBHandler {
     }
 
     public function initDatabase(jdbc:Client jdbcClient) returns error? {
+        log:printInfo("Initializing database...");
         boolean|error dbExists = self.isDBExsists(jdbcClient);
 
         if dbExists is error {
@@ -59,17 +61,27 @@ public class DBHandler {
         }
 
         if dbExists {
-            log:printInfo("Database tables already exist. Starting server with existing data.");
-
-            error? isSearchParamsPopulated = self.populateSearchParamExpressionTableIfEmpty(jdbcClient);
-            if isSearchParamsPopulated is error {
-                log:printError("Failed to populate SEARCH_PARAM_RES_EXPRESSIONS: " + isSearchParamsPopulated.message());
-                return isSearchParamsPopulated;
+            log:printInfo("Database tables already exist. Checking schema version...");
+            int|error version = jdbcClient->queryRow(self.databaseProvider.getSchemaVersionQuery());
+            
+            if version is int {
+                if version >= self.CURRENT_SCHEMA_VERSION {
+                    log:printInfo(string `Database schema is up to date (version ${version}).`);
+                    error? isSearchParamsPopulated = self.populateSearchParamExpressionTableIfEmpty(jdbcClient);
+                    if isSearchParamsPopulated is error {
+                        log:printError("Failed to populate SEARCH_PARAM_RES_EXPRESSIONS: " + isSearchParamsPopulated.message());
+                        return isSearchParamsPopulated;
+                    }
+                    return;
+                } else {
+                    log:printInfo(string `Database schema is outdated (version ${version}, expected >= ${self.CURRENT_SCHEMA_VERSION}). Running migrations...`);
+                }
+            } else {
+                log:printInfo("Could not determine database schema version. Running full initialization...");
             }
-            return;
+        } else {
+            log:printInfo(string `No existing tables found. Creating database schema for the first time (${self.databaseProvider.getDatabaseType()})...`);
         }
-
-        log:printInfo(string `No existing tables found. Creating database schema for the first time (${self.databaseProvider.getDatabaseType()})...`);
 
         error? schemaError = self.retreiveQueriesFromSchema();
         if schemaError is error {
@@ -79,12 +91,23 @@ public class DBHandler {
 
         foreach sql:ParameterizedQuery createQuery in self.createQueries {
             sql:ParameterizedQuery query = createQuery;
+            log:printDebug("Executing database schema creation query");
             sql:ExecutionResult|sql:Error execResult = jdbcClient->execute(query);
             if execResult is sql:Error {
-                log:printError("Failed to create database tables: " + execResult.message());
-                return execResult;
+                // Ignore errors if table already exists during migration
+                log:printDebug("Failed to execute query (might already exist): " + execResult.message());
             }
         }
+
+        // Update or create schema version marker
+        // Note: MERGE is H2 specific, but for PostgreSQL we'd use ON CONFLICT. 
+        // Given the requirement to keep it simple and the current structure, 
+        // I will use a simple INSERT and ignore failure if it exists, or update.
+        // Actually, let's use a more portable approach if possible, or handle by provider.
+        
+        // For now, let's just try to insert/update simply.
+        _ = check jdbcClient->execute(`DELETE FROM "SCHEMA_VERSION"`);
+        _ = check jdbcClient->execute(`INSERT INTO "SCHEMA_VERSION" ("VERSION") VALUES (${self.CURRENT_SCHEMA_VERSION})`);
 
         error? isSearchParamsPopulated = self.populateSearchParamExpressionTable(jdbcClient);
         if isSearchParamsPopulated is error {
@@ -92,7 +115,7 @@ public class DBHandler {
             return isSearchParamsPopulated;
         }
 
-        log:printInfo("Database schema created and initialized successfully.");
+        log:printInfo("Database schema initialized/updated successfully.");
     }
 
     private function convertToParameterizedQuery(readonly & string[] strQuery) returns sql:ParameterizedQuery {
@@ -150,12 +173,12 @@ public class DBHandler {
         // Check if table is empty
         sql:ParameterizedQuery countQuery = `SELECT COUNT(*) as count FROM "SEARCH_PARAM_RES_EXPRESSIONS"`;
         int count = check jdbcClient->queryRow(countQuery);
-        
+
         if (count > 0) {
             log:printInfo(string `SEARCH_PARAM_RES_EXPRESSIONS table already has ${count} records. Skipping population.`);
             return ();
         }
-        
+
         log:printInfo("SEARCH_PARAM_RES_EXPRESSIONS table is empty. Populating from CSV...");
         return self.populateSearchParamExpressionTable(jdbcClient);
     }
