@@ -19,7 +19,7 @@ public class CreateHandler {
     }
 
     // Main function to save resource
-    public isolated function saveResourceWithTransaction(string resourceType, json resourceJson) returns string|error {
+    public isolated function saveResourceWithTransaction(string resourceType, json resourceJson) returns json|error {
 
         // Begin transaction
         utils:TransactionContext 'transaction = self.transactionHandler.beginTransaction();
@@ -45,8 +45,9 @@ public class CreateHandler {
                 return insertModel;
             }
 
-            // Get extracted references after mapping
+            // Get extracted references and full resource JSON (with ID) after mapping
             json[] references = mapper.getReferences();
+            json resourceWithId = mapper.getResourceJsonWithId();
             log:printDebug(string `Extracted ${references.length()} reference(s) from ${resourceType}`);
 
             // Save main resource
@@ -132,7 +133,7 @@ public class CreateHandler {
             self.transactionHandler.commitTransaction('transaction, resourceType, resourceId);
 
             log:printDebug(string `Successfully created ${resourceType}/${resourceId} with ${references.length()} reference(s)`);
-            return resourceId;
+            return resourceWithId;
 
         } on fail error e {
             // Rollback on any failure

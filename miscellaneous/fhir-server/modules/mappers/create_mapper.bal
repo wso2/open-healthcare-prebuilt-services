@@ -6,10 +6,12 @@ import ballerinax/java.jdbc;
 
 public class CreateMapper {
     private json[] references;
+    private json resourceJsonWithId;
     private final jdbc:Client? jdbcClient;
 
     public isolated function init(jdbc:Client? jdbcClient = ()) {
         self.references = [];
+        self.resourceJsonWithId = {};
         self.jdbcClient = jdbcClient;
     }
 
@@ -170,11 +172,17 @@ public class CreateMapper {
             log:printDebug(string `Using client-provided ID for ${resourceType}: ${resourceId}`);
         }
 
+        // Inject generated ID into resource JSON so RESOURCE_JSON stored in DB includes the id
+        map<json> resourceJsonMap = check resourceJson.cloneWithType();
+        resourceJsonMap["id"] = resourceId;
+        json resourceJsonWithId = resourceJsonMap.toJson();
+        self.resourceJsonWithId = resourceJsonWithId;
+
         map<anydata> insertRecord = check self.buildInsertRecord(
             resourceType,
             resourceId,
             extractedValues,
-            resourceJson.toJsonString().toBytes()
+            resourceJsonWithId.toJsonString().toBytes()
         );
 
         return insertRecord;
@@ -182,5 +190,9 @@ public class CreateMapper {
 
     public isolated function getReferences() returns json[] {
         return self.references;
+    }
+
+    public isolated function getResourceJsonWithId() returns json {
+        return self.resourceJsonWithId;
     }
 }

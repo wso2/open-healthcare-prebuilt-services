@@ -777,11 +777,11 @@ isolated function performResourceCreate(string resourceType, json resourceJson) 
     log:printDebug(string `${resourceType}: Create - Start Execution`);
     do {
         handlers:CreateHandler createHandler = new handlers:CreateHandler(jdbcClient);
-        string|error? result = createHandler.saveResourceWithTransaction(resourceType, resourceJson);
+        json|error? result = createHandler.saveResourceWithTransaction(resourceType, resourceJson);
 
-        if result is string {
+        if result is json {
             log:printDebug(string `${resourceType}: POST - Execution Success!`);
-            any parsedResource = check fhirParser:parse(resourceJson).ensureType();
+            any parsedResource = check fhirParser:parse(result).ensureType();
             return parsedResource;
         } else {
             string errorMsg = result is error ? result.message() : "Unknown error";
