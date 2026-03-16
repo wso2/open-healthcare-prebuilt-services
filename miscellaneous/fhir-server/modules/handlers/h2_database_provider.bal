@@ -61,6 +61,13 @@ public class H2DatabaseProvider {
                 ORDER BY ORDINAL_POSITION`;
     }
 
+    # Get H2-specific query to retrieve the current schema version.
+    #
+    # + return - Parameterized query for H2
+    public function getSchemaVersionQuery() returns sql:ParameterizedQuery {
+        return `SELECT "VERSION" FROM "SCHEMA_VERSION" ORDER BY "VERSION" DESC LIMIT 1`;
+    }
+
     # Get database type identifier.
     #
     # + return - "h2"

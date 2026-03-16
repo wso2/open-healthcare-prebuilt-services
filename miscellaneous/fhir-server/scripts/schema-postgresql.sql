@@ -1,18 +1,21 @@
--- 1. Drop the schema and everything inside it
-DROP SCHEMA public CASCADE;
 
--- 2. Recreate the schema
 CREATE SCHEMA IF NOT EXISTS public;
 
--- 3. Restore default permissions (optional but highly recommended)
 GRANT ALL ON SCHEMA public TO public;
--- GRANT ALL ON SCHEMA public TO postgres; -- Add specific user permissions as needed
 
 CREATE TABLE "RESOURCE_TABLE" (
 	"ID"   VARCHAR(255) NOT NULL,
 	"TYPE" VARCHAR(100) NOT NULL,
 	PRIMARY KEY ("ID", "TYPE")
 );
+
+CREATE TABLE IF NOT EXISTS "SCHEMA_VERSION" (
+    "VERSION" INT NOT NULL,
+    "UPDATED_AT" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("VERSION")
+);
+
+INSERT INTO "SCHEMA_VERSION" ("VERSION") VALUES (1) ON CONFLICT DO NOTHING;
 
 CREATE TABLE "REFERENCES" (
 	"ID" SERIAL,

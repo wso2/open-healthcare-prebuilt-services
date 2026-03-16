@@ -61,6 +61,13 @@ public class PostgreSQLDatabaseProvider {
                 ORDER BY ordinal_position`;
     }
 
+    # Get PostgreSQL-specific query to retrieve the current schema version.
+    #
+    # + return - Parameterized query for PostgreSQL
+    public function getSchemaVersionQuery() returns sql:ParameterizedQuery {
+        return `SELECT "VERSION" FROM "SCHEMA_VERSION" ORDER BY "VERSION" DESC LIMIT 1`;
+    }
+
     # Get database type identifier.
     #
     # + return - "postgresql"

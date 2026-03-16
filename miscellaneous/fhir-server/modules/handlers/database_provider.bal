@@ -38,6 +38,11 @@ public type DatabaseProvider object {
     # + return - Parameterized SQL query
     public function getTableColumnsQuery(string tableName) returns sql:ParameterizedQuery;
 
+    # Get the database-specific query to retrieve the current schema version.
+    #
+    # + return - Parameterized SQL query
+    public function getSchemaVersionQuery() returns sql:ParameterizedQuery;
+
     # Get the database type identifier.
     #
     # + return - Database type name (e.g., "h2", "postgresql")
