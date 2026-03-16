@@ -173,12 +173,9 @@ public class CreateMapper {
         }
 
         // Inject generated ID into resource JSON so RESOURCE_JSON stored in DB includes the id
-        map<json>|error resourceJsonMap = resourceJson.cloneWithType();
-        json resourceJsonWithId = resourceJson;
-        if resourceJsonMap is map<json> {
-            resourceJsonMap["id"] = resourceId;
-            resourceJsonWithId = resourceJsonMap.toJson();
-        }
+        map<json> resourceJsonMap = check resourceJson.cloneWithType();
+        resourceJsonMap["id"] = resourceId;
+        json resourceJsonWithId = resourceJsonMap.toJson();
         self.resourceJsonWithId = resourceJsonWithId;
 
         map<anydata> insertRecord = check self.buildInsertRecord(
