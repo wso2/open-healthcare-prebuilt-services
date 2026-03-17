@@ -188,7 +188,19 @@ public class DBHandler {
 
     private function populateSearchParamExpressionTable(jdbc:Client jdbcClient) returns error? {
         final string dataFilePath = "./assets/r4-searchParam-Expression.csv";
-        final string[] readLines = check io:fileReadLines(dataFilePath);
+        string[] readLines;
+
+        // Prefer the CSV asset file when available; if not, fall back to the
+        // embedded CSV string so Docker / restricted environments still work.
+        string[]|error fileLines = io:fileReadLines(dataFilePath);
+        if fileLines is error {
+            log:printDebug("Failed to read search parameter CSV file, falling back to embedded CSV: " + fileLines.message());
+            final string:RegExp lineSeparator = re `\n`;
+            readLines = lineSeparator.split(SEARCH_PARAM_EXPRESSIONS_CSV);
+        } else {
+            readLines = fileLines;
+        }
+
         final string:RegExp regex = re `,`;
         int i = 0;
 
@@ -208,10 +220,19 @@ public class DBHandler {
                 string searchParamType = data[2];
                 string expression = data[3];
 
-                string sqlQuery = string `INSERT INTO "SEARCH_PARAM_RES_EXPRESSIONS" ("SEARCH_PARAM_NAME", "SEARCH_PARAM_TYPE", "RESOURCE_NAME", "EXPRESSION") VALUES ('${utils:escapeSql(searchParamName)}', '${utils:escapeSql(searchParamType)}', '${utils:escapeSql('resource)}', '${utils:escapeSql(expression)}')`;
-                sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
-
-                _ = check jdbcClient->execute(query);
+                // Only insert if this (name, type, resource) combination does not already exist.
+                sql:ParameterizedQuery existsQuery = `SELECT COUNT(*) AS count FROM "SEARCH_PARAM_RES_EXPRESSIONS"
+                    WHERE "SEARCH_PARAM_NAME" = ${searchParamName}
+                      AND "SEARCH_PARAM_TYPE" = ${searchParamType}
+                      AND "RESOURCE_NAME" = ${'resource}`;
+                int existingCount = check jdbcClient->queryRow(existsQuery);
+                if existingCount == 0 {
+                    string sqlQuery = string `INSERT INTO "SEARCH_PARAM_RES_EXPRESSIONS"
+                        ("SEARCH_PARAM_NAME", "SEARCH_PARAM_TYPE", "RESOURCE_NAME", "EXPRESSION")
+                        VALUES ('${utils:escapeSql(searchParamName)}', '${utils:escapeSql(searchParamType)}', '${utils:escapeSql('resource)}', '${utils:escapeSql(expression)}')`;
+                    sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
+                    _ = check jdbcClient->execute(query);
+                }
             }
         }
         log:printInfo(string `Populated SEARCH_PARAM_RES_EXPRESSIONS table with ${i - 1} records from CSV`);
