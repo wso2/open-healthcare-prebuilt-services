@@ -15,7 +15,6 @@
 // under the License.
 
 import ballerina/time;
-import ballerina/io;
 import ballerinax/java.jdbc;
 
 // ------------------------------------------------------------
@@ -172,31 +171,6 @@ public isolated function validateCodeInValueSet(jdbc:Client jdbcClient, json? pa
             }
         }
     }
-
-    // #region agent log
-    json debugLog = {
-        sessionId: "8705e3",
-        runId: "run1",
-        hypothesisId: "A",
-        location: "modules/terminology/valueset_ops.bal:validateCodeInValueSet",
-        message: "validate-code evaluation",
-        data: {
-            id: id,
-            url: url,
-            system: sys,
-            code: cd,
-            display: disp,
-            conceptCount: concepts.length(),
-            ok: ok,
-            systemIncluded: systemIncluded
-        },
-        timestamp: time:utcToString(time:utcNow())
-    };
-    string debugLine = debugLog.toJsonString() + "\n";
-    checkpanic io:fileWriteString(
-        "/Users/sameerag/WSO2/dev/repos/open-healthcare-choreo-accelerators/.cursor/debug-8705e3.log",
-        debugLine);
-    // #endregion
 
     json[] paramOut = [];
     paramOut.push({"name": "result", "valueBoolean": ok});

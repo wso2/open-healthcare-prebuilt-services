@@ -209,7 +209,7 @@ public type Procedure international401:Procedure;
 
 public type List international401:List;
 
-public type ConceptMap international401:ConceptMap;
+public type ConceptMap r4:ConceptMap;
 
 public type CodeSystem r4:CodeSystem;
 
@@ -429,6 +429,7 @@ function init() returns error? {
     foreach readonly & r4:Profile p in terminologyProfiles {
         r4:fhirRegistry.addProfileToResourceType(p);
     }
+    log:printInfo("Terminology Service profiles Registration Completed");
 }
 
 listener http:Listener httpListener = http:getDefaultListener();
@@ -745,16 +746,33 @@ isolated function getFirstSearchParam(map<r4:RequestSearchParameter[]> searchPar
     return vals[0].value;
 }
 
-isolated function getFirstSearchParamAsInt(map<r4:RequestSearchParameter[]> searchParams, string name) returns int? {
+isolated function getFirstSearchParamAsInt(map<r4:RequestSearchParameter[]> searchParams, string name) returns int|error {
     string? v = getFirstSearchParam(searchParams, name);
     if v is () {
-        return ();
+        return 0;
     }
     int|error parsed = int:fromString(v);
     if parsed is int {
         return parsed;
     }
-    return ();
+    return error(string `Invalid integer value for parameter '${name}': '${v}'`);
+}
+
+isolated function toTerminologyOpError(error e) returns r4:FHIRError {
+    int status = http:STATUS_BAD_REQUEST;
+    // Treat DB and backend failures as server errors.
+    error? c = e.cause();
+    if c is error {
+        string cs = c.toString();
+        if cs.includes("sql:") || cs.includes("jdbc:") {
+            status = http:STATUS_INTERNAL_SERVER_ERROR;
+        }
+    }
+    return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = status);
+}
+
+isolated function toTerminologyParseError(error e) returns r4:FHIRError {
+    return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
 }
 
 // Utility function to handle resource read by ID operations
@@ -6849,14 +6867,14 @@ service /fhir/r4/ConceptMap on new fhirr4:Listener(config = r4_api_config:concep
         string? targetSystem = getFirstSearchParam(sp, "targetsystem");
         json|error result = terminology:translate(jdbcClient, (), (), system, code, targetSystem);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -6868,14 +6886,14 @@ service /fhir/r4/ConceptMap on new fhirr4:Listener(config = r4_api_config:concep
         string? targetSystem = getFirstSearchParam(sp, "targetsystem");
         json|error result = terminology:translate(jdbcClient, (), id, system, code, targetSystem);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
 	        any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -6883,14 +6901,14 @@ service /fhir/r4/ConceptMap on new fhirr4:Listener(config = r4_api_config:concep
     isolated resource function post \$translate(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
         json|error result = terminology:translate(jdbcClient, params.toJson(), ());
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -6898,14 +6916,14 @@ service /fhir/r4/ConceptMap on new fhirr4:Listener(config = r4_api_config:concep
     isolated resource function post [string id]/\$translate(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
         json|error result = terminology:translate(jdbcClient, params.toJson(), id);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7009,14 +7027,14 @@ service /fhir/r4/CodeSystem on new fhirr4:Listener(config = r4_api_config:codesy
         string? code = getFirstSearchParam(sp, "code");
         json|error result = terminology:lookupCode(jdbcClient, (), (), system, code);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7026,14 +7044,14 @@ service /fhir/r4/CodeSystem on new fhirr4:Listener(config = r4_api_config:codesy
         string? code = getFirstSearchParam(sp, "code");
         json|error result = terminology:lookupCode(jdbcClient, (), id, (), code);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7041,14 +7059,14 @@ service /fhir/r4/CodeSystem on new fhirr4:Listener(config = r4_api_config:codesy
     isolated resource function post \$lookup(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
         json|error result = terminology:lookupCode(jdbcClient, params.toJson(), ());
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7056,14 +7074,14 @@ service /fhir/r4/CodeSystem on new fhirr4:Listener(config = r4_api_config:codesy
     isolated resource function post [string id]/\$lookup(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
         json|error result = terminology:lookupCode(jdbcClient, params.toJson(), id);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7075,14 +7093,14 @@ service /fhir/r4/CodeSystem on new fhirr4:Listener(config = r4_api_config:codesy
         string? codeB = getFirstSearchParam(sp, "codeB");
         json|error result = terminology:subsumes(jdbcClient, (), (), system, codeA, codeB);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7093,14 +7111,14 @@ service /fhir/r4/CodeSystem on new fhirr4:Listener(config = r4_api_config:codesy
         string? codeB = getFirstSearchParam(sp, "codeB");
         json|error result = terminology:subsumes(jdbcClient, (), id, (), codeA, codeB);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7108,14 +7126,14 @@ service /fhir/r4/CodeSystem on new fhirr4:Listener(config = r4_api_config:codesy
     isolated resource function post \$subsumes(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
         json|error result = terminology:subsumes(jdbcClient, params.toJson(), ());
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
         anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7123,14 +7141,14 @@ service /fhir/r4/CodeSystem on new fhirr4:Listener(config = r4_api_config:codesy
     isolated resource function post [string id]/\$subsumes(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
         json|error result = terminology:subsumes(jdbcClient, params.toJson(), id);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
         anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 }
@@ -7203,18 +7221,26 @@ service /fhir/r4/ValueSet on new fhirr4:Listener(config = r4_api_config:valueset
         map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
         string? url = getFirstSearchParam(sp, "url");
         string? filter = getFirstSearchParam(sp, "filter");
-        int? offset = getFirstSearchParamAsInt(sp, "offset");
-        int? count = getFirstSearchParamAsInt(sp, "count");
+        int|error offsetRes = getFirstSearchParamAsInt(sp, "offset");
+        if offsetRes is error {
+            return r4:createFHIRError(offsetRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+        }
+        int offset = offsetRes;
+        int|error countRes = getFirstSearchParamAsInt(sp, "count");
+        if countRes is error {
+            return r4:createFHIRError(countRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+        }
+        int count = countRes;
         json|error result = terminology:expandValueSet(jdbcClient, (), (), url, filter, offset, count);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, ValueSet, "ValueSet");
             return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7222,18 +7248,26 @@ service /fhir/r4/ValueSet on new fhirr4:Listener(config = r4_api_config:valueset
     isolated resource function get [string id]/\$expand(r4:FHIRContext fhirContext) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
         map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
         string? filter = getFirstSearchParam(sp, "filter");
-        int? offset = getFirstSearchParamAsInt(sp, "offset");
-        int? count = getFirstSearchParamAsInt(sp, "count");
+        int|error offsetRes = getFirstSearchParamAsInt(sp, "offset");
+        if offsetRes is error {
+            return r4:createFHIRError(offsetRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+        }
+        int offset = offsetRes;
+        int|error countRes = getFirstSearchParamAsInt(sp, "count");
+        if countRes is error {
+            return r4:createFHIRError(countRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+        }
+        int count = countRes;
         json|error result = terminology:expandValueSet(jdbcClient, (), id, (), filter, offset, count);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, ValueSet, "ValueSet");
             return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7241,14 +7275,14 @@ service /fhir/r4/ValueSet on new fhirr4:Listener(config = r4_api_config:valueset
     isolated resource function post \$expand(r4:FHIRContext fhirContext, Parameters params) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
         json|error result = terminology:expandValueSet(jdbcClient, params.toJson());
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, ValueSet, "ValueSet");
             return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7256,14 +7290,14 @@ service /fhir/r4/ValueSet on new fhirr4:Listener(config = r4_api_config:valueset
     isolated resource function post [string id]/\$expand(r4:FHIRContext fhirContext, Parameters params) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
         json|error result = terminology:expandValueSet(jdbcClient, params.toJson(), id);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, ValueSet, "ValueSet");
             return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7276,14 +7310,14 @@ service /fhir/r4/ValueSet on new fhirr4:Listener(config = r4_api_config:valueset
         string? display = getFirstSearchParam(sp, "display");
         json|error result = terminology:validateCodeInValueSet(jdbcClient, (), (), url, system, code, display);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7295,14 +7329,14 @@ service /fhir/r4/ValueSet on new fhirr4:Listener(config = r4_api_config:valueset
         string? display = getFirstSearchParam(sp, "display");
         json|error result = terminology:validateCodeInValueSet(jdbcClient, (), id, (), system, code, display);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7310,14 +7344,14 @@ service /fhir/r4/ValueSet on new fhirr4:Listener(config = r4_api_config:valueset
     isolated resource function post \$validate\-code(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
         json|error result = terminology:validateCodeInValueSet(jdbcClient, params.toJson());
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 
@@ -7325,14 +7359,14 @@ service /fhir/r4/ValueSet on new fhirr4:Listener(config = r4_api_config:valueset
     isolated resource function post [string id]/\$validate\-code(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
         json|error result = terminology:validateCodeInValueSet(jdbcClient, params.toJson(), id);
         if result is error {
-            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyOpError(result);
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 }

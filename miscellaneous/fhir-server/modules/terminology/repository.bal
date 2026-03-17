@@ -18,12 +18,14 @@ import ballerina_fhir_server.utils;
 
 import ballerina/sql;
 import ballerinax/java.jdbc;
+import ballerina/log;
 
 // Minimal repository helpers for terminology operations.
 // This module intentionally avoids implementing full external terminology support;
 // it only works with locally stored FHIR resources in the DB.
 
 public isolated function readResourceJsonById(jdbc:Client jdbcClient, string resourceType, string id) returns json|error {
+    log:printDebug("Reading resource JSON by ID", resourceType = resourceType, id = id);
     string tableName = utils:getTableName(resourceType);
     string primaryKey = utils:getPrimaryKeyColumn(resourceType);
     string sqlQuery = string `SELECT "RESOURCE_JSON" FROM "${tableName}" WHERE "${primaryKey}" = '${utils:escapeSql(id)}'`;
@@ -42,7 +44,8 @@ public isolated function readResourceJsonById(jdbc:Client jdbcClient, string res
 
 public isolated function readResourceJsonByColumn(jdbc:Client jdbcClient, string resourceType, string columnName, string value) returns json|error {
     string tableName = utils:getTableName(resourceType);
-    string sqlQuery = string `SELECT "RESOURCE_JSON" FROM "${tableName}" WHERE "${columnName}" = '${utils:escapeSql(value)}' LIMIT 1`;
+    string safeColumn = check getWhitelistedColumnName(resourceType, columnName);
+    string sqlQuery = string `SELECT "RESOURCE_JSON" FROM "${tableName}" WHERE "${safeColumn}" = '${utils:escapeSql(value)}' LIMIT 1`;
     sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
 
     stream<record {|byte[] RESOURCE_JSON;|}, sql:Error?> resultStream = jdbcClient->query(query);
@@ -62,5 +65,15 @@ public isolated function tryReadResourceJsonByColumn(jdbc:Client jdbcClient, str
         return ();
     }
     return r;
+}
+
+isolated function getWhitelistedColumnName(string resourceType, string columnName) returns string|error {
+    // Prevent SQL injection via identifier interpolation.
+    // Only allow known-safe DB columns used by terminology ops.
+    string c = columnName.toUpperAscii();
+    if c == "URL" || c == "ID" {
+        return c;
+    }
+    return error(string `Unsupported column name: ${columnName} for resourceType ${resourceType}`);
 }
 

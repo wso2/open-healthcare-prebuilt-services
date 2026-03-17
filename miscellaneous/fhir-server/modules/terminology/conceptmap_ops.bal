@@ -15,6 +15,7 @@
 // under the License.
 
 import ballerinax/java.jdbc;
+import ballerina/log;
 
 // ------------------------------------------------------------
 // ConceptMap operations: $translate
@@ -23,7 +24,7 @@ import ballerinax/java.jdbc;
 
 public isolated function translate(jdbc:Client jdbcClient, json? parametersJson = (), string? id = (),
     string? system = (), string? code = (), string? targetSystem = ()) returns json|error {
-
+    log:printDebug("Starting translate operation", system = system, code = code, targetSystem = targetSystem, id = id);
     json params = parametersJson is () ? {"resourceType": "Parameters", "parameter": []} : <json>parametersJson;
 
     string? sys = system;
@@ -52,6 +53,7 @@ public isolated function translate(jdbc:Client jdbcClient, json? parametersJson 
     Translation? tr = findTranslation(cm, sys, cd, targetSystem);
 
     if tr is () {
+        log:printDebug("No translation found", system = sys, code = cd, targetSystem = targetSystem, id = id);
         return {
             "resourceType": "Parameters",
             "parameter": [

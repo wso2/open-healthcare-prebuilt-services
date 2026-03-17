@@ -20,6 +20,7 @@ import ballerina_fhir_server.utils;
 import ballerina/sql;
 import ballerina/time;
 import ballerinax/java.jdbc;
+import ballerina/log;
 
 // ------------------------------------------------------------
 // $closure support 
@@ -31,6 +32,7 @@ import ballerinax/java.jdbc;
 public isolated function initClosure(jdbc:Client jdbcClient, string name) returns json|error {
     time:Civil now = time:utcToCivil(time:utcNow());
     string normalizedDb = handlers:dbType.toLowerAscii().trim();
+    log:printDebug("Initializing closure context: " + name);
 
     // Upsert context and reset version to 0
     sql:ParameterizedQuery upsertCtx;
@@ -61,6 +63,7 @@ public isolated function addToClosure(jdbc:Client jdbcClient, string name, map<j
     // Ensure context exists and get current version
     int|error currentVersion = jdbcClient->queryRow(`SELECT "VERSION_ID" FROM "ClosureContextTable" WHERE "CLOSURECONTEXTTABLE_ID" = ${name}`);
     if currentVersion is error {
+        log:printError(string `Failed to find closure context: ${name}`);
         return error(string `invalid closure name \"${name}\"`);
     }
 

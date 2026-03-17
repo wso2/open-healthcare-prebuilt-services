@@ -15,12 +15,14 @@
 // under the License.
 
 import ballerinax/java.jdbc;
+import ballerina/log;
 
 // ------------------------------------------------------------
 // CodeSystem operations: $lookup, $subsumes
 // ------------------------------------------------------------
 
 public isolated function lookupCode(jdbc:Client jdbcClient, json? parametersJson = (), string? id = (), string? system = (), string? code = ()) returns json|error {
+    log:printDebug("Starting lookupCode operation", system = system, code = code, id = id);
     json params = parametersJson is () ? {"resourceType": "Parameters", "parameter": []} : <json>parametersJson;
 
     string? sys = system;
@@ -148,10 +150,10 @@ isolated function computeSubsumption(json cs, string codeA, string codeB) return
 
     map<string[]> parentToChildren = buildHierarchy(cs);
     // Determine ancestry via DFS from A and B
-    if isAncestor(parentToChildren, codeA, codeB) {
+    if isAncestor(parentToChildren, codeA, codeB, {}) {
         return "subsumes";
     }
-    if isAncestor(parentToChildren, codeB, codeA) {
+    if isAncestor(parentToChildren, codeB, codeA, {}) {
         return "subsumed-by";
     }
     return "not-subsumed";
@@ -194,7 +196,11 @@ isolated function addConcept(map<string[]> parentToChildren, map<json> conceptJs
     }
 }
 
-isolated function isAncestor(map<string[]> parentToChildren, string ancestor, string target) returns boolean {
+isolated function isAncestor(map<string[]> parentToChildren, string ancestor, string target, map<boolean> visited) returns boolean {
+    if visited.hasKey(ancestor) {
+        return false;
+    }
+    visited[ancestor] = true;
     if !parentToChildren.hasKey(ancestor) {
         return false;
     }
@@ -203,7 +209,7 @@ isolated function isAncestor(map<string[]> parentToChildren, string ancestor, st
         if k == target {
             return true;
         }
-        if isAncestor(parentToChildren, k, target) {
+        if isAncestor(parentToChildren, k, target, visited) {
             return true;
         }
     }
