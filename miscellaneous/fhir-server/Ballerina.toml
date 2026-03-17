@@ -19,4 +19,3 @@ groupId = "com.h2database"
 artifactId = "postgresql"
 version = "42.7.9"
 groupId = "org.postgresql"
-

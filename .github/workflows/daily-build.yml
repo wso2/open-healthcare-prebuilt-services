@@ -36,6 +36,7 @@ jobs:
           # Build and Generate Coverage Report With Ballerina
           for folder in "${BALLERINA_PROJECTS[@]}"; do
             pushd "$folder"
+            rm -f Dependencies.toml
             bal build
             bal test --test-report --code-coverage --coverage-format=xml
             popd
