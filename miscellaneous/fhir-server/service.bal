@@ -6952,7 +6952,7 @@ service /fhir/r4/ConceptMap on new fhirr4:Listener(config = r4_api_config:concep
             anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, ConceptMap, "ConceptMap");
             return <ConceptMap|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
-            return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+            return toTerminologyParseError(e);
         }
     }
 }
@@ -7130,7 +7130,7 @@ service /fhir/r4/CodeSystem on new fhirr4:Listener(config = r4_api_config:codesy
         }
         do {
             any parsed = check fhirParser:parse(result).ensureType();
-        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
             return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
         } on fail var e {
             return toTerminologyParseError(e);
