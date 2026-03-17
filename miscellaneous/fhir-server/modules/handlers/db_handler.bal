@@ -83,31 +83,32 @@ public class DBHandler {
             log:printInfo(string `No existing tables found. Creating database schema for the first time (${self.databaseProvider.getDatabaseType()})...`);
         }
 
-        error? schemaError = self.retreiveQueriesFromSchema();
-        if schemaError is error {
-            log:printError("Failed to read database schema file: " + schemaError.message());
-            return schemaError;
-        }
-
-        foreach sql:ParameterizedQuery createQuery in self.createQueries {
-            sql:ParameterizedQuery query = createQuery;
-            log:printDebug("Executing database schema creation query");
-            sql:ExecutionResult|sql:Error execResult = jdbcClient->execute(query);
-            if execResult is sql:Error {
-                // Ignore errors if table already exists during migration
-                log:printDebug("Failed to execute query (might already exist): " + execResult.message());
+        // Only perform automatic schema creation for H2.
+        // For PostgreSQL (and other DBs), the schema must be created externally.
+        if self.databaseProvider.getDatabaseType().toLowerAscii().trim() == "h2" {
+            error? schemaError = self.retreiveQueriesFromSchema();
+            if schemaError is error {
+                log:printError("Failed to load embedded H2 database schema: " + schemaError.message());
+                return schemaError;
             }
-        }
 
-        // Update or create schema version marker
-        // Note: MERGE is H2 specific, but for PostgreSQL we'd use ON CONFLICT. 
-        // Given the requirement to keep it simple and the current structure, 
-        // I will use a simple INSERT and ignore failure if it exists, or update.
-        // Actually, let's use a more portable approach if possible, or handle by provider.
-        
-        // For now, let's just try to insert/update simply.
-        _ = check jdbcClient->execute(`DELETE FROM "SCHEMA_VERSION"`);
-        _ = check jdbcClient->execute(`INSERT INTO "SCHEMA_VERSION" ("VERSION") VALUES (${self.CURRENT_SCHEMA_VERSION})`);
+            foreach sql:ParameterizedQuery createQuery in self.createQueries {
+                sql:ParameterizedQuery query = createQuery;
+                log:printDebug("Executing database schema creation query");
+                sql:ExecutionResult|sql:Error execResult = jdbcClient->execute(query);
+                if execResult is sql:Error {
+                    // Ignore errors if table already exists during migration
+                    log:printDebug("Failed to execute query (might already exist): " + execResult.message());
+                }
+            }
+
+            // Update or create schema version marker for H2.
+            _ = check jdbcClient->execute(`DELETE FROM "SCHEMA_VERSION"`);
+            _ = check jdbcClient->execute(`INSERT INTO "SCHEMA_VERSION" ("VERSION") VALUES (${self.CURRENT_SCHEMA_VERSION})`);
+        } else {
+            log:printInfo(string `Skipping automatic schema creation for database type ${self.databaseProvider.getDatabaseType()}. ` +
+                "Ensure schema (including SCHEMA_VERSION) is created separately.");
+        }
 
         error? isSearchParamsPopulated = self.populateSearchParamExpressionTable(jdbcClient);
         if isSearchParamsPopulated is error {
@@ -125,8 +126,10 @@ public class DBHandler {
     }
 
     private function retreiveQueriesFromSchema() returns error? {
-        string schemaFilePath = self.databaseProvider.getSchemaFilePath();
-        string[] readLines = check io:fileReadLines(schemaFilePath);
+        // Parse the embedded H2 schema string into individual lines using RegExp,
+        // so we can reuse the existing query extraction logic.
+        final string:RegExp lineSeparator = re `\n`;
+        string[] readLines = lineSeparator.split(H2_SCHEMA_SQL);
 
         boolean inCreateQuery = false;
         string currentCreateQuery = "";
