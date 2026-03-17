@@ -2311,6 +2311,157 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Terminology (R4)",
+      "item": [
+        {
+          "name": "Create CodeSystem (local)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"CodeSystem\",\n  \"id\": \"local-codesystem\",\n  \"status\": \"active\",\n  \"content\": \"complete\",\n  \"url\": \"http://example.org/fhir/CodeSystem/local-codesystem\",\n  \"name\": \"LocalCodeSystem\",\n  \"concept\": [\n    { \"code\": \"A\", \"display\": \"Alpha\" },\n    { \"code\": \"B\", \"display\": \"Beta\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "http://localhost:9090/fhir/r4/CodeSystem",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "9090",
+              "path": ["fhir", "r4", "CodeSystem"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create ValueSet (local compose.include.concept)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"ValueSet\",\n  \"id\": \"local-valueset\",\n  \"status\": \"active\",\n  \"url\": \"http://example.org/fhir/ValueSet/local-valueset\",\n  \"name\": \"LocalValueSet\",\n  \"compose\": {\n    \"include\": [\n      {\n        \"system\": \"http://example.org/fhir/CodeSystem/local-codesystem\",\n        \"concept\": [\n          { \"code\": \"A\", \"display\": \"Alpha\" },\n          { \"code\": \"B\", \"display\": \"Beta\" }\n        ]\n      }\n    ]\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "http://localhost:9090/fhir/r4/ValueSet",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "9090",
+              "path": ["fhir", "r4", "ValueSet"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "ValueSet $expand (by id)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:9090/fhir/r4/ValueSet/local-valueset/$expand",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "9090",
+              "path": ["fhir", "r4", "ValueSet", "local-valueset", "$expand"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "ValueSet $validate-code (by id)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:9090/fhir/r4/ValueSet/local-valueset/$validate-code?system=http%3A%2F%2Fexample.org%2Ffhir%2FCodeSystem%2Flocal-codesystem&code=A",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "9090",
+              "path": ["fhir", "r4", "ValueSet", "local-valueset", "$validate-code"],
+              "query": [
+                { "key": "system", "value": "http://example.org/fhir/CodeSystem/local-codesystem" },
+                { "key": "code", "value": "A" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "CodeSystem $lookup (by id)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:9090/fhir/r4/CodeSystem/local-codesystem/$lookup?code=A",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "9090",
+              "path": ["fhir", "r4", "CodeSystem", "local-codesystem", "$lookup"],
+              "query": [{ "key": "code", "value": "A" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "ConceptMap $closure init",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    { \"name\": \"name\", \"valueString\": \"patient-problems\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "http://localhost:9090/fhir/r4/ConceptMap/$closure",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "9090",
+              "path": ["fhir", "r4", "ConceptMap", "$closure"]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }
