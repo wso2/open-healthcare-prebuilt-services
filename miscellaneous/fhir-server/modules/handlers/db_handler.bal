@@ -20,7 +20,7 @@ public class DBHandler {
     private jdbc:Client|sql:Error jdbcClient;
 
     private sql:ParameterizedQuery[] createQueries;
-    private final int CURRENT_SCHEMA_VERSION = 1;
+    private final int CURRENT_SCHEMA_VERSION = 2;
 
     public function init() returns error? {
         // Initialize the appropriate database provider

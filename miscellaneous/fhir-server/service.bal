@@ -21,6 +21,7 @@
 
 import ballerina_fhir_server.handlers;
 import ballerina_fhir_server.r4_api_config;
+import ballerina_fhir_server.terminology as terminology;
 
 import ballerina/file;
 import ballerina/http;
@@ -208,7 +209,11 @@ public type Procedure international401:Procedure;
 
 public type List international401:List;
 
-public type ConceptMap international401:ConceptMap;
+public type ConceptMap r4:ConceptMap;
+
+public type CodeSystem r4:CodeSystem;
+
+public type ValueSet r4:ValueSet;
 
 public type OperationDefinition international401:OperationDefinition;
 
@@ -415,6 +420,16 @@ function init() returns error? {
             log:printInfo("Successfully created Device/fhir-server");
         }
     }
+    // Terminology Service profiles (ValueSet, CodeSystem, ConceptMap) for R4 terminology operations
+    readonly & r4:Profile[] terminologyProfiles = [
+        { url: "http://hl7.org/fhir/StructureDefinition/ValueSet", resourceType: "ValueSet", modelType: r4:ValueSet }.cloneReadOnly(),
+        { url: "http://hl7.org/fhir/StructureDefinition/CodeSystem", resourceType: "CodeSystem", modelType: r4:CodeSystem }.cloneReadOnly(),
+        { url: "http://hl7.org/fhir/StructureDefinition/ConceptMap", resourceType: "ConceptMap", modelType: r4:ConceptMap }.cloneReadOnly()
+    ];
+    foreach readonly & r4:Profile p in terminologyProfiles {
+        r4:fhirRegistry.addProfileToResourceType(p);
+    }
+    log:printInfo("Terminology Service profiles Registration Completed");
 }
 
 listener http:Listener httpListener = http:getDefaultListener();
@@ -717,6 +732,47 @@ isolated function convertToTypedResource(any|r4:OperationOutcome|r4:FHIRError re
         }
         return typedResult;
     }
+}
+
+// Helper to get the first query parameter value from FHIRContext search parameters
+isolated function getFirstSearchParam(map<r4:RequestSearchParameter[]> searchParams, string name) returns string? {
+    if !searchParams.hasKey(name) {
+        return ();
+    }
+    r4:RequestSearchParameter[] vals = searchParams.get(name);
+    if vals.length() == 0 {
+        return ();
+    }
+    return vals[0].value;
+}
+
+isolated function getFirstSearchParamAsInt(map<r4:RequestSearchParameter[]> searchParams, string name) returns int?|error {
+    string? v = getFirstSearchParam(searchParams, name);
+    if v is () {
+        return ();
+    }
+    int|error parsed = int:fromString(v);
+    if parsed is int {
+        return parsed;
+    }
+    return error(string `Invalid integer value for parameter '${name}': '${v}'`);
+}
+
+isolated function toTerminologyOpError(error e) returns r4:FHIRError {
+    int status = http:STATUS_BAD_REQUEST;
+    // Treat DB and backend failures as server errors.
+    error? c = e.cause();
+    if c is error {
+        string cs = c.toString();
+        if cs.includes("sql:") || cs.includes("jdbc:") {
+            status = http:STATUS_INTERNAL_SERVER_ERROR;
+        }
+    }
+    return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = status);
+}
+
+isolated function toTerminologyParseError(error e) returns r4:FHIRError {
+    return r4:createFHIRError(e.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
 }
 
 // Utility function to handle resource read by ID operations
@@ -1451,8 +1507,17 @@ function processExportJob(string jobId, string resourceType, string? patientId =
 
             foreach var [resType, resources] in resourcesByType.entries() {
                 // Apply type filter if specified
-                if typeFilter is string[] && !typeFilter.some(t => t == resType) {
-                    continue;
+                if typeFilter is string[] {
+                    boolean allowed = false;
+                    foreach string t in typeFilter {
+                        if t == resType {
+                            allowed = true;
+                            break;
+                        }
+                    }
+                    if !allowed {
+                        continue;
+                    }
                 }
                 foreach json res in resources {
                     ndjsonContent += res.toJsonString() + "\n";
@@ -6792,6 +6857,517 @@ service /fhir/r4/ConceptMap on new fhirr4:Listener(config = r4_api_config:concep
     // Validate operation - accepts Parameters resource containing the resource to validate
     isolated resource function post \$validate(r4:FHIRContext fhirContext, Parameters params) returns r4:OperationOutcome|r4:FHIRError {
         return performValidateOperation("ConceptMap", params);
+    }
+
+    // Translate operation - ConceptMap/$translate
+    isolated resource function get \$translate(r4:FHIRContext fhirContext) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
+        string? system = getFirstSearchParam(sp, "system");
+        string? code = getFirstSearchParam(sp, "code");
+        string? targetSystem = getFirstSearchParam(sp, "targetsystem");
+        json|error result = terminology:translate(jdbcClient, (), (), system, code, targetSystem);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Translate operation - ConceptMap/[id]/$translate
+    isolated resource function get [string id]/\$translate(r4:FHIRContext fhirContext) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
+        string? system = getFirstSearchParam(sp, "system");
+        string? code = getFirstSearchParam(sp, "code");
+        string? targetSystem = getFirstSearchParam(sp, "targetsystem");
+        json|error result = terminology:translate(jdbcClient, (), id, system, code, targetSystem);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+	        any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Translate operation (POST) - ConceptMap/$translate
+    isolated resource function post \$translate(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        json|error result = terminology:translate(jdbcClient, params.toJson(), ());
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Translate operation (POST) - ConceptMap/[id]/$translate
+    isolated resource function post [string id]/\$translate(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        json|error result = terminology:translate(jdbcClient, params.toJson(), id);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Closure operation - ConceptMap/$closure
+    isolated resource function post \$closure(r4:FHIRContext fhirContext, Parameters params) returns ConceptMap|r4:OperationOutcome|r4:FHIRError {
+        json p = params.toJson();
+        string? name = terminology:getParameterString(p, "name");
+        string? version = terminology:getParameterString(p, "version");
+        map<json>[] concepts = terminology:getParameterCodings(p, "concept");
+        if name is () {
+            return r4:createFHIRError("Missing required parameter: name", r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+        }
+
+        json|error result;
+        if concepts.length() == 0 {
+            result = terminology:initClosure(jdbcClient, name);
+        } else {
+            result = terminology:addToClosure(jdbcClient, name, concepts, version);
+        }
+
+        if result is error {
+            return r4:createFHIRError(result.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, ConceptMap, "ConceptMap");
+            return <ConceptMap|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+}
+
+// // # CodeSystem API                                                                                                          #
+// 
+service /fhir/r4/CodeSystem on new fhirr4:Listener(config = r4_api_config:codesystemApiConfig) {
+    // Search for resources using /CodeSystem?params
+    isolated resource function get .(r4:FHIRContext fhirContext) returns r4:Bundle|r4:OperationOutcome|r4:FHIRError {
+        return performResourceSearch("CodeSystem", fhirContext);
+    }
+
+    // Read the current state of single resource based on its id.
+    isolated resource function get [string id](r4:FHIRContext fhirContext) returns CodeSystem|r4:OperationOutcome|r4:FHIRError {
+        any|r4:OperationOutcome|r4:FHIRError result = performResourceRead("CodeSystem", id);
+        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(result, CodeSystem, "CodeSystem");
+        return <CodeSystem|r4:OperationOutcome|r4:FHIRError>converted;
+    }
+
+    // Read the state of a specific version of a resource based on its id.
+    isolated resource function get [string id]/_history/[string vid](r4:FHIRContext fhirContext) returns CodeSystem|r4:OperationOutcome|r4:FHIRError {
+        any|r4:OperationOutcome|r4:FHIRError result = performResourceVersionRead("CodeSystem", id, vid);
+        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(result, CodeSystem, "CodeSystem");
+        return <CodeSystem|r4:OperationOutcome|r4:FHIRError>converted;
+    }
+
+    // Create a new resource.
+    isolated resource function post .(r4:FHIRContext fhirContext, CodeSystem codesystem) returns CodeSystem|r4:OperationOutcome|r4:FHIRError {
+        any|r4:OperationOutcome|r4:FHIRError result = performResourceCreate("CodeSystem", codesystem.toJson());
+        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(result, CodeSystem, "CodeSystem");
+        return <CodeSystem|r4:OperationOutcome|r4:FHIRError>converted;
+    }
+
+    // Update the current state of a resource completely.
+    isolated resource function put [string id](r4:FHIRContext fhirContext, CodeSystem codesystem) returns CodeSystem|r4:OperationOutcome|r4:FHIRError {
+        any|r4:OperationOutcome|r4:FHIRError result = performResourceUpdate("CodeSystem", id, codesystem.toJson());
+        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(result, CodeSystem, "CodeSystem");
+        return <CodeSystem|r4:OperationOutcome|r4:FHIRError>converted;
+    }
+
+    // Update the current state of a resource partially.
+    isolated resource function patch [string id](r4:FHIRContext fhirContext, json patch) returns CodeSystem|r4:OperationOutcome|r4:FHIRError {
+        any|r4:OperationOutcome|r4:FHIRError result = performResourcePatch("CodeSystem", id, patch);
+        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(result, CodeSystem, "CodeSystem");
+        return <CodeSystem|r4:OperationOutcome|r4:FHIRError>converted;
+    }
+
+    // Delete a resource.
+    isolated resource function delete [string id](r4:FHIRContext fhirContext) returns r4:OperationOutcome|r4:FHIRError {
+        return performResourceDelete("CodeSystem", id);
+    }
+
+    // Retrieve the update history for a particular resource.
+    isolated resource function get [string id]/_history(r4:FHIRContext fhirContext) returns r4:Bundle|r4:OperationOutcome|r4:FHIRError {
+        return performResourceHistory("CodeSystem", id);
+    }
+
+    // Retrieve the update history for all resources.
+    isolated resource function get _history(r4:FHIRContext fhirContext) returns r4:Bundle|r4:OperationOutcome|r4:FHIRError {
+        return performAllResourceHistory("CodeSystem");
+    }
+
+    // Validate operation - accepts Parameters resource containing the resource to validate
+    isolated resource function post \$validate(r4:FHIRContext fhirContext, Parameters params) returns r4:OperationOutcome|r4:FHIRError {
+        return performValidateOperation("CodeSystem", params);
+    }
+
+    // Lookup operation - CodeSystem/$lookup
+    isolated resource function get \$lookup(r4:FHIRContext fhirContext) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
+        string? system = getFirstSearchParam(sp, "system");
+        string? code = getFirstSearchParam(sp, "code");
+        json|error result = terminology:lookupCode(jdbcClient, (), (), system, code);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Lookup operation - CodeSystem/[id]/$lookup
+    isolated resource function get [string id]/\$lookup(r4:FHIRContext fhirContext) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
+        string? code = getFirstSearchParam(sp, "code");
+        json|error result = terminology:lookupCode(jdbcClient, (), id, (), code);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Lookup operation (POST) - CodeSystem/$lookup
+    isolated resource function post \$lookup(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        json|error result = terminology:lookupCode(jdbcClient, params.toJson(), ());
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Lookup operation (POST) - CodeSystem/[id]/$lookup
+    isolated resource function post [string id]/\$lookup(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        json|error result = terminology:lookupCode(jdbcClient, params.toJson(), id);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Subsumes operation - CodeSystem/$subsumes
+    isolated resource function get \$subsumes(r4:FHIRContext fhirContext) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
+        string? system = getFirstSearchParam(sp, "system");
+        string? codeA = getFirstSearchParam(sp, "codeA");
+        string? codeB = getFirstSearchParam(sp, "codeB");
+        json|error result = terminology:subsumes(jdbcClient, (), (), system, codeA, codeB);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Subsumes operation - CodeSystem/[id]/$subsumes
+    isolated resource function get [string id]/\$subsumes(r4:FHIRContext fhirContext) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
+        string? codeA = getFirstSearchParam(sp, "codeA");
+        string? codeB = getFirstSearchParam(sp, "codeB");
+        json|error result = terminology:subsumes(jdbcClient, (), id, (), codeA, codeB);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Subsumes operation (POST) - CodeSystem/$subsumes
+    isolated resource function post \$subsumes(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        json|error result = terminology:subsumes(jdbcClient, params.toJson(), ());
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Subsumes operation (POST) - CodeSystem/[id]/$subsumes
+    isolated resource function post [string id]/\$subsumes(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        json|error result = terminology:subsumes(jdbcClient, params.toJson(), id);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+}
+
+// // # ValueSet API                                                                                                          #
+// 
+service /fhir/r4/ValueSet on new fhirr4:Listener(config = r4_api_config:valuesetApiConfig) {
+    // Search for resources using /ValueSet?params
+    isolated resource function get .(r4:FHIRContext fhirContext) returns r4:Bundle|r4:OperationOutcome|r4:FHIRError {
+        return performResourceSearch("ValueSet", fhirContext);
+    }
+
+    // Read the current state of single resource based on its id.
+    isolated resource function get [string id](r4:FHIRContext fhirContext) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
+        any|r4:OperationOutcome|r4:FHIRError result = performResourceRead("ValueSet", id);
+        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(result, ValueSet, "ValueSet");
+        return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
+    }
+
+    // Read the state of a specific version of a resource based on its id.
+    isolated resource function get [string id]/_history/[string vid](r4:FHIRContext fhirContext) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
+        any|r4:OperationOutcome|r4:FHIRError result = performResourceVersionRead("ValueSet", id, vid);
+        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(result, ValueSet, "ValueSet");
+        return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
+    }
+
+    // Create a new resource.
+    isolated resource function post .(r4:FHIRContext fhirContext, ValueSet valueset) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
+        any|r4:OperationOutcome|r4:FHIRError result = performResourceCreate("ValueSet", valueset.toJson());
+        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(result, ValueSet, "ValueSet");
+        return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
+    }
+
+    // Update the current state of a resource completely.
+    isolated resource function put [string id](r4:FHIRContext fhirContext, ValueSet valueset) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
+        any|r4:OperationOutcome|r4:FHIRError result = performResourceUpdate("ValueSet", id, valueset.toJson());
+        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(result, ValueSet, "ValueSet");
+        return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
+    }
+
+    // Update the current state of a resource partially.
+    isolated resource function patch [string id](r4:FHIRContext fhirContext, json patch) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
+        any|r4:OperationOutcome|r4:FHIRError result = performResourcePatch("ValueSet", id, patch);
+        anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(result, ValueSet, "ValueSet");
+        return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
+    }
+
+    // Delete a resource.
+    isolated resource function delete [string id](r4:FHIRContext fhirContext) returns r4:OperationOutcome|r4:FHIRError {
+        return performResourceDelete("ValueSet", id);
+    }
+
+    // Retrieve the update history for a particular resource.
+    isolated resource function get [string id]/_history(r4:FHIRContext fhirContext) returns r4:Bundle|r4:OperationOutcome|r4:FHIRError {
+        return performResourceHistory("ValueSet", id);
+    }
+
+    // Retrieve the update history for all resources.
+    isolated resource function get _history(r4:FHIRContext fhirContext) returns r4:Bundle|r4:OperationOutcome|r4:FHIRError {
+        return performAllResourceHistory("ValueSet");
+    }
+
+    // Validate operation - accepts Parameters resource containing the resource to validate
+    isolated resource function post \$validate(r4:FHIRContext fhirContext, Parameters params) returns r4:OperationOutcome|r4:FHIRError {
+        return performValidateOperation("ValueSet", params);
+    }
+
+    // Expand operation - ValueSet/$expand
+    isolated resource function get \$expand(r4:FHIRContext fhirContext) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
+        map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
+        string? url = getFirstSearchParam(sp, "url");
+        string? filter = getFirstSearchParam(sp, "filter");
+        int?|error offsetRes = getFirstSearchParamAsInt(sp, "offset");
+        if offsetRes is error {
+            return r4:createFHIRError(offsetRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+        }
+        int? offset = offsetRes;
+        int?|error countRes = getFirstSearchParamAsInt(sp, "count");
+        if countRes is error {
+            return r4:createFHIRError(countRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+        }
+        int? count = countRes;
+        json|error result = terminology:expandValueSet(jdbcClient, (), (), url, filter, offset, count);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, ValueSet, "ValueSet");
+            return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Expand operation - ValueSet/[id]/$expand
+    isolated resource function get [string id]/\$expand(r4:FHIRContext fhirContext) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
+        map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
+        string? filter = getFirstSearchParam(sp, "filter");
+        int?|error offsetRes = getFirstSearchParamAsInt(sp, "offset");
+        if offsetRes is error {
+            return r4:createFHIRError(offsetRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+        }
+        int? offset = offsetRes;
+        int?|error countRes = getFirstSearchParamAsInt(sp, "count");
+        if countRes is error {
+            return r4:createFHIRError(countRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
+        }
+        int? count = countRes;
+        json|error result = terminology:expandValueSet(jdbcClient, (), id, (), filter, offset, count);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, ValueSet, "ValueSet");
+            return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Expand operation (POST) - ValueSet/$expand
+    isolated resource function post \$expand(r4:FHIRContext fhirContext, Parameters params) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
+        json|error result = terminology:expandValueSet(jdbcClient, params.toJson());
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, ValueSet, "ValueSet");
+            return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Expand operation (POST) - ValueSet/[id]/$expand
+    isolated resource function post [string id]/\$expand(r4:FHIRContext fhirContext, Parameters params) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
+        json|error result = terminology:expandValueSet(jdbcClient, params.toJson(), id);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, ValueSet, "ValueSet");
+            return <ValueSet|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Validate-code operation - ValueSet/$validate-code
+    isolated resource function get \$validate\-code(r4:FHIRContext fhirContext) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
+        string? url = getFirstSearchParam(sp, "url");
+        string? system = getFirstSearchParam(sp, "system");
+        string? code = getFirstSearchParam(sp, "code");
+        string? display = getFirstSearchParam(sp, "display");
+        json|error result = terminology:validateCodeInValueSet(jdbcClient, (), (), url, system, code, display);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Validate-code operation - ValueSet/[id]/$validate-code
+    isolated resource function get [string id]/\$validate\-code(r4:FHIRContext fhirContext) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
+        string? system = getFirstSearchParam(sp, "system");
+        string? code = getFirstSearchParam(sp, "code");
+        string? display = getFirstSearchParam(sp, "display");
+        json|error result = terminology:validateCodeInValueSet(jdbcClient, (), id, (), system, code, display);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Validate-code operation (POST) - ValueSet/$validate-code
+    isolated resource function post \$validate\-code(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        json|error result = terminology:validateCodeInValueSet(jdbcClient, params.toJson());
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
+    }
+
+    // Validate-code operation (POST) - ValueSet/[id]/$validate-code
+    isolated resource function post [string id]/\$validate\-code(r4:FHIRContext fhirContext, Parameters params) returns Parameters|r4:OperationOutcome|r4:FHIRError {
+        json|error result = terminology:validateCodeInValueSet(jdbcClient, params.toJson(), id);
+        if result is error {
+            return toTerminologyOpError(result);
+        }
+        do {
+            any parsed = check fhirParser:parse(result).ensureType();
+            anydata|r4:OperationOutcome|r4:FHIRError converted = convertToTypedResource(parsed, Parameters, "Parameters");
+            return <Parameters|r4:OperationOutcome|r4:FHIRError>converted;
+        } on fail var e {
+            return toTerminologyParseError(e);
+        }
     }
 }
 
