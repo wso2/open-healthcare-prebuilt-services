@@ -746,10 +746,10 @@ isolated function getFirstSearchParam(map<r4:RequestSearchParameter[]> searchPar
     return vals[0].value;
 }
 
-isolated function getFirstSearchParamAsInt(map<r4:RequestSearchParameter[]> searchParams, string name) returns int|error {
+isolated function getFirstSearchParamAsInt(map<r4:RequestSearchParameter[]> searchParams, string name) returns int?|error {
     string? v = getFirstSearchParam(searchParams, name);
     if v is () {
-        return 0;
+        return ();
     }
     int|error parsed = int:fromString(v);
     if parsed is int {
@@ -7221,16 +7221,16 @@ service /fhir/r4/ValueSet on new fhirr4:Listener(config = r4_api_config:valueset
         map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
         string? url = getFirstSearchParam(sp, "url");
         string? filter = getFirstSearchParam(sp, "filter");
-        int|error offsetRes = getFirstSearchParamAsInt(sp, "offset");
+        int?|error offsetRes = getFirstSearchParamAsInt(sp, "offset");
         if offsetRes is error {
             return r4:createFHIRError(offsetRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
         }
-        int offset = offsetRes;
-        int|error countRes = getFirstSearchParamAsInt(sp, "count");
+        int? offset = offsetRes;
+        int?|error countRes = getFirstSearchParamAsInt(sp, "count");
         if countRes is error {
             return r4:createFHIRError(countRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
         }
-        int count = countRes;
+        int? count = countRes;
         json|error result = terminology:expandValueSet(jdbcClient, (), (), url, filter, offset, count);
         if result is error {
             return toTerminologyOpError(result);
@@ -7248,16 +7248,16 @@ service /fhir/r4/ValueSet on new fhirr4:Listener(config = r4_api_config:valueset
     isolated resource function get [string id]/\$expand(r4:FHIRContext fhirContext) returns ValueSet|r4:OperationOutcome|r4:FHIRError {
         map<r4:RequestSearchParameter[]> sp = fhirContext.getRequestSearchParameters();
         string? filter = getFirstSearchParam(sp, "filter");
-        int|error offsetRes = getFirstSearchParamAsInt(sp, "offset");
+        int?|error offsetRes = getFirstSearchParamAsInt(sp, "offset");
         if offsetRes is error {
             return r4:createFHIRError(offsetRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
         }
-        int offset = offsetRes;
-        int|error countRes = getFirstSearchParamAsInt(sp, "count");
+        int? offset = offsetRes;
+        int?|error countRes = getFirstSearchParamAsInt(sp, "count");
         if countRes is error {
             return r4:createFHIRError(countRes.message(), r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
         }
-        int count = countRes;
+        int? count = countRes;
         json|error result = terminology:expandValueSet(jdbcClient, (), id, (), filter, offset, count);
         if result is error {
             return toTerminologyOpError(result);
