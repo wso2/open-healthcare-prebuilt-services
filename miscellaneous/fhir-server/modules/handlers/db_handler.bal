@@ -83,31 +83,33 @@ public class DBHandler {
             log:printInfo(string `No existing tables found. Creating database schema for the first time (${self.databaseProvider.getDatabaseType()})...`);
         }
 
-        error? schemaError = self.retreiveQueriesFromSchema();
-        if schemaError is error {
-            log:printError("Failed to read database schema file: " + schemaError.message());
-            return schemaError;
-        }
-
-        foreach sql:ParameterizedQuery createQuery in self.createQueries {
-            sql:ParameterizedQuery query = createQuery;
-            log:printDebug("Executing database schema creation query");
-            sql:ExecutionResult|sql:Error execResult = jdbcClient->execute(query);
-            if execResult is sql:Error {
-                // Ignore errors if table already exists during migration
-                log:printDebug("Failed to execute query (might already exist): " + execResult.message());
+        // Only perform automatic schema creation for H2.
+        // For PostgreSQL (and other DBs), the schema must be created externally.
+        if self.databaseProvider.getDatabaseType().toLowerAscii().trim() == "h2" {
+            error? schemaError = self.retreiveQueriesFromSchema();
+            if schemaError is error {
+                log:printError("Failed to load embedded H2 database schema: " + schemaError.message());
+                return schemaError;
             }
-        }
 
-        // Update or create schema version marker
-        // Note: MERGE is H2 specific, but for PostgreSQL we'd use ON CONFLICT. 
-        // Given the requirement to keep it simple and the current structure, 
-        // I will use a simple INSERT and ignore failure if it exists, or update.
-        // Actually, let's use a more portable approach if possible, or handle by provider.
-        
-        // For now, let's just try to insert/update simply.
-        _ = check jdbcClient->execute(`DELETE FROM "SCHEMA_VERSION"`);
-        _ = check jdbcClient->execute(`INSERT INTO "SCHEMA_VERSION" ("VERSION") VALUES (${self.CURRENT_SCHEMA_VERSION})`);
+            foreach sql:ParameterizedQuery createQuery in self.createQueries {
+                sql:ParameterizedQuery query = createQuery;
+                log:printDebug("Executing database schema creation query");
+                sql:ExecutionResult|sql:Error execResult = jdbcClient->execute(query);
+                if execResult is sql:Error {
+                    // Ignore errors if table already exists during migration
+                    log:printDebug("Failed to execute query (might already exist): " + execResult.message());
+                }
+            }
+
+            // Update or create schema version marker for H2.
+            _ = check jdbcClient->execute(`DELETE FROM "SCHEMA_VERSION"`);
+            _ = check jdbcClient->execute(`INSERT INTO "SCHEMA_VERSION" ("VERSION") VALUES (${self.CURRENT_SCHEMA_VERSION})`);
+            log:printInfo(string `H2 database schema updated to version ${self.CURRENT_SCHEMA_VERSION}`);
+        } else {
+            log:printInfo(string `Skipping automatic schema creation for database type ${self.databaseProvider.getDatabaseType()}. ` +
+                "Ensure schema (including SCHEMA_VERSION) is created separately.");
+        }
 
         error? isSearchParamsPopulated = self.populateSearchParamExpressionTable(jdbcClient);
         if isSearchParamsPopulated is error {
@@ -125,8 +127,10 @@ public class DBHandler {
     }
 
     private function retreiveQueriesFromSchema() returns error? {
-        string schemaFilePath = self.databaseProvider.getSchemaFilePath();
-        string[] readLines = check io:fileReadLines(schemaFilePath);
+        // Parse the embedded H2 schema string into individual lines using RegExp,
+        // so we can reuse the existing query extraction logic.
+        final string:RegExp lineSeparator = re `\n`;
+        string[] readLines = lineSeparator.split(H2_SCHEMA_SQL);
 
         boolean inCreateQuery = false;
         string currentCreateQuery = "";
@@ -185,7 +189,19 @@ public class DBHandler {
 
     private function populateSearchParamExpressionTable(jdbc:Client jdbcClient) returns error? {
         final string dataFilePath = "./assets/r4-searchParam-Expression.csv";
-        final string[] readLines = check io:fileReadLines(dataFilePath);
+        string[] readLines;
+
+        // Prefer the CSV asset file when available; if not, fall back to the
+        // embedded CSV string so Docker / restricted environments still work.
+        string[]|error fileLines = io:fileReadLines(dataFilePath);
+        if fileLines is error {
+            log:printDebug("Failed to read search parameter CSV file, falling back to embedded CSV: " + fileLines.message());
+            final string:RegExp lineSeparator = re `\n`;
+            readLines = lineSeparator.split(SEARCH_PARAM_EXPRESSIONS_CSV);
+        } else {
+            readLines = fileLines;
+        }
+
         final string:RegExp regex = re `,`;
         int i = 0;
 
@@ -205,10 +221,19 @@ public class DBHandler {
                 string searchParamType = data[2];
                 string expression = data[3];
 
-                string sqlQuery = string `INSERT INTO "SEARCH_PARAM_RES_EXPRESSIONS" ("SEARCH_PARAM_NAME", "SEARCH_PARAM_TYPE", "RESOURCE_NAME", "EXPRESSION") VALUES ('${utils:escapeSql(searchParamName)}', '${utils:escapeSql(searchParamType)}', '${utils:escapeSql('resource)}', '${utils:escapeSql(expression)}')`;
-                sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
-
-                _ = check jdbcClient->execute(query);
+                // Only insert if this (name, type, resource) combination does not already exist.
+                sql:ParameterizedQuery existsQuery = `SELECT COUNT(*) AS count FROM "SEARCH_PARAM_RES_EXPRESSIONS"
+                    WHERE "SEARCH_PARAM_NAME" = ${searchParamName}
+                      AND "SEARCH_PARAM_TYPE" = ${searchParamType}
+                      AND "RESOURCE_NAME" = ${'resource}`;
+                int existingCount = check jdbcClient->queryRow(existsQuery);
+                if existingCount == 0 {
+                    string sqlQuery = string `INSERT INTO "SEARCH_PARAM_RES_EXPRESSIONS"
+                        ("SEARCH_PARAM_NAME", "SEARCH_PARAM_TYPE", "RESOURCE_NAME", "EXPRESSION")
+                        VALUES ('${utils:escapeSql(searchParamName)}', '${utils:escapeSql(searchParamType)}', '${utils:escapeSql('resource)}', '${utils:escapeSql(expression)}')`;
+                    sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
+                    _ = check jdbcClient->execute(query);
+                }
             }
         }
         log:printInfo(string `Populated SEARCH_PARAM_RES_EXPRESSIONS table with ${i - 1} records from CSV`);
