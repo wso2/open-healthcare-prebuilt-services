@@ -506,6 +506,31 @@ public isolated class TerminologySource {
 
         return concepts;
     }
+
+    public isolated function addConceptMap(r4:ConceptMap conceptMap) returns r4:FHIRError? {
+        return;
+    }
+
+    public isolated function findConceptMaps(r4:uri sourceValueSetUri, r4:uri? targetValueSetUri) returns r4:ConceptMap[]|r4:FHIRError {
+        return [];
+    }
+
+    public isolated function getConceptMap(r4:uri conceptMapUrl, string? version) returns r4:ConceptMap|r4:FHIRError {
+        return r4:createFHIRError(
+                "ConceptMap operation not yet implemented",
+                r4:ERROR,
+                r4:PROCESSING_NOT_FOUND,
+                cause = error("ConceptMap retrieval not supported"),
+                httpStatusCode = http:STATUS_NOT_IMPLEMENTED);
+    }
+
+    public isolated function isConceptMapExist(r4:uri system, string version) returns boolean {
+        return false;
+    }
+
+    public isolated function searchConceptMap(map<r4:RequestSearchParameter[]> params, int? offset, int? count) returns r4:ConceptMap[]|r4:FHIRError {
+        return [];
+    }
 }
 
 isolated function isInParentChain(int targetAncestorId, ConceptNode currentNode) returns boolean {
