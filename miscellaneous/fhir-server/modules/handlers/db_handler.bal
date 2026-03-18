@@ -105,6 +105,7 @@ public class DBHandler {
             // Update or create schema version marker for H2.
             _ = check jdbcClient->execute(`DELETE FROM "SCHEMA_VERSION"`);
             _ = check jdbcClient->execute(`INSERT INTO "SCHEMA_VERSION" ("VERSION") VALUES (${self.CURRENT_SCHEMA_VERSION})`);
+            log:printInfo(string `H2 database schema updated to version ${self.CURRENT_SCHEMA_VERSION}`);
         } else {
             log:printInfo(string `Skipping automatic schema creation for database type ${self.databaseProvider.getDatabaseType()}. ` +
                 "Ensure schema (including SCHEMA_VERSION) is created separately.");
