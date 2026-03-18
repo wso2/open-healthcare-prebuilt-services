@@ -44,17 +44,16 @@ configurable v2tofhirr4:V2ToFhirCustomMapperServiceConfig customMapper = {
 service / on new http:Listener(9090) {
 
     resource function post transform(@http:Payload string hl7Message) returns V2ToFhirResponse|V2ToFhirBadRequest|V2ToFhirInternalServerError {
-        json|error v2tofhirResult = v2tofhirr4:v2ToFhir(hl7Message, mapperServiceConf = customMapper);
+
+        json|error? v2tofhirResult = trap v2tofhirr4:v2ToFhir(hl7Message, mapperServiceConf = customMapper);
         if v2tofhirResult is json {
             log:printDebug("Successfully transformed the HL7 message to FHIR.");
             return {body: v2tofhirResult};
-        }
-        else if v2tofhirResult is hl7v2:HL7Error {
+        } else if v2tofhirResult is hl7v2:HL7Error {
             string msg = v2tofhirResult.detail().message ?: v2tofhirResult.message();
             log:printError("Failed to transform the HL7 message to FHIR. HL7 message is malformed. Error: ", 'error = v2tofhirResult);
             return <V2ToFhirBadRequest>{body: string `HL7 message is malformed. Error: ${msg} .`};
-        }
-        else {
+        } else {
             log:printError("Unable to convert HL7 message to FHIR. Error: ", 'error = v2tofhirResult);
             return <V2ToFhirInternalServerError>{body: "Unable to convert HL7 message to FHIR."};
         }
