@@ -468,6 +468,1486 @@ paths:
           content:
             application/json:
               schema: {}
+  /CodeSystem:
+    get:
+      tags:
+        - GET
+        - CodeSystem
+      summary: search CodeSystem
+      description: This operation is used to search a CodeSystem
+      parameters:
+        - name: publisher
+          in: query
+          description: Name of the publisher of the code system
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: status
+          in: query
+          description: The current status of the code system
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: name
+          in: query
+          description: Computationally friendly name of the code system
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: title
+          in: query
+          description: The human-friendly name of the code system
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: description
+          in: query
+          description: The description of the code system
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: jurisdiction
+          in: query
+          description: Intended jurisdiction for the code system
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: url
+          in: query
+          description: The uri that identifies the code system
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: uri
+        - name: version
+          in: query
+          description: The business version of the code system
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: identifier
+          in: query
+          description: External identifier for the code system
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: code
+          in: query
+          description: A code defined in the code system
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: language
+          in: query
+          description: A language in which a designation is provided
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - $ref: '#/components/parameters/_lastUpdatedParam'
+        - $ref: '#/components/parameters/_securityParam'
+        - $ref: '#/components/parameters/_tagParam'
+        - $ref: '#/components/parameters/_idParam'
+        - $ref: '#/components/parameters/_sourceParam'
+        - $ref: '#/components/parameters/_profileParam'
+      responses:
+        "200":
+          description: search CodeSystem operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Bundle'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - CodeSystem
+      summary: create CodeSystem
+      description: This operation is used to create a CodeSystem
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/CodeSystem'
+        required: true
+      responses:
+        "201":
+          description: create CodeSystem operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/CodeSystem'
+      security:
+        - default: []
+  /CodeSystem/_history:
+    get:
+      tags:
+        - GET
+        - CodeSystem
+        - History
+      summary: history for all CodeSystem resources
+      responses:
+        "200":
+          description: CodeSystem type history successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Bundle'
+      security:
+        - default: []
+  /CodeSystem/$validate:
+    post:
+      tags:
+        - POST
+        - CodeSystem
+        - Operation
+      summary: validate CodeSystem resource
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: validate CodeSystem operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/OperationOutcome'
+      security:
+        - default: []
+  /CodeSystem/$lookup:
+    get:
+      tags:
+        - GET
+        - CodeSystem
+        - Operation
+      summary: CodeSystem $lookup (GET)
+      parameters:
+        - name: system
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: lookup successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - CodeSystem
+        - Operation
+      summary: CodeSystem $lookup (POST)
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: lookup successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+  /CodeSystem/$subsumes:
+    get:
+      tags:
+        - GET
+        - CodeSystem
+        - Operation
+      summary: CodeSystem $subsumes (GET)
+      parameters:
+        - name: system
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: codeA
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: codeB
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: subsumes successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - CodeSystem
+        - Operation
+      summary: CodeSystem $subsumes (POST)
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: subsumes successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+  /CodeSystem/{id}:
+    get:
+      tags:
+        - GET
+        - CodeSystem
+      summary: read CodeSystem
+      description: This operation is used to read a CodeSystem
+      parameters:
+        - name: id
+          in: path
+          description: logical identifier
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: read CodeSystem operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/CodeSystem'
+      security:
+        - default: []
+    put:
+      tags:
+        - PUT
+        - CodeSystem
+      summary: update CodeSystem
+      parameters:
+        - name: id
+          in: path
+          description: logical identifier
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/CodeSystem'
+        required: true
+      responses:
+        "200":
+          description: update CodeSystem operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/CodeSystem'
+      security:
+        - default: []
+    patch:
+      tags:
+        - PATCH
+        - CodeSystem
+      parameters:
+        - name: id
+          in: path
+          description: logical identifier
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json-patch+json:
+            schema:
+              type: array
+              items:
+                type: object
+        required: true
+      responses:
+        "200":
+          description: patch CodeSystem operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/CodeSystem'
+      security:
+        - default: []
+    delete:
+      tags:
+        - DELETE
+        - CodeSystem
+      parameters:
+        - name: id
+          in: path
+          description: logical identifier
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: delete CodeSystem operation successful
+      security:
+        - default: []
+  /CodeSystem/{id}/_history:
+    get:
+      tags:
+        - GET
+        - CodeSystem
+        - History
+      summary: history for a CodeSystem instance
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: instance history successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Bundle'
+      security:
+        - default: []
+  /CodeSystem/{id}/_history/{vid}:
+    get:
+      tags:
+        - GET
+        - CodeSystem
+        - History
+      summary: vread CodeSystem
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: vid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: version read successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/CodeSystem'
+      security:
+        - default: []
+  /CodeSystem/{id}/$lookup:
+    get:
+      tags:
+        - GET
+        - CodeSystem
+        - Operation
+      summary: CodeSystem instance $lookup (GET)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: lookup successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - CodeSystem
+        - Operation
+      summary: CodeSystem instance $lookup (POST)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: lookup successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+  /CodeSystem/{id}/$subsumes:
+    get:
+      tags:
+        - GET
+        - CodeSystem
+        - Operation
+      summary: CodeSystem instance $subsumes (GET)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: codeA
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: codeB
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: subsumes successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - CodeSystem
+        - Operation
+      summary: CodeSystem instance $subsumes (POST)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: subsumes successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+  /ValueSet:
+    get:
+      tags:
+        - GET
+        - ValueSet
+      summary: search ValueSet
+      description: This operation is used to search a ValueSet
+      parameters:
+        - name: publisher
+          in: query
+          description: Name of the publisher of the value set
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: status
+          in: query
+          description: The current status of the value set
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: name
+          in: query
+          description: Computationally friendly name of the value set
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: title
+          in: query
+          description: The human-friendly name of the value set
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: description
+          in: query
+          description: The description of the value set
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: jurisdiction
+          in: query
+          description: Intended jurisdiction for the value set
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: url
+          in: query
+          description: The uri that identifies the value set
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: uri
+        - name: version
+          in: query
+          description: The business version of the value set
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: identifier
+          in: query
+          description: External identifier for the value set
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: code
+          in: query
+          description: Code that is in the value set
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - $ref: '#/components/parameters/_lastUpdatedParam'
+        - $ref: '#/components/parameters/_securityParam'
+        - $ref: '#/components/parameters/_tagParam'
+        - $ref: '#/components/parameters/_idParam'
+        - $ref: '#/components/parameters/_sourceParam'
+        - $ref: '#/components/parameters/_profileParam'
+      responses:
+        "200":
+          description: search ValueSet operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Bundle'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - ValueSet
+      summary: create ValueSet
+      description: This operation is used to create a ValueSet
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/ValueSet'
+        required: true
+      responses:
+        "201":
+          description: create ValueSet operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ValueSet'
+      security:
+        - default: []
+  /ValueSet/_history:
+    get:
+      tags:
+        - GET
+        - ValueSet
+        - History
+      summary: history for all ValueSet resources
+      responses:
+        "200":
+          description: ValueSet type history successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Bundle'
+      security:
+        - default: []
+  /ValueSet/$validate:
+    post:
+      tags:
+        - POST
+        - ValueSet
+        - Operation
+      summary: validate ValueSet resource
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: validate ValueSet operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/OperationOutcome'
+      security:
+        - default: []
+  /ValueSet/$expand:
+    get:
+      tags:
+        - GET
+        - ValueSet
+        - Operation
+      summary: ValueSet $expand (GET)
+      parameters:
+        - name: url
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: filter
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: expand successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ValueSet'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - ValueSet
+        - Operation
+      summary: ValueSet $expand (POST)
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: expand successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ValueSet'
+      security:
+        - default: []
+  /ValueSet/$validate-code:
+    get:
+      tags:
+        - GET
+        - ValueSet
+        - Operation
+      summary: ValueSet $validate-code (GET)
+      parameters:
+        - name: url
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: system
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: display
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: validate-code successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - ValueSet
+        - Operation
+      summary: ValueSet $validate-code (POST)
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: validate-code successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+  /ValueSet/{id}:
+    get:
+      tags:
+        - GET
+        - ValueSet
+      summary: read ValueSet
+      description: This operation is used to read a ValueSet
+      parameters:
+        - name: id
+          in: path
+          description: logical identifier
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: read ValueSet operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ValueSet'
+      security:
+        - default: []
+    put:
+      tags:
+        - PUT
+        - ValueSet
+      summary: update ValueSet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/ValueSet'
+        required: true
+      responses:
+        "200":
+          description: update ValueSet operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ValueSet'
+      security:
+        - default: []
+    patch:
+      tags:
+        - PATCH
+        - ValueSet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json-patch+json:
+            schema:
+              type: array
+              items:
+                type: object
+        required: true
+      responses:
+        "200":
+          description: patch ValueSet operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ValueSet'
+      security:
+        - default: []
+    delete:
+      tags:
+        - DELETE
+        - ValueSet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: delete ValueSet operation successful
+      security:
+        - default: []
+  /ValueSet/{id}/_history:
+    get:
+      tags:
+        - GET
+        - ValueSet
+        - History
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: instance history successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Bundle'
+      security:
+        - default: []
+  /ValueSet/{id}/_history/{vid}:
+    get:
+      tags:
+        - GET
+        - ValueSet
+        - History
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: vid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: version read successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ValueSet'
+      security:
+        - default: []
+  /ValueSet/{id}/$expand:
+    get:
+      tags:
+        - GET
+        - ValueSet
+        - Operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filter
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: expand successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ValueSet'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - ValueSet
+        - Operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: expand successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ValueSet'
+      security:
+        - default: []
+  /ValueSet/{id}/$validate-code:
+    get:
+      tags:
+        - GET
+        - ValueSet
+        - Operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: system
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: display
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: validate-code successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - ValueSet
+        - Operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: validate-code successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+  /ConceptMap:
+    get:
+      tags:
+        - GET
+        - ConceptMap
+      summary: search ConceptMap
+      description: This operation is used to search a ConceptMap
+      parameters:
+        - name: publisher
+          in: query
+          description: Name of the publisher of the concept map
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: status
+          in: query
+          description: The current status of the concept map
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: name
+          in: query
+          description: Computationally friendly name of the concept map
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: title
+          in: query
+          description: The human-friendly name of the concept map
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: description
+          in: query
+          description: The description of the concept map
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: string
+        - name: jurisdiction
+          in: query
+          description: Intended jurisdiction for the concept map
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: url
+          in: query
+          description: The uri that identifies the concept map
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: uri
+        - name: version
+          in: query
+          description: The business version of the concept map
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: identifier
+          in: query
+          description: External identifier for the concept map
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: token
+        - name: source
+          in: query
+          description: The source value set that contains the concepts that are being mapped
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: reference
+        - name: target
+          in: query
+          description: The target value set which provides context for the mappings
+          required: false
+          schema:
+            type: string
+          x-wso2-oh-fhirType: reference
+        - $ref: '#/components/parameters/_lastUpdatedParam'
+        - $ref: '#/components/parameters/_securityParam'
+        - $ref: '#/components/parameters/_tagParam'
+        - $ref: '#/components/parameters/_idParam'
+        - $ref: '#/components/parameters/_sourceParam'
+        - $ref: '#/components/parameters/_profileParam'
+      responses:
+        "200":
+          description: search ConceptMap operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Bundle'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - ConceptMap
+      summary: create ConceptMap
+      description: This operation is used to create a ConceptMap
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/ConceptMap'
+        required: true
+      responses:
+        "201":
+          description: create ConceptMap operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ConceptMap'
+      security:
+        - default: []
+  /ConceptMap/_history:
+    get:
+      tags:
+        - GET
+        - ConceptMap
+        - History
+      summary: history for all ConceptMap resources
+      responses:
+        "200":
+          description: ConceptMap type history successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Bundle'
+      security:
+        - default: []
+  /ConceptMap/$validate:
+    post:
+      tags:
+        - POST
+        - ConceptMap
+        - Operation
+      summary: validate ConceptMap resource
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: validate ConceptMap operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/OperationOutcome'
+      security:
+        - default: []
+  /ConceptMap/$translate:
+    get:
+      tags:
+        - GET
+        - ConceptMap
+        - Operation
+      summary: ConceptMap $translate (GET)
+      parameters:
+        - name: system
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: targetsystem
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: translate successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - ConceptMap
+        - Operation
+      summary: ConceptMap $translate (POST)
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: translate successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+  /ConceptMap/$closure:
+    post:
+      tags:
+        - POST
+        - ConceptMap
+        - Operation
+      summary: ConceptMap $closure (init or add to closure table)
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: closure operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ConceptMap'
+      security:
+        - default: []
+  /ConceptMap/{id}:
+    get:
+      tags:
+        - GET
+        - ConceptMap
+      summary: read ConceptMap
+      description: This operation is used to read a ConceptMap
+      parameters:
+        - name: id
+          in: path
+          description: logical identifier
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: read ConceptMap operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ConceptMap'
+      security:
+        - default: []
+    put:
+      tags:
+        - PUT
+        - ConceptMap
+      summary: update ConceptMap
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/ConceptMap'
+        required: true
+      responses:
+        "200":
+          description: update ConceptMap operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ConceptMap'
+      security:
+        - default: []
+    patch:
+      tags:
+        - PATCH
+        - ConceptMap
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json-patch+json:
+            schema:
+              type: array
+              items:
+                type: object
+        required: true
+      responses:
+        "200":
+          description: patch ConceptMap operation successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ConceptMap'
+      security:
+        - default: []
+    delete:
+      tags:
+        - DELETE
+        - ConceptMap
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: delete ConceptMap operation successful
+      security:
+        - default: []
+  /ConceptMap/{id}/_history:
+    get:
+      tags:
+        - GET
+        - ConceptMap
+        - History
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: instance history successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Bundle'
+      security:
+        - default: []
+  /ConceptMap/{id}/_history/{vid}:
+    get:
+      tags:
+        - GET
+        - ConceptMap
+        - History
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: vid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: version read successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/ConceptMap'
+      security:
+        - default: []
+  /ConceptMap/{id}/$translate:
+    get:
+      tags:
+        - GET
+        - ConceptMap
+        - Operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: system
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: targetsystem
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: translate successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
+    post:
+      tags:
+        - POST
+        - ConceptMap
+        - Operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/fhir+json:
+            schema:
+              $ref: '#/components/schemas/Parameters'
+        required: true
+      responses:
+        "200":
+          description: translate successful
+          content:
+            application/fhir+json:
+              schema:
+                $ref: '#/components/schemas/Parameters'
+      security:
+        - default: []
   /Appointment:
     get:
       tags:
