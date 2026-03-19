@@ -20,7 +20,7 @@ if errorlevel 1 (
 )
 
 cd /d "%ROOT_DIR%"
-echo Starting FHIR Server using %JAR_NAME%...
+echo Starting FHIR Server...
 echo Server will be available at: http://localhost:9090
 echo.
 
