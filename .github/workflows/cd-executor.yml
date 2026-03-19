@@ -1,23 +1,57 @@
 name: Publish Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_target:
+        description: "Release target"
+        type: choice
+        required: true
+        options:
+          - package
+          - fhir-server
+      working_dir:
+        description: "Working directory (required when release_target=package)"
+        type: string
+        required: false
+      fhir_version:
+        description: "Optional fhir-server release version override"
+        type: string
+        required: false
   workflow_call:
     inputs:
+      release_target:
+        description: "Release target"
+        type: string
+        required: false
+        default: "package"
       working_dir:
         description: "Working directory"
         type: string
-        required: true
+        required: false
+      fhir_version:
+        description: "Optional fhir-server release version override"
+        type: string
+        required: false
 
 env:
   BALLERINA_VERSION: 2201.12.10
 
 jobs:
   release:
+    if: ${{ inputs.release_target != 'fhir-server' }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Validate working directory input
+        run: |
+          if [ -z "${{ inputs.working_dir }}" ]; then
+            echo "Error: inputs.working_dir is required when release_target is package."
+            exit 1
+          fi
 
       - name: Set Up Ballerina
         uses: ballerina-platform/setup-ballerina@v1.1.0
@@ -121,3 +155,10 @@ jobs:
           PR_URL=$(echo $RESPONSE | jq -r '.html_url')
 
           echo "Pull Request created: $PR_URL"
+
+  release-fhir-server:
+    if: ${{ inputs.release_target == 'fhir-server' }}
+    uses: ./.github/workflows/release-fhir-server.yml
+    secrets: inherit
+    with:
+      version: ${{ inputs.fhir_version }}
