@@ -91,7 +91,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "ftp"
-version = "2.17.1"
+version = "2.16.0"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "data.csv"},
@@ -385,7 +385,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "ballerina_fhir_server"
-version = "2.0.1"
+version = "1.0.0"
 dependencies = [
 	{org = "ballerina", name = "file"},
 	{org = "ballerina", name = "http"},
