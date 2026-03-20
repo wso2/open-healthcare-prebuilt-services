@@ -1,0 +1,92 @@
+name: FHIR Server Release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Optional release version override (defaults to Ballerina.toml version)"
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional release version override (defaults to Ballerina.toml version)"
+        required: false
+        type: string
+  push:
+    tags:
+      - "fhir-server-v*"
+
+env:
+  BALLERINA_VERSION: 2201.12.10
+  WORKING_DIR: miscellaneous/fhir-server
+
+jobs:
+  build-and-zip:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Ballerina
+        uses: ballerina-platform/setup-ballerina@v1.1.0
+        with:
+          version: ${{ env.BALLERINA_VERSION }}
+
+      - name: Build FHIR server
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          bal build
+
+      - name: Resolve release version
+        id: version
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          TOML_VERSION=$(grep -m 1 'version =' Ballerina.toml | cut -d '=' -f2 | tr -d ' "')
+          VERSION_INPUT="${{ inputs.version }}"
+          if [ -n "${VERSION_INPUT}" ]; then
+            VERSION="${VERSION_INPUT}"
+          else
+            VERSION="${TOML_VERSION}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release zip
+        id: zip
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP_NAME="fhir-server-${VERSION}.zip"
+
+          ZIP_STAGING_DIR="$(mktemp -d)"
+
+          cp "${{ env.WORKING_DIR }}/target/bin/ballerina_fhir_server.jar" "${ZIP_STAGING_DIR}/ballerina_fhir_server.jar"
+          cp "${{ env.WORKING_DIR }}/server.sh" "${ZIP_STAGING_DIR}/server.sh"
+          cp "${{ env.WORKING_DIR }}/server.bat" "${ZIP_STAGING_DIR}/server.bat"
+          cp "${{ env.WORKING_DIR }}/assets/sample-Config.toml" "${ZIP_STAGING_DIR}/Config.toml"
+
+          chmod +x "${ZIP_STAGING_DIR}/server.sh"
+
+          (cd "${ZIP_STAGING_DIR}" && zip -r "${GITHUB_WORKSPACE}/${{ env.WORKING_DIR }}/${ZIP_NAME}" .)
+
+          echo "zip_path=${{ env.WORKING_DIR }}/${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.zip.outputs.zip_name }}
+          path: ${{ steps.zip.outputs.zip_path }}
+          if-no-files-found: error
+
+      - name: Upload zip to GitHub Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.zip.outputs.zip_path }}
