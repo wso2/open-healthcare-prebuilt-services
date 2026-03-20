@@ -20,7 +20,5 @@ fi
 
 cd "${ROOT_DIR}"
 echo "Starting FHIR Server..."
-echo "Server will be available at: http://localhost:9090"
-echo ""
 
 exec java ${JAVA_OPTS:-} -jar "${JAR_PATH}"
