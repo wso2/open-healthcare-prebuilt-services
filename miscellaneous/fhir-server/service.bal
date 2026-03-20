@@ -26,6 +26,7 @@ import ballerina_fhir_server.terminology as terminology;
 import ballerina/file;
 import ballerina/http;
 import ballerina/io;
+import ballerina/lang.runtime;
 import ballerina/log;
 import ballerina/time;
 import ballerina/uuid;
@@ -349,6 +350,8 @@ public type Location international401:Location;
 final handlers:DBHandler dbHandler = check new handlers:DBHandler();
 final jdbc:Client jdbcClient = check dbHandler.initializeJdbcClient();
 
+listener http:Listener httpListener = http:getDefaultListener();
+
 // Export Job Management
 type ExportJobStatus "in-progress"|"completed"|"failed";
 
@@ -385,7 +388,20 @@ function init() returns error? {
         log:printError("Failed to load custom profiles: " + profileLoadStatus.message());
     }
 
+    int httpPort = httpListener.getPort();
+    readonly & http:InferredListenerConfiguration lnConfig = httpListener.getConfig();
+    string bindHost = lnConfig.host;
+    string displayHost = bindHost;
+    if bindHost == "" || bindHost == "0.0.0.0" {
+        displayHost = "localhost";
+    }
     log:printInfo("FHIR Server started successfully");
+    log:printInfo(string `FHIR Server is listening at http://${displayHost}:${httpPort} (base path /fhir/r4)`);
+
+    runtime:onGracefulStop(function () returns error? {
+        log:printInfo(string `FHIR Server shutting down gracefully.`);
+        return;
+    });
     // Ensure Device/fhir-server exists for AuditEvent logging
     handlers:ReadHandler readHandler = new handlers:ReadHandler();
     json|error deviceResult = readHandler.readResource(jdbcClient, "Device", "fhir-server");
@@ -431,8 +447,6 @@ function init() returns error? {
     }
     log:printInfo("Terminology Service profiles Registration Completed");
 }
-
-listener http:Listener httpListener = http:getDefaultListener();
 
 # initialize source system endpoints here
 

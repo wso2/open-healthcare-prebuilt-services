@@ -21,7 +21,5 @@ if errorlevel 1 (
 
 cd /d "%ROOT_DIR%"
 echo Starting FHIR Server...
-echo Server will be available at: http://localhost:9090
-echo.
 
 java %JAVA_OPTS% -jar "%JAR_PATH%"

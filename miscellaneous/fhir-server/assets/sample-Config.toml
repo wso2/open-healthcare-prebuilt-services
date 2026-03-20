@@ -34,3 +34,12 @@
 #[ballerinax.health.fhir.r4.parser]
 # Validate resources against profiles during parsing.
 #validateAgainstProfile = false
+
+[[ballerina.log.destinations]]
+type = "stderr"
+
+[[ballerina.log.destinations]]
+path = "./logs/server.log"
+[ballerina.log.destinations.rotation]
+policy = "TIME_BASED"
+maxAge = 86400
