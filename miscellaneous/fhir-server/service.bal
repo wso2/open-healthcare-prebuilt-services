@@ -1353,6 +1353,28 @@ function initiateExportOperation(string resourceType, r4:FHIRContext fhirContext
         }
     }
 
+    // Extract _since parameter (FHIR instant - resources updated after this time)
+    string? sinceFilter = ();
+    r4:RequestSearchParameter[]? sinceParams = searchParams["_since"];
+    if sinceParams is r4:RequestSearchParameter[] && sinceParams.length() > 0 {
+        string? sinceValue = sinceParams[0].value;
+        if sinceValue is string && sinceValue.trim().length() > 0 {
+            string trimmedSince = sinceValue.trim();
+            // Validate the _since value is a valid FHIR instant (ISO 8601)
+            time:Utc|error parsedTime = time:utcFromString(trimmedSince);
+            if parsedTime is error {
+                return r4:createFHIRError(
+                    "Invalid _since parameter format. Expected FHIR instant: YYYY-MM-DDThh:mm:ss.sss+zz:zz or YYYY-MM-DDThh:mm:ssZ",
+                    r4:ERROR,
+                    r4:PROCESSING,
+                    httpStatusCode = http:STATUS_BAD_REQUEST
+                );
+            }
+            sinceFilter = trimmedSince;
+            log:printDebug(string `Export will filter resources updated since: ${sinceFilter.toString()}`);
+        }
+    }
+
     log:printDebug(string `${resourceType}: Export - Initiate async export${patientId is string ? " for patient " + patientId : ""} with output format: ${outputFormat}`);
 
     // Generate unique job ID
@@ -1391,6 +1413,10 @@ function initiateExportOperation(string resourceType, r4:FHIRContext fhirContext
         if typeFilter is string[] {
             jobMap["typeFilter"] = typeFilter;
         }
+        // Add sinceFilter to metadata if present
+        if sinceFilter is string {
+            jobMap["sinceFilter"] = sinceFilter;
+        }
         jobJson = jobMap;
         check io:fileWriteJson(metadataPath, jobJson);
     } on fail error e {
@@ -1402,7 +1428,7 @@ function initiateExportOperation(string resourceType, r4:FHIRContext fhirContext
     createExportAuditEvent(jobId, string `Export Job ${jobId} Initiated`, "0", patientId);
 
     // Start background processing in a new strand
-    future<()> _ = start processExportJob(jobId, resourceType, patientId, outputFormat, typeFilter);
+    future<()> _ = start processExportJob(jobId, resourceType, patientId, outputFormat, typeFilter, sinceFilter);
 
     // Return 202 Accepted with Content-Location header
     http:Response response = new;
@@ -1414,7 +1440,7 @@ function initiateExportOperation(string resourceType, r4:FHIRContext fhirContext
 }
 
 // Background worker to process export job
-function processExportJob(string jobId, string resourceType, string? patientId = (), string outputFormat = "split", string[]? typeFilter = ()) {
+function processExportJob(string jobId, string resourceType, string? patientId = (), string outputFormat = "split", string[]? typeFilter = (), string? sinceFilter = ()) {
     log:printDebug(string `Export Job ${jobId}: Starting background processing${patientId is string ? " for patient " + patientId : ""} with output format: ${outputFormat}`);
 
     do {
@@ -1456,6 +1482,10 @@ function processExportJob(string jobId, string resourceType, string? patientId =
                 json? resourceJson = entryMap["resource"];
 
                 if resourceJson is map<json> {
+                    // Apply _since filter: skip resources not updated after _since
+                    if sinceFilter is string && !isResourceAfterSince(resourceJson, sinceFilter) {
+                        continue;
+                    }
                     string? resType = resourceJson["resourceType"] is string ? <string>resourceJson["resourceType"] : ();
 
                     if resType is string {
@@ -1481,6 +1511,10 @@ function processExportJob(string jobId, string resourceType, string? patientId =
                 json? resourceJson = entryMap["resource"];
 
                 if resourceJson is map<json> {
+                    // Apply _since filter: skip resources not updated after _since
+                    if sinceFilter is string && !isResourceAfterSince(resourceJson, sinceFilter) {
+                        continue;
+                    }
                     string? resType = resourceJson["resourceType"] is string ? <string>resourceJson["resourceType"] : ();
 
                     if resType is string {
@@ -1595,6 +1629,33 @@ function processExportJob(string jobId, string resourceType, string? patientId =
 
         // Create AuditEvent for failure
         createExportAuditEvent(jobId, string `Export Job ${jobId} Failed: ${e.message()}`, "8", patientId);
+    }
+}
+
+// Helper to check if a resource's meta.lastUpdated is after the _since timestamp.
+// Returns true (include) if lastUpdated > since, or if any field is missing/unparseable (conservative per FHIR spec).
+isolated function isResourceAfterSince(json resourceJson, string sinceValue) returns boolean {
+    do {
+        map<json> resourceMap = check resourceJson.ensureType();
+        json metaJson = resourceMap["meta"];
+        if metaJson is () {
+            return true;
+        }
+        map<json> metaMap = check metaJson.ensureType();
+        json lastUpdatedJson = metaMap["lastUpdated"];
+        if lastUpdatedJson is () {
+            return true;
+        }
+        string lastUpdatedStr = lastUpdatedJson.toString();
+
+        time:Utc sinceUtc = check time:utcFromString(sinceValue);
+        time:Utc lastUpdatedUtc = check time:utcFromString(lastUpdatedStr);
+
+        // Include resource if lastUpdated > since
+        return time:utcDiffSeconds(lastUpdatedUtc, sinceUtc) > 0d;
+    } on fail {
+        // If any parsing fails, include the resource (conservative approach)
+        return true;
     }
 }
 
