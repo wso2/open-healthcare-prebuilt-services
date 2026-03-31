@@ -1551,10 +1551,7 @@ function processExportJob(string jobId, string resourceType, string? patientId =
         } else {
             // Separate files per resource type (default)
             foreach var [resType, resources] in resourcesByType.entries() {
-                // Apply type filter if specified
-                if typeFilter is string[] && !typeFilter.some(t => t == resType) {
-                    continue;
-                }
+                
                 if resources.length() > 0 {
                     string fileName = resType + ".ndjson";
                     string filePath = jobDir + fileName;
