@@ -2,18 +2,9 @@
 
 set -euo pipefail
 
-# ── Resolve script directory, CSV path, and default schema file ───────────────
+# ── Resolve script directory and CSV path ─────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CSV_FILE="${SCRIPT_DIR}/../assets/r4-searchParam-Expression.csv"
-
-# Look for a postgresql schema file in the same directory
-PG_SCHEMA_FILE=""
-for f in "${SCRIPT_DIR}"/schema-postgresql.sql "${SCRIPT_DIR}"/*schema*postgresql*.sql "${SCRIPT_DIR}"/*postgresql*schema*.sql; do
-  if [ -f "$f" ]; then
-    PG_SCHEMA_FILE="$f"
-    break
-  fi
-done
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 TABLE_NAME="SEARCH_PARAM_RES_EXPRESSIONS"
@@ -58,7 +49,7 @@ PY_HELPER=$(mktemp /tmp/_gi_helper_XXXXXX.py)
 trap 'rm -f "$PY_HELPER"' EXIT
 
 cat > "$PY_HELPER" << 'PYEOF'
-import csv, os
+import csv, os, re
 
 def env(k, d=""): return os.environ.get(k, d)
 
@@ -66,7 +57,6 @@ csv_file       = env("GI_CSV_FILE")
 table_name     = env("GI_TABLE_NAME", "SEARCH_PARAM_RES_EXPRESSIONS")
 output_file    = env("GI_OUTPUT_FILE")
 schema         = env("GI_SCHEMA")
-append_mode    = env("GI_APPEND") == "true"
 prepend_drop   = env("GI_DROP")   == "true"
 prepend_create = env("GI_CREATE") == "true"
 
@@ -86,13 +76,6 @@ def sql_str(raw):
 def sql_bool(val):
     return "TRUE" if val else "FALSE"
 
-with open(csv_file, newline="", encoding="utf-8-sig") as fh:
-    reader   = csv.reader(fh)
-    next(reader)
-    all_rows = list(reader)
-
-total = len(all_rows)
-
 def drop_stmt():
     return f"DROP TABLE IF EXISTS {TABLE};"
 
@@ -109,89 +92,139 @@ def create_stmt():
         f");"
     )
 
+# ── Read CSV ──────────────────────────────────────────────────────────────────
+with open(csv_file, newline="", encoding="utf-8-sig") as fh:
+    reader   = csv.reader(fh)
+    next(reader)
+    all_rows = list(reader)
+
+# ── Read existing SQL file and extract already-present keys ───────────────────
+# Parse each INSERT VALUES line and extract all 4 string columns precisely.
+# INSERT column order: SEARCH_PARAM_NAME, SEARCH_PARAM_TYPE, RESOURCE_NAME, EXPRESSION, IS_CUSTOM
+# Dedup key: (SEARCH_PARAM_NAME, SEARCH_PARAM_TYPE, RESOURCE_NAME) — all three together.
+def parse_insert_keys(filepath):
+    """Extract a set of (name, type, resource) tuples from existing INSERT lines."""
+    keys = set()
+    if not os.path.exists(filepath):
+        return keys
+
+    # Matches a single-quoted SQL string value, handling '' escapes
+    token = r"'((?:[^']|'')*)'"
+    # Full VALUES pattern: ('col1', 'col2', 'col3', 'col4', BOOL)
+    pattern = re.compile(
+        r"VALUES\s*\(\s*" + token + r"\s*,\s*" + token + r"\s*,\s*" + token + r"\s*,\s*" + token + r"\s*,",
+        re.IGNORECASE
+    )
+    with open(filepath, encoding="utf-8") as fh:
+        for line in fh:
+            m = pattern.search(line)
+            if m:
+                # col positions: 1=SEARCH_PARAM_NAME, 2=SEARCH_PARAM_TYPE, 3=RESOURCE_NAME, 4=EXPRESSION
+                name     = m.group(1).replace("''", "'").strip().lower()
+                typ      = m.group(2).replace("''", "'").strip().lower()
+                resource = m.group(3).replace("''", "'").strip().lower()
+                keys.add((name, typ, resource))
+    return keys
+
+existing_keys = parse_insert_keys(output_file)
+
+# ── Filter to only new rows ───────────────────────────────────────────────────
+def csv_key(row):
+    return (row[0].strip().lower(), row[2].strip().lower(), row[1].strip().lower())  # name, type, resource
+
+new_rows = []
+for row in all_rows:
+    while len(row) < 4:
+        row.append("")
+    if csv_key(row) not in existing_keys:
+        new_rows.append(row)
+
+total_csv      = len(all_rows)
+total_existing = len(existing_keys)
+total_new      = len(new_rows)
+
+# ── If no new rows, exit early ────────────────────────────────────────────────
+if total_new == 0:
+    print(f"SKIP|total={total_csv}|existing={total_existing}|new=0")
+    raise SystemExit(0)
+
+# ── Build output ──────────────────────────────────────────────────────────────
+is_new_file = not os.path.exists(output_file)
+
 out = []
 
-if not append_mode:
+if is_new_file:
     out += [
         f"-- Source  : {os.path.basename(csv_file)}",
         f"-- Target  : POSTGRESQL  |  Table: {TABLE}",
-        f"-- Rows    : {total}",
+        f"-- Rows    : {total_csv}",
         "",
         "SET client_encoding = 'UTF8';",
         "",
     ]
+    if prepend_drop:
+        out += [drop_stmt(), ""]
+    if prepend_create:
+        out += [create_stmt(), ""]
 else:
+    # Appending new records to existing file — add a clear section marker
     out += [
         "",
-        f"-- ============================================================",
-        f"-- INSERT data for {TABLE}",
-        f"-- Source  : {os.path.basename(csv_file)}",
-        f"-- Rows    : {total}",
-        f"-- ============================================================",
+        f"-- New records added: {total_new}",
         "",
     ]
 
-if prepend_drop:
-    out += [drop_stmt(), ""]
-if prepend_create:
-    out += [create_stmt(), ""]
-
 out += ["BEGIN;", ""]
 
-for row in all_rows:
-    while len(row) < 4:
-        row.append("")
+for row in new_rows:
     vals = ", ".join([
-        sql_str(row[0]),
-        sql_str(row[2]),
-        sql_str(row[1]),
-        sql_str(row[3]),
-        sql_bool(False),
+        sql_str(row[0]),   # Search_Parm      -> SEARCH_PARAM_NAME
+        sql_str(row[2]),   # Search_Pram_Type -> SEARCH_PARAM_TYPE
+        sql_str(row[1]),   # Resource         -> RESOURCE_NAME
+        sql_str(row[3]),   # Expression       -> EXPRESSION
+        sql_bool(False),   # IS_CUSTOM        -> FALSE
     ])
     out.append(f"INSERT INTO {TABLE} ({col_list}) VALUES ({vals});")
 
 out += ["", "COMMIT;", ""]
 
-file_mode = "a" if append_mode else "w"
+# Append to existing file, or create new
+file_mode = "w" if is_new_file else "a"
 with open(output_file, file_mode, encoding="utf-8") as fh:
     fh.write("\n".join(out))
 
-print(f"SUCCESS|rows={total}")
+print(f"SUCCESS|total={total_csv}|existing={total_existing}|new={total_new}")
 PYEOF
 
-# ── Append INSERTs to schema file, or generate a standalone file ──────────────
+# ── Run ───────────────────────────────────────────────────────────────────────
 echo -e "${BOLD}Table      : ${TABLE_NAME}${RESET}"
 echo -e "${BOLD}Source CSV : ${CSV_FILE}${RESET}"
 echo ""
 
-if [ -n "$PG_SCHEMA_FILE" ]; then
-  OUT_FILE="$PG_SCHEMA_FILE"
-  APPEND="true"
-  log_info "Appending postgres INSERTs → $(basename "$OUT_FILE")"
-else
-  OUT_FILE="${OUT_DIR}/insert_${TABLE_NAME}_postgres.sql"
-  APPEND="false"
-  log_info "Generating postgres → $(basename "$OUT_FILE")"
-fi
+OUT_FILE="${OUT_DIR}/insert_${TABLE_NAME}_postgres.sql"
+log_info "Output file → $(basename "$OUT_FILE")"
 
 RESULT=$(
   GI_CSV_FILE="$CSV_FILE"      \
   GI_TABLE_NAME="$TABLE_NAME"  \
   GI_OUTPUT_FILE="$OUT_FILE"   \
   GI_SCHEMA="$SCHEMA"          \
-  GI_APPEND="$APPEND"          \
   GI_DROP="$PREPEND_DROP"      \
   GI_CREATE="$PREPEND_CREATE"  \
   python3 "$PY_HELPER"
 ) || die "Failed to generate SQL"
 
-if [[ "$RESULT" == SUCCESS* ]]; then
-  ROWS=$(echo "$RESULT" | grep -o 'rows=[0-9]*' | cut -d= -f2)
-  if [ "$APPEND" = "true" ]; then
-    log_ok "Appended ${ROWS} rows → ${OUT_FILE}"
-  else
-    log_ok "${OUT_FILE}  (${ROWS} rows)"
-  fi
+TOTAL=$(   echo "$RESULT" | grep -o 'total=[0-9]*'    | cut -d= -f2)
+EXISTING=$(echo "$RESULT" | grep -o 'existing=[0-9]*' | cut -d= -f2)
+NEW=$(     echo "$RESULT" | grep -o 'new=[0-9]*'      | cut -d= -f2)
+
+if [[ "$RESULT" == SKIP* ]]; then
+  log_warn "No new records found — file unchanged. (CSV: ${TOTAL} rows, all already present)"
+elif [[ "$RESULT" == SUCCESS* ]]; then
+  log_ok "CSV rows    : ${TOTAL}"
+  log_ok "Already present : ${EXISTING}"
+  log_ok "Newly added : ${NEW}"
+  log_ok "Output      : ${OUT_FILE}"
   echo ""
   echo -e "${GREEN}${BOLD}Done.${RESET}"
 else
