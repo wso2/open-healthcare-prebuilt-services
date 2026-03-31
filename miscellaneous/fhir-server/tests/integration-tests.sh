@@ -28,6 +28,13 @@ PATIENT_ID=""
 APPOINTMENT_ID=""
 MEDICATION_ID=""
 
+# Export test data IDs
+EXPORT_PATIENT_ID="test-exp-patient-001"
+EXPORT_PRAC_ID="test-exp-prac-001"
+EXPORT_OBS_ID="test-exp-obs-001"
+EXPORT_MEDREQ_ID="test-exp-medreq-001"
+EXPORT_COND_ID="test-exp-cond-001"
+
 print_test() {
     TEST_NUM=$((TEST_NUM + 1))
     echo -e "\n${YELLOW}[Test $TEST_NUM]${NC} $1"
@@ -78,6 +85,41 @@ start_server() {
     print_fail "Server failed to start within 30 seconds"
     cat server.log
     exit 1
+}
+
+# Helper: Poll export status URL until job completes or times out
+# Returns 0 on success (manifest in /tmp/export_manifest.json), 1 on failure/timeout
+wait_for_export() {
+    local status_url="$1"
+    local max_wait=30
+    for i in $(seq 1 $max_wait); do
+        HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/export_manifest.json "$status_url")
+        if [ "$HTTP_CODE" = "200" ]; then
+            return 0
+        elif [ "$HTTP_CODE" = "202" ]; then
+            sleep 1
+        else
+            echo "Unexpected status code: $HTTP_CODE"
+            return 1
+        fi
+    done
+    echo "Timeout waiting for export to complete"
+    return 1
+}
+
+# Helper: Initiate export and return Content-Location URL
+# Sets EXPORT_STATUS_URL on success
+initiate_export() {
+    local url="$1"
+    local headers_file="/tmp/export_headers.txt"
+    HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null -D "$headers_file" "$url")
+    if [ "$HTTP_CODE" = "202" ]; then
+        EXPORT_STATUS_URL=$(grep -i 'Content-Location' "$headers_file" | awk '{print $2}' | tr -d '\r\n')
+        return 0
+    else
+        EXPORT_STATUS_URL=""
+        return 1
+    fi
 }
 
 echo "======================================================================"
@@ -975,6 +1017,366 @@ if [ "$HTTP_CODE" = "200" ]; then
 else
     print_fail "Failed to search with filter and _include (HTTP $HTTP_CODE)"
 fi
+
+# ======================================================================
+# $export Tests: _since, _type, _outputFormat
+# ======================================================================
+
+# --- Setup: create export-specific resources (not counted as tests) ---
+echo ""
+echo "Setting up export test resources..."
+
+curl -s -w "%{http_code}" -o /dev/null -X POST "$BASE_URL/Practitioner" \
+  -H "Content-Type: application/fhir+json" \
+  -d '{
+    "resourceType": "Practitioner",
+    "id": "test-exp-prac-001",
+    "active": true,
+    "name": [{"family": "ExportDoc", "given": ["Test"]}],
+    "gender": "male"
+  }' > /dev/null
+
+curl -s -w "%{http_code}" -o /dev/null -X POST "$BASE_URL/Patient" \
+  -H "Content-Type: application/fhir+json" \
+  -d "{
+    \"resourceType\": \"Patient\",
+    \"id\": \"$EXPORT_PATIENT_ID\",
+    \"active\": true,
+    \"name\": [{\"family\": \"ExportTest\", \"given\": [\"Jane\"]}],
+    \"gender\": \"female\",
+    \"birthDate\": \"1990-01-01\",
+    \"generalPractitioner\": [{\"reference\": \"Practitioner/$EXPORT_PRAC_ID\"}]
+  }" > /dev/null
+
+curl -s -w "%{http_code}" -o /dev/null -X POST "$BASE_URL/Observation" \
+  -H "Content-Type: application/fhir+json" \
+  -d "{
+    \"resourceType\": \"Observation\",
+    \"id\": \"$EXPORT_OBS_ID\",
+    \"status\": \"final\",
+    \"category\": [{\"coding\": [{\"system\": \"http://terminology.hl7.org/CodeSystem/observation-category\", \"code\": \"vital-signs\", \"display\": \"Vital Signs\"}]}],
+    \"code\": {\"coding\": [{\"system\": \"http://loinc.org\", \"code\": \"85354-9\", \"display\": \"Blood pressure\"}]},
+    \"subject\": {\"reference\": \"Patient/$EXPORT_PATIENT_ID\"},
+    \"valueQuantity\": {\"value\": 120, \"unit\": \"mmHg\", \"system\": \"http://unitsofmeasure.org\", \"code\": \"mm[Hg]\"}
+  }" > /dev/null
+
+curl -s -w "%{http_code}" -o /dev/null -X POST "$BASE_URL/MedicationRequest" \
+  -H "Content-Type: application/fhir+json" \
+  -d "{
+    \"resourceType\": \"MedicationRequest\",
+    \"id\": \"$EXPORT_MEDREQ_ID\",
+    \"status\": \"active\",
+    \"intent\": \"order\",
+    \"subject\": {\"reference\": \"Patient/$EXPORT_PATIENT_ID\"},
+    \"medicationCodeableConcept\": {\"coding\": [{\"system\": \"http://www.nlm.nih.gov/research/umls/rxnorm\", \"code\": \"582620\", \"display\": \"Nizatidine\"}]}
+  }" > /dev/null
+
+curl -s -w "%{http_code}" -o /dev/null -X POST "$BASE_URL/Condition" \
+  -H "Content-Type: application/fhir+json" \
+  -d "{
+    \"resourceType\": \"Condition\",
+    \"id\": \"$EXPORT_COND_ID\",
+    \"clinicalStatus\": {\"coding\": [{\"system\": \"http://terminology.hl7.org/CodeSystem/condition-clinical\", \"code\": \"active\"}]},
+    \"code\": {\"coding\": [{\"system\": \"http://snomed.info/sct\", \"code\": \"38341003\", \"display\": \"Hypertension\"}]},
+    \"subject\": {\"reference\": \"Patient/$EXPORT_PATIENT_ID\"}
+  }" > /dev/null
+
+echo "Export test resources created"
+
+# --- Basic Export ---
+
+print_test "Initiate Patient \$export (expect 202 + Content-Location)"
+if initiate_export "$BASE_URL/Patient/$EXPORT_PATIENT_ID/\$export"; then
+    if [ -n "$EXPORT_STATUS_URL" ]; then
+        print_pass "Export initiated (HTTP 202), Content-Location: $EXPORT_STATUS_URL"
+    else
+        print_fail "Got 202 but no Content-Location header"
+    fi
+else
+    print_fail "Failed to initiate export (HTTP $HTTP_CODE)"
+fi
+
+print_test "Poll export status until complete"
+if wait_for_export "$EXPORT_STATUS_URL"; then
+    MANIFEST=$(cat /tmp/export_manifest.json)
+    print_pass "Export completed, manifest received"
+else
+    print_fail "Export did not complete within timeout"
+    MANIFEST=""
+fi
+
+print_test "Verify manifest has output with Patient and other types"
+if [ -n "$MANIFEST" ]; then
+    HAS_PATIENT=$(echo "$MANIFEST" | grep -c '"type":"Patient"' || true)
+    OUTPUT_COUNT=$(echo "$MANIFEST" | grep -o '"type":"' | wc -l)
+    if [ "$HAS_PATIENT" -gt 0 ] && [ "$OUTPUT_COUNT" -gt 1 ]; then
+        print_pass "Manifest has Patient and $OUTPUT_COUNT total resource types"
+    else
+        print_fail "Manifest missing expected types (Patient found: $HAS_PATIENT, total types: $OUTPUT_COUNT)"
+        echo "Manifest: $MANIFEST"
+    fi
+else
+    print_fail "No manifest to verify"
+fi
+
+print_test "Download Patient.ndjson file"
+PATIENT_URL=$(echo "$MANIFEST" | grep -o '"url":"[^"]*Patient\.ndjson[^"]*"' | head -1 | sed 's/"url":"//;s/"//')
+if [ -n "$PATIENT_URL" ]; then
+    DOWNLOAD_RESPONSE=$(curl -s -w "\n%{http_code}" "$PATIENT_URL")
+    DL_HTTP_CODE=$(echo "$DOWNLOAD_RESPONSE" | tail -n1)
+    DL_BODY=$(echo "$DOWNLOAD_RESPONSE" | sed '$d')
+    if [ "$DL_HTTP_CODE" = "200" ]; then
+        print_pass "Downloaded Patient.ndjson (HTTP $DL_HTTP_CODE)"
+    else
+        print_fail "Failed to download Patient.ndjson (HTTP $DL_HTTP_CODE)"
+    fi
+else
+    print_fail "Could not find Patient.ndjson URL in manifest"
+    DL_BODY=""
+fi
+
+print_test "Verify Patient.ndjson contains valid NDJSON"
+if [ -n "$DL_BODY" ]; then
+    LINE_COUNT=$(echo "$DL_BODY" | grep -c '"resourceType"' || true)
+    HAS_PATIENT_RES=$(echo "$DL_BODY" | grep -c '"resourceType":"Patient"' || true)
+    if [ "$LINE_COUNT" -gt 0 ] && [ "$HAS_PATIENT_RES" -gt 0 ]; then
+        print_pass "Patient.ndjson has $LINE_COUNT resource line(s) with Patient resourceType"
+    else
+        print_fail "Patient.ndjson content invalid (lines: $LINE_COUNT, Patient resources: $HAS_PATIENT_RES)"
+    fi
+else
+    print_fail "No NDJSON content to verify"
+fi
+
+# --- _type Filter Tests ---
+
+print_test "Export with _type=Observation"
+if initiate_export "$BASE_URL/Patient/$EXPORT_PATIENT_ID/\$export?_type=Observation"; then
+    print_pass "Export with _type=Observation initiated (HTTP 202)"
+else
+    print_fail "Failed to initiate export with _type=Observation (HTTP $HTTP_CODE)"
+fi
+
+print_test "Verify _type=Observation output contains Patient + Observation only"
+if wait_for_export "$EXPORT_STATUS_URL"; then
+    MANIFEST=$(cat /tmp/export_manifest.json)
+    HAS_OBS=$(echo "$MANIFEST" | grep -c '"type":"Observation"' || true)
+    HAS_PATIENT=$(echo "$MANIFEST" | grep -c '"type":"Patient"' || true)
+    HAS_MEDREQ=$(echo "$MANIFEST" | grep -c '"type":"MedicationRequest"' || true)
+    HAS_COND=$(echo "$MANIFEST" | grep -c '"type":"Condition"' || true)
+    if [ "$HAS_OBS" -gt 0 ] && [ "$HAS_PATIENT" -gt 0 ] && [ "$HAS_MEDREQ" -eq 0 ] && [ "$HAS_COND" -eq 0 ]; then
+        print_pass "Output has Patient + Observation only (no MedicationRequest, no Condition)"
+    else
+        print_fail "Unexpected types in output (Patient: $HAS_PATIENT, Obs: $HAS_OBS, MedReq: $HAS_MEDREQ, Cond: $HAS_COND)"
+        echo "Manifest: $MANIFEST"
+    fi
+else
+    print_fail "Export did not complete"
+fi
+
+print_test "Export with _type=Observation,MedicationRequest"
+if initiate_export "$BASE_URL/Patient/$EXPORT_PATIENT_ID/\$export?_type=Observation,MedicationRequest"; then
+    print_pass "Export with multiple _type initiated (HTTP 202)"
+else
+    print_fail "Failed to initiate export with multiple _type (HTTP $HTTP_CODE)"
+fi
+
+print_test "Verify _type=Observation,MedicationRequest output"
+if wait_for_export "$EXPORT_STATUS_URL"; then
+    MANIFEST=$(cat /tmp/export_manifest.json)
+    HAS_OBS=$(echo "$MANIFEST" | grep -c '"type":"Observation"' || true)
+    HAS_MEDREQ=$(echo "$MANIFEST" | grep -c '"type":"MedicationRequest"' || true)
+    HAS_PATIENT=$(echo "$MANIFEST" | grep -c '"type":"Patient"' || true)
+    HAS_COND=$(echo "$MANIFEST" | grep -c '"type":"Condition"' || true)
+    HAS_PRAC=$(echo "$MANIFEST" | grep -c '"type":"Practitioner"' || true)
+    if [ "$HAS_OBS" -gt 0 ] && [ "$HAS_MEDREQ" -gt 0 ] && [ "$HAS_PATIENT" -gt 0 ] && [ "$HAS_COND" -eq 0 ] && [ "$HAS_PRAC" -eq 0 ]; then
+        print_pass "Output has Patient + Observation + MedicationRequest only"
+    else
+        print_fail "Unexpected types (Patient: $HAS_PATIENT, Obs: $HAS_OBS, MedReq: $HAS_MEDREQ, Cond: $HAS_COND, Prac: $HAS_PRAC)"
+        echo "Manifest: $MANIFEST"
+    fi
+else
+    print_fail "Export did not complete"
+fi
+
+# --- _since Filter Tests ---
+
+# Capture SINCE_TS after all resources are created but before updates
+echo ""
+echo "Preparing _since filter tests..."
+sleep 2
+SINCE_TS=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+echo "SINCE_TS = $SINCE_TS (all export resources created before this)"
+sleep 2
+
+# Update Observation and MedicationRequest to change their lastUpdated
+curl -s -w "%{http_code}" -o /dev/null -X PUT "$BASE_URL/Observation/$EXPORT_OBS_ID" \
+  -H "Content-Type: application/fhir+json" \
+  -d "{
+    \"resourceType\": \"Observation\",
+    \"id\": \"$EXPORT_OBS_ID\",
+    \"status\": \"amended\",
+    \"category\": [{\"coding\": [{\"system\": \"http://terminology.hl7.org/CodeSystem/observation-category\", \"code\": \"vital-signs\", \"display\": \"Vital Signs\"}]}],
+    \"code\": {\"coding\": [{\"system\": \"http://loinc.org\", \"code\": \"85354-9\", \"display\": \"Blood pressure\"}]},
+    \"subject\": {\"reference\": \"Patient/$EXPORT_PATIENT_ID\"},
+    \"valueQuantity\": {\"value\": 130, \"unit\": \"mmHg\", \"system\": \"http://unitsofmeasure.org\", \"code\": \"mm[Hg]\"}
+  }" > /dev/null
+
+curl -s -w "%{http_code}" -o /dev/null -X PUT "$BASE_URL/MedicationRequest/$EXPORT_MEDREQ_ID" \
+  -H "Content-Type: application/fhir+json" \
+  -d "{
+    \"resourceType\": \"MedicationRequest\",
+    \"id\": \"$EXPORT_MEDREQ_ID\",
+    \"status\": \"completed\",
+    \"intent\": \"order\",
+    \"subject\": {\"reference\": \"Patient/$EXPORT_PATIENT_ID\"},
+    \"medicationCodeableConcept\": {\"coding\": [{\"system\": \"http://www.nlm.nih.gov/research/umls/rxnorm\", \"code\": \"582620\", \"display\": \"Nizatidine\"}]}
+  }" > /dev/null
+
+echo "Updated Observation and MedicationRequest (lastUpdated > SINCE_TS)"
+
+print_test "Export with _since filter"
+if initiate_export "$BASE_URL/Patient/$EXPORT_PATIENT_ID/\$export?_since=$SINCE_TS"; then
+    print_pass "Export with _since initiated (HTTP 202)"
+else
+    print_fail "Failed to initiate export with _since (HTTP $HTTP_CODE)"
+fi
+
+print_test "Verify _since output has Patient + Observation + MedicationRequest only"
+if wait_for_export "$EXPORT_STATUS_URL"; then
+    MANIFEST=$(cat /tmp/export_manifest.json)
+    HAS_PATIENT=$(echo "$MANIFEST" | grep -c '"type":"Patient"' || true)
+    HAS_OBS=$(echo "$MANIFEST" | grep -c '"type":"Observation"' || true)
+    HAS_MEDREQ=$(echo "$MANIFEST" | grep -c '"type":"MedicationRequest"' || true)
+    HAS_COND=$(echo "$MANIFEST" | grep -c '"type":"Condition"' || true)
+    HAS_PRAC=$(echo "$MANIFEST" | grep -c '"type":"Practitioner"' || true)
+    if [ "$HAS_PATIENT" -gt 0 ] && [ "$HAS_OBS" -gt 0 ] && [ "$HAS_MEDREQ" -gt 0 ] && [ "$HAS_COND" -eq 0 ] && [ "$HAS_PRAC" -eq 0 ]; then
+        print_pass "Output has Patient + Observation + MedicationRequest only (_since filtered Condition & Practitioner)"
+    else
+        print_fail "Unexpected types (Patient: $HAS_PATIENT, Obs: $HAS_OBS, MedReq: $HAS_MEDREQ, Cond: $HAS_COND, Prac: $HAS_PRAC)"
+        echo "Manifest: $MANIFEST"
+    fi
+else
+    print_fail "Export did not complete"
+fi
+
+# --- Combined _type + _since Tests ---
+
+print_test "Export with _type=Observation AND _since (combined)"
+if initiate_export "$BASE_URL/Patient/$EXPORT_PATIENT_ID/\$export?_type=Observation&_since=$SINCE_TS"; then
+    print_pass "Export with _type+_since initiated (HTTP 202)"
+else
+    print_fail "Failed to initiate export with _type+_since (HTTP $HTTP_CODE)"
+fi
+
+print_test "Verify combined _type=Observation + _since output"
+if wait_for_export "$EXPORT_STATUS_URL"; then
+    MANIFEST=$(cat /tmp/export_manifest.json)
+    HAS_PATIENT=$(echo "$MANIFEST" | grep -c '"type":"Patient"' || true)
+    HAS_OBS=$(echo "$MANIFEST" | grep -c '"type":"Observation"' || true)
+    HAS_MEDREQ=$(echo "$MANIFEST" | grep -c '"type":"MedicationRequest"' || true)
+    if [ "$HAS_OBS" -gt 0 ] && [ "$HAS_PATIENT" -gt 0 ] && [ "$HAS_MEDREQ" -eq 0 ]; then
+        print_pass "Output has Patient + Observation only (_type excluded MedicationRequest even though it passed _since)"
+    else
+        print_fail "Unexpected types (Patient: $HAS_PATIENT, Obs: $HAS_OBS, MedReq: $HAS_MEDREQ)"
+        echo "Manifest: $MANIFEST"
+    fi
+else
+    print_fail "Export did not complete"
+fi
+
+print_test "Export with _type=Condition AND _since (type not updated after SINCE_TS)"
+if initiate_export "$BASE_URL/Patient/$EXPORT_PATIENT_ID/\$export?_type=Condition&_since=$SINCE_TS"; then
+    print_pass "Export with _type=Condition + _since initiated (HTTP 202)"
+else
+    print_fail "Failed to initiate export (HTTP $HTTP_CODE)"
+fi
+
+print_test "Verify _type=Condition + _since output is empty (Condition not updated)"
+if wait_for_export "$EXPORT_STATUS_URL"; then
+    MANIFEST=$(cat /tmp/export_manifest.json)
+    HAS_COND=$(echo "$MANIFEST" | grep -c '"type":"Condition"' || true)
+    HAS_OBS=$(echo "$MANIFEST" | grep -c '"type":"Observation"' || true)
+    HAS_MEDREQ=$(echo "$MANIFEST" | grep -c '"type":"MedicationRequest"' || true)
+    if [ "$HAS_COND" -eq 0 ] && [ "$HAS_OBS" -eq 0 ] && [ "$HAS_MEDREQ" -eq 0 ]; then
+        HAS_PATIENT=$(echo "$MANIFEST" | grep -c '"type":"Patient"' || true)
+        print_pass "Condition excluded by _since (Patient anchor: $HAS_PATIENT, no other types)"
+    else
+        print_fail "Unexpected types present (Cond: $HAS_COND, Obs: $HAS_OBS, MedReq: $HAS_MEDREQ)"
+        echo "Manifest: $MANIFEST"
+    fi
+else
+    print_fail "Export did not complete"
+fi
+
+# --- _outputFormat Tests ---
+
+print_test "Export with _outputFormat=single"
+if initiate_export "$BASE_URL/Patient/$EXPORT_PATIENT_ID/\$export?_outputFormat=single"; then
+    print_pass "Export with _outputFormat=single initiated (HTTP 202)"
+else
+    print_fail "Failed to initiate export with _outputFormat=single (HTTP $HTTP_CODE)"
+fi
+
+print_test "Verify single output format manifest"
+if wait_for_export "$EXPORT_STATUS_URL"; then
+    MANIFEST=$(cat /tmp/export_manifest.json)
+    HAS_BUNDLE=$(echo "$MANIFEST" | grep -c '"type":"Bundle"' || true)
+    OUTPUT_COUNT=$(echo "$MANIFEST" | grep -o '"type":"' | wc -l)
+    if [ "$HAS_BUNDLE" -gt 0 ] && [ "$OUTPUT_COUNT" -eq 1 ]; then
+        print_pass "Single output format: 1 entry with type 'Bundle'"
+    else
+        print_fail "Expected 1 Bundle entry, got $OUTPUT_COUNT entries (Bundle: $HAS_BUNDLE)"
+        echo "Manifest: $MANIFEST"
+    fi
+else
+    print_fail "Export did not complete"
+fi
+
+print_test "Download and verify single export.ndjson"
+SINGLE_URL=$(echo "$MANIFEST" | grep -o '"url":"[^"]*export\.ndjson[^"]*"' | head -1 | sed 's/"url":"//;s/"//')
+if [ -n "$SINGLE_URL" ]; then
+    SINGLE_RESPONSE=$(curl -s "$SINGLE_URL")
+    RESOURCE_TYPES=$(echo "$SINGLE_RESPONSE" | grep -o '"resourceType":"[^"]*"' | sort -u | wc -l)
+    TOTAL_LINES=$(echo "$SINGLE_RESPONSE" | grep -c '"resourceType"' || true)
+    if [ "$RESOURCE_TYPES" -gt 1 ] && [ "$TOTAL_LINES" -gt 1 ]; then
+        print_pass "export.ndjson has $TOTAL_LINES resources across $RESOURCE_TYPES types"
+    else
+        print_fail "export.ndjson has too few types ($RESOURCE_TYPES) or lines ($TOTAL_LINES)"
+    fi
+else
+    print_fail "Could not find export.ndjson URL in manifest"
+fi
+
+# --- Export Error Cases ---
+
+print_test "Export for non-existent patient (expect error)"
+HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/Patient/non-existent-999/\$export")
+if [ "$HTTP_CODE" = "404" ] || [ "$HTTP_CODE" = "500" ]; then
+    print_pass "Non-existent patient export rejected (HTTP $HTTP_CODE)"
+else
+    if [ "$HTTP_CODE" = "202" ]; then
+        print_pass "Export accepted (HTTP 202) - will fail asynchronously for missing patient"
+    else
+        print_fail "Unexpected response for non-existent patient (HTTP $HTTP_CODE)"
+    fi
+fi
+
+print_test "Export with invalid _since format (expect 400)"
+HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/Patient/$EXPORT_PATIENT_ID/\$export?_since=invalid-date")
+if [ "$HTTP_CODE" = "400" ]; then
+    print_pass "Invalid _since format rejected (HTTP $HTTP_CODE)"
+else
+    print_fail "Expected 400 for invalid _since, got HTTP $HTTP_CODE"
+fi
+
+# --- Cleanup export test resources (not counted as a test) ---
+echo ""
+echo "Cleaning up export test resources..."
+for RES in "Condition/$EXPORT_COND_ID" "MedicationRequest/$EXPORT_MEDREQ_ID" "Observation/$EXPORT_OBS_ID" "Patient/$EXPORT_PATIENT_ID" "Practitioner/$EXPORT_PRAC_ID"; do
+    curl -s -w "%{http_code}" -o /dev/null -X DELETE "$BASE_URL/$RES" > /dev/null
+done
+echo "Export test resources cleaned up"
 
 # Summary
 echo ""
