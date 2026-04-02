@@ -17,7 +17,7 @@ public class ReadMapper {
     }
 
     // Main function to read a single resource by ID
-    public isolated function readResourceById(jdbc:Client? jdbcClient, string resourceType, string resourceId) returns json|error {
+    public isolated function readResourceById(jdbc:Client? jdbcClient, string resourceType, string resourceId, string? sinceFilter = ()) returns json|error {
         if jdbcClient is () {
             return error("JDBC client is not initialized");
         }
@@ -26,6 +26,12 @@ public class ReadMapper {
         string primaryKey = utils:getPrimaryKeyColumn(resourceType);
 
         string sqlQuery = string `SELECT "RESOURCE_JSON", "VERSION_ID", "LAST_UPDATED" FROM "${tableName}" WHERE "${primaryKey}" = '${utils:escapeSql(resourceId)}'`;
+        // Filter by _since: only return resource if updated after the given timestamp
+        if sinceFilter is string {
+            string sqlTimestamp = regexp:replaceAll(re `T`, sinceFilter, " ");
+            sqlTimestamp = regexp:replaceAll(re `Z$`, sqlTimestamp, "");
+            sqlQuery += string ` AND "LAST_UPDATED" > '${utils:escapeSql(sqlTimestamp)}'`;
+        }
         sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
 
         stream<record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}, sql:Error?> resultStream = jdbcClient->query(query);
@@ -929,7 +935,7 @@ public class ReadMapper {
     }
 
     // Fetch all referenced resources for wildcard _include=*
-    public isolated function fetchAllReferencedResources(jdbc:Client? jdbcClient, string sourceResourceType, string sourceResourceId) returns json[]|error {
+    public isolated function fetchAllReferencedResources(jdbc:Client? jdbcClient, string sourceResourceType, string sourceResourceId, string? sinceFilter = (), string[]? typeFilter = ()) returns json[]|error {
         if jdbcClient is () {
             return error("JDBC client is not initialized");
         }
@@ -938,6 +944,11 @@ public class ReadMapper {
 
         // Query all references for this source resource
         string refQuery = string `SELECT DISTINCT "TARGET_RESOURCE_TYPE", "TARGET_RESOURCE_ID" FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = '${utils:escapeSql(sourceResourceType)}' AND "SOURCE_RESOURCE_ID" = '${utils:escapeSql(sourceResourceId)}'`;
+        // Filter by target resource types if _type specified
+        if typeFilter is string[] && typeFilter.length() > 0 {
+            string[] escapedTypes = from string t in typeFilter select "'" + utils:escapeSql(t) + "'";
+            refQuery += string ` AND "TARGET_RESOURCE_TYPE" IN (${string:'join(",", ...escapedTypes)})`;
+        }
         sql:ParameterizedQuery query = new utils:RawSQLQuery(refQuery);
 
         stream<record {|string TARGET_RESOURCE_TYPE; string TARGET_RESOURCE_ID;|}, sql:Error?> refStream = jdbcClient->query(query);
@@ -949,8 +960,8 @@ public class ReadMapper {
             string targetType = refRecord.TARGET_RESOURCE_TYPE;
             string targetId = refRecord.TARGET_RESOURCE_ID;
 
-            // Use existing readResourceById to fetch the resource
-            json|error resourceResult = self.readResourceById(jdbcClient, targetType, targetId);
+            // Use existing readResourceById to fetch the resource (with optional _since filter)
+            json|error resourceResult = self.readResourceById(jdbcClient, targetType, targetId, sinceFilter);
 
             if resourceResult is json {
                 json entry = {
@@ -962,7 +973,7 @@ public class ReadMapper {
                 };
                 includedEntries.push(entry);
             }
-            // Silently skip resources that can't be fetched (they may have been deleted)
+            // Silently skip resources that can't be fetched (they may have been deleted or filtered out)
         }
 
         return includedEntries;
@@ -1085,7 +1096,7 @@ public class ReadMapper {
     }
 
     // Fetch all resources that reference the target resource (wildcard _revinclude=*)
-    public isolated function fetchAllReferencingResources(jdbc:Client? jdbcClient, string targetResourceType, string targetResourceId) returns json[]|error {
+    public isolated function fetchAllReferencingResources(jdbc:Client? jdbcClient, string targetResourceType, string targetResourceId, string? sinceFilter = (), string[]? typeFilter = ()) returns json[]|error {
         if jdbcClient is () {
             return error("JDBC client is not initialized");
         }
@@ -1094,6 +1105,11 @@ public class ReadMapper {
 
         // Query all resources that reference this target resource
         string refQuery = string `SELECT DISTINCT "SOURCE_RESOURCE_TYPE", "SOURCE_RESOURCE_ID" FROM "REFERENCES" WHERE "TARGET_RESOURCE_TYPE" = '${utils:escapeSql(targetResourceType)}' AND "TARGET_RESOURCE_ID" = '${utils:escapeSql(targetResourceId)}'`;
+        // Filter by source resource types if _type specified
+        if typeFilter is string[] && typeFilter.length() > 0 {
+            string[] escapedTypes = from string t in typeFilter select "'" + utils:escapeSql(t) + "'";
+            refQuery += string ` AND "SOURCE_RESOURCE_TYPE" IN (${string:'join(",", ...escapedTypes)})`;
+        }
         sql:ParameterizedQuery query = new utils:RawSQLQuery(refQuery);
 
         stream<record {|string SOURCE_RESOURCE_TYPE; string SOURCE_RESOURCE_ID;|}, sql:Error?> refStream = jdbcClient->query(query);
@@ -1105,8 +1121,8 @@ public class ReadMapper {
             string sourceType = refRecord.SOURCE_RESOURCE_TYPE;
             string sourceId = refRecord.SOURCE_RESOURCE_ID;
 
-            // Use existing readResourceById to fetch the resource
-            json|error resourceResult = self.readResourceById(jdbcClient, sourceType, sourceId);
+            // Use existing readResourceById to fetch the resource (with optional _since filter)
+            json|error resourceResult = self.readResourceById(jdbcClient, sourceType, sourceId, sinceFilter);
 
             if resourceResult is json {
                 json entry = {
@@ -1118,7 +1134,7 @@ public class ReadMapper {
                 };
                 revIncludedEntries.push(entry);
             }
-            // Silently skip resources that can't be fetched
+            // Silently skip resources that can't be fetched or filtered out
         }
 
         return revIncludedEntries;

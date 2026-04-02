@@ -361,6 +361,10 @@ public final r4:ResourceAPIConfig patientApiConfig = {
                {
                    name: "_type",
                    active: true
+               },
+               {
+                   name: "_since",
+                   active: true
                }
            ]
        }

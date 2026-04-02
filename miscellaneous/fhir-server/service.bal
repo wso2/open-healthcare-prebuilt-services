@@ -1367,6 +1367,28 @@ function initiateExportOperation(string resourceType, r4:FHIRContext fhirContext
         }
     }
 
+  // Extract _since parameter (FHIR instant - include resources updated AFTER this time)
+    string? sinceFilter = ();
+    r4:RequestSearchParameter[]? sinceParams = searchParams["_since"];
+    if sinceParams is r4:RequestSearchParameter[] && sinceParams.length() > 0 {
+        string? sinceValue = sinceParams[0].value;
+        if sinceValue is string && sinceValue.trim().length() > 0 {
+            string trimmedSince = sinceValue.trim();
+            // Validate the _since value is a valid FHIR instant (ISO 8601)
+            time:Utc|error parsedTime = time:utcFromString(trimmedSince);
+            if parsedTime is error {
+                return r4:createFHIRError(
+                    "Invalid _since parameter format. Expected FHIR instant: YYYY-MM-DDThh:mm:ss.sss+zz:zz or YYYY-MM-DDThh:mm:ssZ",
+                    r4:ERROR,
+                    r4:PROCESSING,
+                    httpStatusCode = http:STATUS_BAD_REQUEST
+                );
+            }
+            sinceFilter = trimmedSince;
+            log:printDebug(string `Export filter: resources updated after ${trimmedSince}`);
+        }
+    }
+
     log:printDebug(string `${resourceType}: Export - Initiate async export${patientId is string ? " for patient " + patientId : ""} with output format: ${outputFormat}`);
 
     // Generate unique job ID
@@ -1405,6 +1427,10 @@ function initiateExportOperation(string resourceType, r4:FHIRContext fhirContext
         if typeFilter is string[] {
             jobMap["typeFilter"] = typeFilter;
         }
+        // Add sinceFilter to metadata if present
+        if sinceFilter is string {
+            jobMap["sinceFilter"] = sinceFilter;
+        }
         jobJson = jobMap;
         check io:fileWriteJson(metadataPath, jobJson);
     } on fail error e {
@@ -1416,7 +1442,7 @@ function initiateExportOperation(string resourceType, r4:FHIRContext fhirContext
     createExportAuditEvent(jobId, string `Export Job ${jobId} Initiated`, "0", patientId);
 
     // Start background processing in a new strand
-    future<()> _ = start processExportJob(jobId, resourceType, patientId, outputFormat, typeFilter);
+    future<()> _ = start processExportJob(jobId, resourceType, patientId, outputFormat, typeFilter, sinceFilter);
 
     // Return 202 Accepted with Content-Location header
     http:Response response = new;
@@ -1428,7 +1454,7 @@ function initiateExportOperation(string resourceType, r4:FHIRContext fhirContext
 }
 
 // Background worker to process export job
-function processExportJob(string jobId, string resourceType, string? patientId = (), string outputFormat = "split", string[]? typeFilter = ()) {
+function processExportJob(string jobId, string resourceType, string? patientId = (), string outputFormat = "split", string[]? typeFilter = (), string? sinceFilter = ()) {
     log:printDebug(string `Export Job ${jobId}: Starting background processing${patientId is string ? " for patient " + patientId : ""} with output format: ${outputFormat}`);
 
     do {
@@ -1462,7 +1488,7 @@ function processExportJob(string jobId, string resourceType, string? patientId =
         resourcesByType["Patient"] = [patientResource];
 
         // Fetch all FORWARD references (resources the Patient references)
-        json[]|error forwardIncluded = readHandler.fetchAllReferencedResources(jdbcClient, "Patient", patientId);
+        json[]|error forwardIncluded = readHandler.fetchAllReferencedResources(jdbcClient, "Patient", patientId, sinceFilter, typeFilter);
 
         if forwardIncluded is json[] {
             foreach json entry in forwardIncluded {
@@ -1487,7 +1513,7 @@ function processExportJob(string jobId, string resourceType, string? patientId =
         }
 
         // Fetch all REVERSE references (resources that reference this Patient)
-        json[]|error reverseIncluded = readHandler.fetchAllReferencingResources(jdbcClient, "Patient", patientId);
+        json[]|error reverseIncluded = readHandler.fetchAllReferencingResources(jdbcClient, "Patient", patientId, sinceFilter, typeFilter);
 
         if reverseIncluded is json[] {
             foreach json entry in reverseIncluded {
@@ -1520,19 +1546,7 @@ function processExportJob(string jobId, string resourceType, string? patientId =
             int totalCount = 0;
 
             foreach var [resType, resources] in resourcesByType.entries() {
-                // Apply type filter if specified
-                if typeFilter is string[] {
-                    boolean allowed = false;
-                    foreach string t in typeFilter {
-                        if t == resType {
-                            allowed = true;
-                            break;
-                        }
-                    }
-                    if !allowed {
-                        continue;
-                    }
-                }
+
                 foreach json res in resources {
                     ndjsonContent += res.toJsonString() + "\n";
                     totalCount += 1;
@@ -1551,10 +1565,7 @@ function processExportJob(string jobId, string resourceType, string? patientId =
         } else {
             // Separate files per resource type (default)
             foreach var [resType, resources] in resourcesByType.entries() {
-                // Apply type filter if specified
-                if typeFilter is string[] && !typeFilter.some(t => t == resType) {
-                    continue;
-                }
+                
                 if resources.length() > 0 {
                     string fileName = resType + ".ndjson";
                     string filePath = jobDir + fileName;
@@ -11574,4 +11585,3 @@ service /fhir/r4/Location on new fhirr4:Listener(config = r4_api_config:location
         return performValidateOperation("Location", params);
     }
 }
-

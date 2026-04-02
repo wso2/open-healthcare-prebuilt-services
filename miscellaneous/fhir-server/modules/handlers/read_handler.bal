@@ -144,11 +144,11 @@ public class ReadHandler {
     }
 
     // Function to fetch all resources referenced by a source resource (forward includes)
-    public isolated function fetchAllReferencedResources(jdbc:Client? jdbcClient, string sourceResourceType, string sourceResourceId) returns json[]|error {
+    public isolated function fetchAllReferencedResources(jdbc:Client? jdbcClient, string sourceResourceType, string sourceResourceId, string? sinceFilter = (), string[]? typeFilter = ()) returns json[]|error {
         log:printDebug(string `Fetching all resources referenced by ${sourceResourceType}/${sourceResourceId}`);
 
         // Use ReadMapper to fetch all referenced resources
-        json[]|error references = self.readMapper.fetchAllReferencedResources(jdbcClient, sourceResourceType, sourceResourceId);
+        json[]|error references = self.readMapper.fetchAllReferencedResources(jdbcClient, sourceResourceType, sourceResourceId, sinceFilter, typeFilter);
 
         if references is error {
             log:printError(string `Failed to fetch referenced resources for ${sourceResourceType}/${sourceResourceId}: ${references.message()}`);
@@ -160,11 +160,11 @@ public class ReadHandler {
     }
 
     // Function to fetch all resources that reference a target resource (reverse includes)
-    public isolated function fetchAllReferencingResources(jdbc:Client? jdbcClient, string targetResourceType, string targetResourceId) returns json[]|error {
+    public isolated function fetchAllReferencingResources(jdbc:Client? jdbcClient, string targetResourceType, string targetResourceId, string? sinceFilter = (), string[]? typeFilter = ()) returns json[]|error {
         log:printDebug(string `Fetching all resources that reference ${targetResourceType}/${targetResourceId}`);
 
         // Use ReadMapper to fetch all referencing resources
-        json[]|error references = self.readMapper.fetchAllReferencingResources(jdbcClient, targetResourceType, targetResourceId);
+        json[]|error references = self.readMapper.fetchAllReferencingResources(jdbcClient, targetResourceType, targetResourceId, sinceFilter, typeFilter);
 
         if references is error {
             log:printError(string `Failed to fetch referencing resources for ${targetResourceType}/${targetResourceId}: ${references.message()}`);
