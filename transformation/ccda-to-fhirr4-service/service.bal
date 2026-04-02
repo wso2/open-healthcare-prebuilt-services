@@ -45,7 +45,8 @@ service / on new http:Listener(9090) {
 
     # CCDA to FHIR transform service
     # + return - Transformed FHIR bundle for the given CCDA document.
-    resource function post transform(http:RequestContext ctx, http:Request request) returns json|error {
+    resource function post transform(http:RequestContext ctx, http:Request request) returns
+        CcdaToFhirResponse|CcdaToFhirBadRequest|CcdaToFhirInternalServerError|error {
 
         xml|error xmlPayload = request.getXmlPayload();
         if xmlPayload is error {
@@ -57,16 +58,22 @@ service / on new http:Listener(9090) {
             r4:OperationOutcome operationOutcome = r4:errorToOperationOutcome(r4:createFHIRError(
                 "Invalid xml document.", r4:CODE_SEVERITY_ERROR, r4:TRANSIENT_EXCEPTION, diagnostic = diagnosticMsg));
             log:printError(string `Invalid xml document.`, diagnosic = diagnosticMsg);
-            return {body: operationOutcome}.toJson();
+            CcdaToFhirBadRequest res = {body: operationOutcome};
+            return res;
         }
         // Pass the xml payload to the CCDA to FHIR transform util function in the FHIR R4 utils package.
         r4:Bundle|r4:FHIRError ccdaToFhir = ccdatofhir:ccdaToFhir(xmlPayload);
         // If the success scenario, return the transformed FHIR bundle.
         if ccdaToFhir is r4:Bundle {
             log:printDebug(string`Transformed message: ${ccdaToFhir.toJsonString()}`);
-            return {body: ccdaToFhir}.toJson();
+            CcdaToFhirResponse res = {body: ccdaToFhir};
+            return res;
         }
         log:printError("Error occurred in CCDA to FHIR transformation.", ccdaToFhir);
-        return {body: r4:errorToOperationOutcome(ccdaToFhir)}.toJson();
+        r4:OperationOutcome outcome = r4:errorToOperationOutcome(ccdaToFhir);
+        // Treat transformation errors as internal errors by default.
+        // (Invalid XML is already handled above as a 400.)
+        CcdaToFhirInternalServerError res = {body: outcome};
+        return res;
     }
 }
