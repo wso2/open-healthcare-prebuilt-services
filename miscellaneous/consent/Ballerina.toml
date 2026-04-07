@@ -1,0 +1,13 @@
+[package]
+org = "ballerinax"
+name = "consent_webapp"
+version = "0.1.0"
+distribution = "2201.13.1"
+
+[build-options]
+observabilityIncluded = true
+
+[[platform.java21.dependency]]
+artifactId = "h2"
+version = "2.3.232"
+groupId = "com.h2database"

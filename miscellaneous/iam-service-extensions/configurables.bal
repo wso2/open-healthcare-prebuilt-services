@@ -1,0 +1,12 @@
+configurable string[] apiResources = [];
+configurable string ehrContextResolveUrl = "";
+configurable string hostname = "localhost";
+configurable int port = 9090;
+configurable string approvedScopesApiBaseUrl = "http://localhost:9091/approved-scopes";
+configurable string scimApiBaseUrl = "";
+configurable string scimApiPath = "/scim2/Users";
+configurable string scimApiUsername = "";
+configurable string scimApiPassword = "";
+configurable string scimApiTrustStorePath = "";
+configurable string scimApiTrustStorePassword = "";
+configurable string scimPatientGroupName = "patient";
