@@ -1,0 +1,238 @@
+:root {
+  --primary: #3b3b8f;
+  --primary-hover: #2d2d7a;
+  --primary-light: #eeeeff;
+  --surface: #ffffff;
+  --background: #f5f5f5;
+  --border: #e0e0e0;
+  --text-primary: #1a1a2e;
+  --text-secondary: #5a5a72;
+  --text-muted: #9090a8;
+  --danger: #d32f2f;
+  --danger-light: #fff5f5;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow: 0 2px 16px rgba(59, 59, 143, 0.1);
+}
+
+.consent-page {
+  min-height: 100vh;
+  background: var(--background);
+  font-family: 'Nunito Sans', 'Segoe UI', Helvetica, Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+.consent-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 32px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wso2-logo {
+  height: 28px;
+  display: block;
+}
+
+.header-subtitle {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+}
+
+.consent-main {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 40px 16px 60px;
+}
+
+.consent-card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  width: 100%;
+  max-width: 560px;
+  padding: 36px 40px 32px;
+  border: 1px solid var(--border);
+}
+
+.card-title {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.card-subtitle {
+  margin: 0 0 24px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.meta-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.meta-badge {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 3px 8px;
+  letter-spacing: 0.03em;
+}
+
+.section-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.scope-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.scope-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  transition: background 0.15s;
+  cursor: pointer;
+}
+
+.scope-item.checked {
+  background: var(--primary-light);
+}
+
+.scope-item.last {
+  border-bottom: none;
+}
+
+.scope-checkbox {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.scope-label {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 400;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  word-break: break-all;
+}
+
+.scope-label.checked {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.empty-state {
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.bulk-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.ghost-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.selection-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  align-self: center;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0 0 24px;
+}
+
+.action-row {
+  display: flex;
+  gap: 12px;
+}
+
+.approve-btn {
+  flex: 1;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 12px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.01em;
+  transition: background 0.15s;
+}
+
+.approve-btn:hover {
+  background: var(--primary-hover);
+}
+
+.deny-btn {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 12px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s;
+}
+
+.deny-btn:hover {
+  background: var(--danger-light);
+}
+
+.consent-footer {
+  text-align: center;
+  padding: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
