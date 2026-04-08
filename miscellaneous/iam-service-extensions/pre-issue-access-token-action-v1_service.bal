@@ -41,8 +41,9 @@ service /pre\-issue\-access\-token on httpListener {
         
         RequestBody reqBody = check payload.cloneWithType();
         string flowId = reqBody.flowId ?: "";
-        log:printDebug(string `[${flowId}]: Received pre-issue access token event with request id : ${reqBody.requestId ?: ""}`);
-
+        log:printDebug(string `[${flowId}]: Processing pre-issue access token request for with request id : 
+            ${reqBody.requestId ?: ""}, grant type: ${reqBody.event.request.grantType}`);
+        
         string[]? scopes = reqBody.event.accessToken.scopes;
         string[]? tokenReqScopes = reqBody.event.request.scopes;
         string grantType = reqBody.event.request.grantType;
@@ -193,7 +194,7 @@ service /pre\-issue\-access\-token on httpListener {
                 resolvedPatientId = scimPatientId;
                 log:printDebug(string `[${flowId}]: Patient id resolved from SCIM user profile`);
             } else if scimPatientId is error {
-                log:printWarn(string `[${flowId}]: Failed to resolve patient id from SCIM user profile: ${scimPatientId.message()}`);
+                log:printError(string `[${flowId}]: Failed to resolve patient id from SCIM user profile: ${scimPatientId.message()}`);
             }
         }
 

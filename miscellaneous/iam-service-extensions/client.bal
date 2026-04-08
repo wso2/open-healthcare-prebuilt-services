@@ -19,6 +19,7 @@
 
 import ballerina/data.jsondata;
 import ballerina/http;
+import ballerina/log;
 
 # This API defines the REST API contract for a service that implements logic to extend the access token issuance flow of WSO2 Identity Server.
 public isolated client class Client {
@@ -30,6 +31,7 @@ public isolated client class Client {
     # + serviceUrl - URL of the target service 
     # + return - An error if connector initialization failed 
     public isolated function init(ConnectionConfig config, string serviceUrl) returns error? {
+        log:printDebug("Initializing WSO2 Identity Server extension client");
         http:ClientConfiguration httpClientConfig = {httpVersion: config.httpVersion, http1Settings: config.http1Settings, http2Settings: config.http2Settings, timeout: config.timeout, forwarded: config.forwarded, followRedirects: config.followRedirects, poolConfig: config.poolConfig, cache: config.cache, compression: config.compression, circuitBreaker: config.circuitBreaker, retryConfig: config.retryConfig, cookieConfig: config.cookieConfig, responseLimits: config.responseLimits, secureSocket: config.secureSocket, proxy: config.proxy, socketConfig: config.socketConfig, validation: config.validation, laxDataBinding: config.laxDataBinding};
         if config.auth is ApiKeysConfig {
             self.apiKeyConfig = (<ApiKeysConfig>config.auth).cloneReadOnly();
@@ -45,6 +47,7 @@ public isolated client class Client {
     # + headers - Headers to be sent with the request 
     # + return - Ok 
     resource isolated function post .(RequestBody payload, map<string|string[]> headers = {}) returns inline_response_200|error {
+        log:printDebug("Processing pre-issue access token event");
         string resourcePath = string `/`;
         map<anydata> headerValues = {...headers};
         if self.apiKeyConfig is ApiKeysConfig {

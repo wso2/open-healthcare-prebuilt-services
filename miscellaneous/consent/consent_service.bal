@@ -44,6 +44,7 @@ final jdbc:Client consentStoreDbClient = checkpanic new (
 );
 
 function init() returns error? {
+    log:printInfo("Initializing consent service on " + hostname + ":" + port.toString());
     check initConsentScopeStore();
 }
 
@@ -159,6 +160,8 @@ service / on consentListener {
         }
 
         if consent != "deny" {
+            log:printDebug("Storing approved scopes for consent", sessionDataKeyConsent = sessionDataKeyConsent, 
+                scopeCount = selectedScopes.length());
             error? storeErr = storeApprovedScopesByConsentKey(sessionDataKeyConsent, selectedScopes);
             if storeErr is error {
                 log:printError("Failed to persist approved scopes", 'error = storeErr,
