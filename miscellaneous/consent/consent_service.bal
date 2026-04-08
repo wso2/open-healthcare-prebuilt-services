@@ -69,7 +69,6 @@ service / on consentListener {
 
         string[] scopes = extractScopesFromContext(consentContext);
         string user = extractUserFromContext(consentContext);
-        string contextJson = consentContext.toJsonString();
 
         string|error html = io:fileReadString(uiDistPath + "/index.html");
         if html is error {
@@ -77,10 +76,16 @@ service / on consentListener {
             return buildTextResponse(500, "UI build not found. Run 'npm run build' and copy dist/ to " + uiDistPath);
         }
 
-        // Build the scopes JSON array
-        string scopesJson = "[" + string:'join(",", ...scopes.map(s => string `"${escapeJson(s)}"`) ) + "]";
-
-        string injectedScript = string `<script>window.__CONSENT_PROPS__={"sessionDataKeyConsent":"${escapeJson(sessionDataKeyConsent)}","spId":"${escapeJson(spId)}","user":"${escapeJson(user)}","scopes":${scopesJson},"contextJson":${contextJson}};</script>`;
+        json consentProps = {
+            sessionDataKeyConsent,
+            spId,
+            user,
+            scopes,
+            contextJson: consentContext.toJsonString()
+        };
+        string consentPropsJson = escapeForScriptTag(consentProps.toJsonString());
+        string injectedScript = string `<script id="consent-props" type="application/json">${consentPropsJson}</script>` +
+            string `<script>window.__CONSENT_PROPS__=JSON.parse(document.getElementById("consent-props")?.textContent||"{}");</script>`;
 
         string finalHtml = re`</body>`.replaceAll(html, injectedScript + "</body>");
 
@@ -115,10 +120,25 @@ service / on consentListener {
 
     // Serve Vite static assets (JS/CSS chunks)
     resource function get assets/[string... parts](http:Caller caller) returns error? {
-        string filePath = uiDistPath + "/assets/" + string:'join("/", ...parts);
-        byte[]|error content = io:fileReadBytes(filePath);
+        if parts.length() == 0 {
+            check caller->respond(buildTextResponse(404, "Asset not found"));
+            return;
+        }
+
+        string assetsBasePath = normalizePath(uiDistPath + "/assets");
+        string requestedRelativePath = string:'join("/", ...parts);
+        string candidatePath = normalizePath(assetsBasePath + "/" + requestedRelativePath);
+
+        boolean isWithinAssetsDir = candidatePath == assetsBasePath ||
+            candidatePath.startsWith(assetsBasePath + "/");
+        if !isWithinAssetsDir {
+            check caller->respond(buildTextResponse(404, "Asset not found"));
+            return;
+        }
+
+        byte[]|error content = io:fileReadBytes(candidatePath);
         if content is error {
-            http:Response res = buildTextResponse(404, "Asset not found: " + filePath);
+            http:Response res = buildTextResponse(404, "Asset not found");
             check caller->respond(res);
             return;
         }
@@ -446,9 +466,39 @@ function escapeJson(string value) returns string {
     return escaped;
 }
 
+function escapeForScriptTag(string value) returns string {
+    string escaped = re `</script`.replaceAll(value, "<\\/script");
+    escaped = re `<`.replaceAll(escaped, "\\u003c");
+    escaped = re `&`.replaceAll(escaped, "\\u0026");
+    return escaped;
+}
+
 function getEncodedUri(anydata value) returns string {
     string|error encoded = url:encode(value.toString(), "UTF8");
     return encoded is string ? encoded : value.toString();
+}
+
+function normalizePath(string inputPath) returns string {
+    boolean isAbsolute = inputPath.startsWith("/");
+    string[] normalizedSegments = [];
+    foreach string segment in re `[\\/]`.split(inputPath) {
+        if segment == "" || segment == "." {
+            continue;
+        }
+        if segment == ".." {
+            if normalizedSegments.length() > 0 {
+                _ = normalizedSegments.pop();
+            }
+            continue;
+        }
+        normalizedSegments.push(segment);
+    }
+
+    string normalizedPath = string:'join("/", ...normalizedSegments);
+    if isAbsolute {
+        return "/" + normalizedPath;
+    }
+    return normalizedPath == "" ? "." : normalizedPath;
 }
 
 function buildTextResponse(int statusCode, string message) returns http:Response {

@@ -56,6 +56,7 @@ service /pre\-issue\-access\-token on httpListener {
         string? resolvedPatientId = ();
         string? resolvedEncounterId = ();
         string[]? approvedScopes = ();
+        boolean consentLookupFailed = false;
 
         // get approved scopes from consent service if sessionDataKeyConsent is present in the request
         if sessionDataKeyConsent is string && sessionDataKeyConsent != "" {
@@ -64,7 +65,31 @@ service /pre\-issue\-access\-token on httpListener {
                 approvedScopes = approvedScopesResult;
                 log:printDebug(string `[${flowId}]: Loaded approved scopes from consent service for consent key`);
             } else {
-                log:printWarn(string `[${flowId}]: Failed to load approved scopes from consent service: ${approvedScopesResult.message()}`);
+                consentLookupFailed = true;
+                approvedScopes = [];
+                log:printError(string `[${flowId}]: Failed to load approved scopes from consent service: ${approvedScopesResult.message()}`);
+            }
+
+            if consentLookupFailed {
+                ErrorResponseInternalServerError serverError = {
+                    body: {
+                        actionStatus: "ERROR",
+                        errorMessage: "Consent scope lookup failed",
+                        errorDescription: "Failed to retrieve approved scopes from consent service. Token issuance denied."
+                    }
+                };
+                return serverError;
+            }
+
+            if approvedScopes is string[] && approvedScopes.length() == 0 {
+                ErrorResponseBadRequest badRequestError = {
+                    body: {
+                        actionStatus: "ERROR",
+                        errorMessage: "No approved scopes available",
+                        errorDescription: "No approved scopes found for provided consent key. Token issuance denied."
+                    }
+                };
+                return badRequestError;
             }
         }
         
@@ -79,7 +104,7 @@ service /pre\-issue\-access\-token on httpListener {
                     }
                 }
 
-                if !isScopeApproved(scope, approvedScopes) {
+                if !isAlwaysAllowedScope(scope) && !isScopeApproved(scope, approvedScopes) {
                     log:printWarn(string `[${flowId}]: Scope '${scope}' is not in approved scope set and will be ignored`);
                     continue;
                 }
@@ -248,7 +273,7 @@ isolated function extractSessionDataKeyConsent(RequestParams[]? additionalParams
 
 isolated function getApprovedScopesByConsentKey(string sessionDataKeyConsent) returns string[]|error {
     http:Client consentServiceClient = check new (approvedScopesApiBaseUrl);
-    string resourcePath = string `/?sessionDataKeyConsent=${getEncodedUri(sessionDataKeyConsent)}`;
+    string resourcePath = string `?sessionDataKeyConsent=${getEncodedUri(sessionDataKeyConsent)}`;
     http:Response response = check consentServiceClient->get(resourcePath);
 
     if response.statusCode < 200 || response.statusCode >= 300 {
@@ -286,6 +311,10 @@ isolated function isScopeApproved(string scope, string[]? approvedScopes) return
     return approvedScopes.indexOf(scope) is int;
 }
 
+isolated function isAlwaysAllowedScope(string scope) returns boolean {
+    return alwaysAllowedScopes.indexOf(scope) is int;
+}
+
 isolated function isPermittedScope(string scope, string grantType) returns boolean {
     if scope.matches(re `^(system)/.*`) {
         return grantType == "client_credentials";
@@ -300,10 +329,10 @@ isolated function isPermittedScope(string scope, string grantType) returns boole
 // todo - need to check and refactor this with EHR launch.
 isolated function resolveLaunchContext(string launchId) returns EhrLaunchContext|error {
     http:Client ehrContextClient = check new (ehrContextResolveUrl);
-    string resourcePath = string `/?launch=${getEncodedUri(launchId)}`;
+    string resourcePath = string `?launch=${getEncodedUri(launchId)}`;
     http:Response ehrContextResponse = check ehrContextClient->get(resourcePath);
     json responseBody = check ehrContextResponse.getJsonPayload();
-    log:printInfo(string `Launch context response from EHR context resolve endpoint: ${responseBody.toJsonString()}`);
+    log:printDebug(string `Launch context response from EHR context resolve endpoint: ${responseBody.toJsonString()}`);
     return check responseBody.cloneWithType();
 }
 

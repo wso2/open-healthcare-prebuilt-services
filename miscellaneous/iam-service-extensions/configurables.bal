@@ -26,3 +26,4 @@ configurable string scimApiTrustStorePath = "";
 configurable string scimApiTrustStorePassword = "";
 configurable string scimPatientGroupName = "patient";
 configurable string fhirUserAttributeName = "fhirUser";
+configurable string[] alwaysAllowedScopes = ["openid"];

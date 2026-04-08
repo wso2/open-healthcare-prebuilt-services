@@ -23,7 +23,7 @@ import ballerina/http;
 public type OAuth2ClientCredentialsGrantConfig record {|
     *http:OAuth2ClientCredentialsGrantConfig;
     # Token URL
-    string tokenUrl = "https://example.com/oauth/token";
+    string tokenUrl;
 |};
 
 public type ErrorResponseBadRequest record {|
