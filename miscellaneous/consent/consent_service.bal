@@ -1,3 +1,19 @@
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
+
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+
+// http://www.apache.org/licenses/LICENSE-2.0
+
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 import ballerina/http;
 import ballerina/io;
 import ballerina/log;
@@ -159,8 +175,17 @@ service / on consentListener {
         if cookieHeader == "" {
             return buildTextResponse(400, "Missing session cookies. Ensure consent page is loaded over HTTPS.");
         }
-        if cookieHeader.indexOf("JSESSIONID=") is () || cookieHeader.indexOf("opbs=") is () {
-            return buildTextResponse(400, "Required IS session cookies are missing (JSESSIONID/opbs).");
+
+        boolean hasJSessionId = cookieHeader.indexOf("JSESSIONID=") is int;
+        boolean hasOpbs = cookieHeader.indexOf("opbs=") is int;
+        boolean hasCommonAuthId = cookieHeader.indexOf("commonAuthId=") is int;
+        if !hasJSessionId && !hasOpbs && !hasCommonAuthId {
+            return buildTextResponse(400,
+                "No recognizable IS session cookie found (expected one of JSESSIONID/opbs/commonAuthId).");
+        }
+        if !hasJSessionId || !hasOpbs {
+            log:printWarn("Some IS session cookies are missing in browser request; continuing with available cookies",
+                hasJSessionId = hasJSessionId, hasOpbs = hasOpbs, hasCommonAuthId = hasCommonAuthId);
         }
         if consent != "deny" && user == "" {
             return buildTextResponse(400, "Missing authenticated user in consent context.");
