@@ -2,7 +2,7 @@
 org = "ballerinax"
 name = "ballerina_iam_service_extensions"
 version = "0.1.0"
-distribution = "2201.13.1"
+distribution = "2201.12.10"
 keywords = ["Healthcare", "IAM", "extensions"]
 
 [build-options]
