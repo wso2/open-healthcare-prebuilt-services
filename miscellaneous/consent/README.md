@@ -35,6 +35,13 @@ For local WSO2 IS, you can point truststore to the IS client truststore file (fo
 
 ## Run
 
+Build the consent web application.
+```bash
+cd consent-app
+npm run build
+cd ..
+```
+
 ```bash
 bal run
 ```
