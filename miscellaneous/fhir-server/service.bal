@@ -577,7 +577,7 @@ isolated function performResourceSearch(string resourceType, r4:FHIRContext fhir
         } else {
             string errorMsg = searchResult.message();
             log:printError("Search failed: " + errorMsg);
-            return r4:createFHIRError(string `Failed to search ${resourceType}`, r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
+            return r4:createFHIRError(string `Failed to search ${resourceType} - ${errorMsg}`, r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_BAD_REQUEST);
         }
     } on fail error e {
         log:printError("Error processing search: " + e.message());

@@ -19,7 +19,8 @@ const string LAST_UPDATED_COLUMN = "LAST_UPDATED";
 
 // Escape single quotes in SQL string values to prevent SQL injection
 public isolated function escapeSql(string value) returns string {
-    return regex:replaceAll(value, "'", "''");
+    string escaped = regex:replaceAll(value, "'", "''");
+    return regex:replaceAll(escaped, "%", "\\%");
 }
 
 // Validate and return JDBC client or throw error
