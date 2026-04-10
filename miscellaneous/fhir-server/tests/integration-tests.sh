@@ -1445,26 +1445,102 @@ echo "Reference search test resources created"
 print_test "Reference search: subject=Patient/<id> (relative reference, expect 2)"
 check_total "subject=Patient/<id>" 2 "$(get_total "$BASE_URL/Condition?subject=Patient/$REF_PAT1_ID")"
 
-print_test "Reference search: subject=<id> plain (any type - not supported yet, expect err)"
-# check_total "subject=<id> plain" err "$(get_total "$BASE_URL/Condition?subject=$REF_PAT1_ID")"
-HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/Condition?subject=$REF_PAT1_ID")
-if [ "$HTTP_CODE" = "400" ]; then
-    print_pass "subject=<id> without type correctly rejected (HTTP $HTTP_CODE)"
+# --- Case 2 malformed: paramValue has slash but fails the 2-part / non-empty check ---
+print_test "Reference search: subject=Patient/ (trailing slash, expect 400)"
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?subject=Patient/")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
+    print_pass "subject=Patient/ (trailing slash) correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
+elif [ "$HTTP_CODE" != "400" ]; then
+    print_fail "subject=Patient/ should return 400, got $HTTP_CODE"
 else
-    print_fail "Unexpected response for subject=<id> without type (HTTP $HTTP_CODE)"
+    print_fail "subject=Patient/ returned 400 but response is not OperationOutcome: $BODY"
 fi
 
-print_test "Reference search: subject=non-existing-id no slash (non existing id, expect 0)"
-# check_total "subject=Patient<id> no slash" 0 "$(get_total "$BASE_URL/Condition?subject=non-existing-id")"
-HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/Condition?subject=non-existing-id")
-if [ "$HTTP_CODE" = "400" ]; then
-    print_pass "subject=non-existing-id without type correctly rejected (HTTP $HTTP_CODE)"
+print_test "Reference search: subject=/123 (leading slash, expect 400)"
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?subject=/123")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
+    print_pass "subject=/123 (leading slash) correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
+elif [ "$HTTP_CODE" != "400" ]; then
+    print_fail "subject=/123 should return 400, got $HTTP_CODE"
 else
-    print_fail "Unexpected response for subject=non-existing-id without type (HTTP $HTTP_CODE)"
+    print_fail "subject=/123 returned 400 but response is not OperationOutcome: $BODY"
+fi
+
+print_test "Reference search: subject=Patient/123/456 (too many segments, expect 400)"
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?subject=Patient/123/456")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
+    print_pass "subject=Patient/123/456 (too many segments) correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
+elif [ "$HTTP_CODE" != "400" ]; then
+    print_fail "subject=Patient/123/456 should return 400, got $HTTP_CODE"
+else
+    print_fail "subject=Patient/123/456 returned 400 but response is not OperationOutcome: $BODY"
+fi
+
+# --- Case 3: plain ID without type (not supported) ---
+print_test "Reference search: subject=<id> plain (no type prefix, expect 400)"
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?subject=$REF_PAT1_ID")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
+    print_pass "subject=<id> without type correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
+elif [ "$HTTP_CODE" != "400" ]; then
+    print_fail "subject=<id> without type should return 400, got $HTTP_CODE"
+else
+    print_fail "subject=<id> without type returned 400 but response is not OperationOutcome: $BODY"
+fi
+
+print_test "Reference search: subject=non-existing-id (plain non-existing id, expect 400)"
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?subject=non-existing-id")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
+    print_pass "subject=non-existing-id without type correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
+elif [ "$HTTP_CODE" != "400" ]; then
+    print_fail "subject=non-existing-id without type should return 400, got $HTTP_CODE"
+else
+    print_fail "subject=non-existing-id without type returned 400 but response is not OperationOutcome: $BODY"
 fi
 
 print_test "Reference search: patient=Patient/<id> (relative reference, expect 2)"
 check_total "patient=Patient/<id>" 2 "$(get_total "$BASE_URL/Condition?patient=Patient/$REF_PAT1_ID")"
+
+# --- Case 1: old format where paramName itself is "Patient/<id>" ---
+print_test "Reference search: old-format ?Patient/<PAT1> as param key (expect 2)"
+check_total "old-format ?Patient/<PAT1>" 2 "$(get_total "$BASE_URL/Condition?Patient/$REF_PAT1_ID")"
+
+print_test "Reference search: old-format ?Patient/<PAT2> as param key (expect 1)"
+check_total "old-format ?Patient/<PAT2>" 1 "$(get_total "$BASE_URL/Condition?Patient/$REF_PAT2_ID")"
+
+# Malformed old-format inputs:
+print_test "Reference search: old-format ?Patient/ (trailing slash, expect 400)"
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?Patient/")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
+    print_pass "Old-format ?Patient/ (trailing slash) correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
+elif [ "$HTTP_CODE" != "400" ]; then
+    print_fail "Old-format ?Patient/ should return 400, got $HTTP_CODE"
+else
+    print_fail "Old-format ?Patient/ returned 400 but response is not OperationOutcome: $BODY"
+fi
+
+print_test "Reference search: old-format ?Patient/123/456 (too many segments, expect 400)"
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?Patient/123/456")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
+    print_pass "Old-format ?Patient/123/456 (too many segments) correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
+elif [ "$HTTP_CODE" != "400" ]; then
+    print_fail "Old-format ?Patient/123/456 should return 400, got $HTTP_CODE"
+else
+    print_fail "Old-format ?Patient/123/456 returned 400 but response is not OperationOutcome: $BODY"
+fi
 
 
 # --- non-reference parameter given a Type/id value must not match ---
@@ -1483,13 +1559,13 @@ check_total "clinical-status=Patient/<id>" 0 "$(get_total "$BASE_URL/Condition?c
 print_test "Reference search: subject=Patient/<PAT2> (expect 1)"
 check_total "subject=Patient/<PAT2>" 1 "$(get_total "$BASE_URL/Condition?subject=Patient/$REF_PAT2_ID")"
 
-# --- Absolute URL reference must be rejected since we are not supporting it yet ---
-# TODO Add this later
-# print_test "Reference search: subject=http://example.com/fhir/Patient/<id> (absolute URL, expect 400)"
-# HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/Condition?subject=http://example.com/fhir/Patient/$REF_PAT1_ID")
-# if [ "$HTTP_CODE" = "400" ]; then
-#     print_pass "Absolute URL reference correctly rejected (HTTP $HTTP_CODE)"
-# else
+# --- Case 4: absolute URL reference (not supported) ---
+# TODO: uncomment after fixing regex issue in r4
+#print_test "Reference search: subject=http://example.com/fhir/Patient/<id> (absolute URL, expect 400)"
+#HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/Condition?subject=http://example.com/fhir/Patient/$REF_PAT1_ID")
+#if [ "$HTTP_CODE" = "400" ]; then
+#    print_pass "Absolute URL reference correctly rejected (HTTP $HTTP_CODE)"
+#else
 #     print_fail "Absolute URL reference should return 400, got $HTTP_CODE"
 # fi
 

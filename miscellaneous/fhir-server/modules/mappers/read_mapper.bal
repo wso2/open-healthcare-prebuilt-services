@@ -133,27 +133,35 @@ public class ReadMapper {
                 if isOldFormatReference {
                     refValue = paramName;
                     string[] parts = regexp:split(re `/`, refValue);
-                    if parts.length() == 2 {
+                    // Catch "Patient/", "Patient/123/123", "/123"
+                    if parts.length() == 2 && parts[0] != "" && parts[1] != "" {
                         targetType = parts[0];
                         targetId = parts[1];
+                    } else {
+                        return error(string `Invalid reference format: '${paramName}'`);
                     }
+
                 }
                 // Case 2: patient=Patient/123 (proper FHIR search format)
                 else if paramValue.includes("/") && !paramValue.includes("://") {
                     refValue = paramValue;
                     string[] parts = regexp:split(re `/`, refValue);
-                    if parts.length() == 2 {
+
+                    // 
+                    if parts.length() == 2 && parts[0] != "" && parts[1] != "" {
                         targetType = parts[0];
                         targetId = parts[1];
+                    } else {
+                        return error(string `Invalid reference format for parameter '${paramName}': '${paramValue}'`);
                     }
                 }
                 // Case 3: patient=123 (just the resource ID without type prefix) - NOT SUPPORTED YET
                 else if !paramValue.includes("://") {
-                    return error(string `Reference search parameter '${paramName}' must include resource type (e.g., '${paramName}=Patient/123', not '${paramName}=${paramValue}')`);
+                    return error(string `Invalid reference: search parameter '${paramName}' must include resource type (e.g., '${paramName}=Patient/123', not '${paramName}=${paramValue}')`);
                 }
                 // Case 4: patient=http://example.com/fhir/Patient/123 (absolute URL) - NOT SUPPORTED YET
                 else if paramValue.includes("://") {
-                    return error(string `Absolute URL references are not supported. Use relative references instead (e.g., '${paramName}=Patient/123')`);
+                    return error(string `Invalid reference: absolute URL '${paramValue}' is not supported for parameter '${paramName}'. Use relative references instead (e.g., '${paramName}=Patient/123')`);
                 } else {
                     return error(string `Invalid reference format for parameter '${paramName}': '${paramValue}'`);
                 }
@@ -169,7 +177,7 @@ public class ReadMapper {
                     if refInfo.validTargetTypes != "any" {
                         string[] allowedTypes = <string[]>refInfo.validTargetTypes;
                         if allowedTypes.indexOf(targetType) is () {
-                            return error(string `Reference search parameter '${paramName}' does not support target type '${targetType}'`);
+                            return error(string `Invalid reference: search parameter '${paramName}' does not support target type '${targetType}' (value: '${paramValue}').`);
                         }
                     }
 
