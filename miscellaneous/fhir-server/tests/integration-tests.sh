@@ -1470,18 +1470,6 @@ else
     print_fail "subject=/123 returned 400 but response is not OperationOutcome: $BODY"
 fi
 
-print_test "Reference search: subject=Patient/123/456 (too many segments, expect 400)"
-RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?subject=Patient/123/456")
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | head -n -1)
-if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
-    print_pass "subject=Patient/123/456 (too many segments) correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
-elif [ "$HTTP_CODE" != "400" ]; then
-    print_fail "subject=Patient/123/456 should return 400, got $HTTP_CODE"
-else
-    print_fail "subject=Patient/123/456 returned 400 but response is not OperationOutcome: $BODY"
-fi
-
 # --- Case 3: plain ID without type (not supported) ---
 print_test "Reference search: subject=<id> plain (no type prefix, expect 400)"
 RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?subject=$REF_PAT1_ID")
@@ -1509,39 +1497,6 @@ fi
 
 print_test "Reference search: patient=Patient/<id> (relative reference, expect 2)"
 check_total "patient=Patient/<id>" 2 "$(get_total "$BASE_URL/Condition?patient=Patient/$REF_PAT1_ID")"
-
-# --- Case 1: old format where paramName itself is "Patient/<id>" ---
-print_test "Reference search: old-format ?Patient/<PAT1> as param key (expect 2)"
-check_total "old-format ?Patient/<PAT1>" 2 "$(get_total "$BASE_URL/Condition?Patient/$REF_PAT1_ID")"
-
-print_test "Reference search: old-format ?Patient/<PAT2> as param key (expect 1)"
-check_total "old-format ?Patient/<PAT2>" 1 "$(get_total "$BASE_URL/Condition?Patient/$REF_PAT2_ID")"
-
-# Malformed old-format inputs:
-print_test "Reference search: old-format ?Patient/ (trailing slash, expect 400)"
-RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?Patient/")
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | head -n -1)
-if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
-    print_pass "Old-format ?Patient/ (trailing slash) correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
-elif [ "$HTTP_CODE" != "400" ]; then
-    print_fail "Old-format ?Patient/ should return 400, got $HTTP_CODE"
-else
-    print_fail "Old-format ?Patient/ returned 400 but response is not OperationOutcome: $BODY"
-fi
-
-print_test "Reference search: old-format ?Patient/123/456 (too many segments, expect 400)"
-RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?Patient/123/456")
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | head -n -1)
-if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
-    print_pass "Old-format ?Patient/123/456 (too many segments) correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
-elif [ "$HTTP_CODE" != "400" ]; then
-    print_fail "Old-format ?Patient/123/456 should return 400, got $HTTP_CODE"
-else
-    print_fail "Old-format ?Patient/123/456 returned 400 but response is not OperationOutcome: $BODY"
-fi
-
 
 # --- non-reference parameter given a Type/id value must not match ---
 

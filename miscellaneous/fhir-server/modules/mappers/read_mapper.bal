@@ -86,7 +86,8 @@ public class ReadMapper {
             }
 
             // Check if this is a custom extension parameter
-            boolean isCustom = check self.isCustomSearchParam(jdbcClient, resourceType, paramName);
+            var paramDef = check self.getSearchParamDef(jdbcClient, resourceType, paramName);
+            boolean isCustom = paramDef?.isCustom == true;
             if isCustom {
                 customParams[paramName] = paramValues;
             } else {
@@ -121,7 +122,8 @@ public class ReadMapper {
             // Need to check for old format where paramName itself is like "Patient/123" — treat as reference directly
             boolean isOldFormatReference = paramName.includes("/") && !paramName.includes("://");
 
-            boolean isReferenceParam = isOldFormatReference || check self.isReferenceSearchParam(jdbcClient, resourceType, paramName);
+            var paramDef = check self.getSearchParamDef(jdbcClient, resourceType, paramName);
+            boolean isReferenceParam = isOldFormatReference || paramDef?.paramType == "reference";
 
             if isReferenceParam {
                 hasReferenceParams = true;
@@ -147,7 +149,6 @@ public class ReadMapper {
                     refValue = paramValue;
                     string[] parts = regexp:split(re `/`, refValue);
 
-                    // 
                     if parts.length() == 2 && parts[0] != "" && parts[1] != "" {
                         targetType = parts[0];
                         targetId = parts[1];
@@ -315,7 +316,8 @@ public class ReadMapper {
 
             // Skip reference parameters — already processed in the reference loop above
             boolean isTokenParam = paramValue.includes("|");
-            boolean isRefParam = check self.isReferenceSearchParam(jdbcClient, resourceType, paramName);
+            var paramDef = check self.getSearchParamDef(jdbcClient, resourceType, paramName);
+            boolean isRefParam = paramDef?.paramType == "reference";
 
             if isRefParam && !isTokenParam {
                 continue;
@@ -1181,26 +1183,6 @@ public class ReadMapper {
         return revIncludedEntries;
     }
 
-    // Check if a search parameter is a reference parameter
-    private isolated function isReferenceSearchParam(jdbc:Client jdbcClient, string resourceType, string paramName) returns boolean|error {
-        sql:ParameterizedQuery query = `
-            SELECT COUNT(*) as count
-            FROM "SEARCH_PARAM_RES_EXPRESSIONS" 
-            WHERE "RESOURCE_NAME" = ${resourceType}
-            AND "SEARCH_PARAM_NAME" = ${paramName}
-            AND "SEARCH_PARAM_TYPE" = 'reference'
-        `;
-
-        stream<record {int count;}, sql:Error?> resultStream = jdbcClient->query(query);
-        record {|record {int count;} value;|}? nextRecord = check resultStream.next();
-        check resultStream.close();
-
-        if nextRecord is record {|record {int count;} value;|} {
-            return nextRecord.value.count > 0;
-        }
-
-        return false;
-    }
 
     // Parse "resolve() is X" from a expression in SEARCH_PARAM_RES_EXPRESSIONS table and return X, or () if not present.
     // Example: "Condition.subject.where(resolve() is Patient)" → "Patient"
@@ -1266,25 +1248,27 @@ public class ReadMapper {
         return {sourceExpressions, validTargetTypes: validTargetTypes.length() > 0 ? validTargetTypes : "any"};
     }
 
-    // Check if a search parameter is a custom extension parameter
-    private isolated function isCustomSearchParam(jdbc:Client jdbcClient, string resourceType, string paramName) returns boolean|error {
+    // Fetch the registered definition of a search parameter from SEARCH_PARAM_RES_EXPRESSIONS.
+    // Returns () when the parameter is not registered.
+    private isolated function getSearchParamDef(jdbc:Client jdbcClient, string resourceType, string paramName)
+            returns record {|string paramType; boolean isCustom;|}?|error {
         sql:ParameterizedQuery query = `
-            SELECT COUNT(*) as count
-            FROM "SEARCH_PARAM_RES_EXPRESSIONS" 
+            SELECT "SEARCH_PARAM_TYPE" AS paramType, "IS_CUSTOM" AS isCustom
+            FROM "SEARCH_PARAM_RES_EXPRESSIONS"
             WHERE "RESOURCE_NAME" = ${resourceType}
-            AND "SEARCH_PARAM_NAME" = ${paramName}
-            AND "IS_CUSTOM" = ${true}
+              AND "SEARCH_PARAM_NAME" = ${paramName}
+            LIMIT 1
         `;
 
-        stream<record {int count;}, sql:Error?> resultStream = jdbcClient->query(query);
-        record {|record {int count;} value;|}|sql:Error? nextRecord = resultStream.next();
+        stream<record {|string paramType; boolean isCustom;|}, sql:Error?> resultStream = jdbcClient->query(query);
+        record {|record {|string paramType; boolean isCustom;|} value;|}? nextRecord = check resultStream.next();
         check resultStream.close();
 
-        if nextRecord is record {|record {int count;} value;|} {
-            return nextRecord.value.count > 0;
+        if nextRecord is record {|record {|string paramType; boolean isCustom;|} value;|} {
+            return nextRecord.value;
         }
 
-        return false;
+        return ();
     }
 
     // Create an empty FHIR Bundle
