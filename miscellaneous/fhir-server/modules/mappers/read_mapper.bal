@@ -74,22 +74,29 @@ public class ReadMapper {
         string tableName = utils:getTableName(resourceType);
         string[] tableColumns = check mapperUtils:getTableColumns(jdbcClient, tableName);
 
-        // First, check if there are any custom extension search parameters
+        // Classify parameters into three types
         map<string[]> customParams = {};
+        map<string[]> refParams = {};
         map<string[]> standardParams = {};
 
         foreach var [paramName, paramValues] in queryParams.entries() {
             // Skip control parameters
-            if paramName.startsWith("_") || paramName.includes("/") {
+            if paramName.startsWith("_") {
                 standardParams[paramName] = paramValues;
                 continue;
             }
 
-            // Check if this is a custom extension parameter
+            // Old-format reference: paramName itself is "ResourceType/id"
+            if paramName.includes("/") && !paramName.includes("://") {
+                refParams[paramName] = paramValues;
+                continue;
+            }
+
             var paramDef = check self.getSearchParamDef(jdbcClient, resourceType, paramName);
-            boolean isCustom = paramDef?.isCustom == true;
-            if isCustom {
+            if paramDef?.isCustom == true {
                 customParams[paramName] = paramValues;
+            } else if paramDef?.paramType == "reference" {
+                refParams[paramName] = paramValues;
             } else {
                 standardParams[paramName] = paramValues;
             }
@@ -108,68 +115,54 @@ public class ReadMapper {
 
         string primaryKey = utils:getPrimaryKeyColumn(resourceType);
 
-        // Check for reference parameters and query the REFERENCES table
+        // Process reference parameters and query the REFERENCES table
         string[]? matchingResourceIds = ();
-        boolean hasReferenceParams = false;
+        boolean hasReferenceParams = refParams.length() > 0;
 
-        foreach var [paramName, paramValues] in queryParams.entries() {
+        foreach var [paramName, paramValues] in refParams.entries() {
             if paramValues.length() == 0 {
                 continue;
             }
-
             string paramValue = paramValues[0];
+            string targetType = "";  // eg: "Patient"
+            string targetId = "";    // eg: "123"
 
-            // Need to check for old format where paramName itself is like "Patient/123" — treat as reference directly
-            boolean isOldFormatReference = paramName.includes("/") && !paramName.includes("://");
-
-            var paramDef = check self.getSearchParamDef(jdbcClient, resourceType, paramName);
-            boolean isReferenceParam = isOldFormatReference || paramDef?.paramType == "reference";
-
-            if isReferenceParam {
-                hasReferenceParams = true;
-                string refValue = "";    // eg: "Patient/123"
-                string targetType = "";  // eg: "Patient"
-                string targetId = "";    // eg: "123"
-
-                // Case 1: paramName is "Patient/123" (old format)
-                if isOldFormatReference {
-                    refValue = paramName;
-                    string[] parts = regexp:split(re `/`, refValue);
-                    // Catch "Patient/", "Patient/123/123", "/123"
-                    if parts.length() == 2 && parts[0] != "" && parts[1] != "" {
-                        targetType = parts[0];
-                        targetId = parts[1];
-                    } else {
-                        return error(string `Invalid reference format: '${paramName}'`);
-                    }
-
+            // Case 1: paramName is "Patient/123" (old format)
+            if paramName.includes("/") && !paramName.includes("://") {
+                string[] parts = regexp:split(re `/`, paramName);
+                // Catch "Patient/", "Patient/123/123", "/123"
+                if parts.length() == 2 && parts[0] != "" && parts[1] != "" {
+                    targetType = parts[0];
+                    targetId = parts[1];
+                } else {
+                    return error(string `Invalid reference format: '${paramName}'`);
                 }
-                // Case 2: patient=Patient/123 (proper FHIR search format)
-                else if paramValue.includes("/") && !paramValue.includes("://") {
-                    refValue = paramValue;
-                    string[] parts = regexp:split(re `/`, refValue);
+            }
+            // Case 2: patient=Patient/123 (proper FHIR search format)
+            else if paramValue.includes("/") && !paramValue.includes("://") {
+                string[] parts = regexp:split(re `/`, paramValue);
 
-                    if parts.length() == 2 && parts[0] != "" && parts[1] != "" {
-                        targetType = parts[0];
-                        targetId = parts[1];
-                    } else {
-                        return error(string `Invalid reference format for parameter '${paramName}': '${paramValue}'`);
-                    }
-                }
-                // Case 3: patient=123 (just the resource ID without type prefix) - NOT SUPPORTED YET
-                else if !paramValue.includes("://") {
-                    return error(string `Invalid reference: search parameter '${paramName}' must include resource type (e.g., '${paramName}=Patient/123', not '${paramName}=${paramValue}')`);
-                }
-                // Case 4: patient=http://example.com/fhir/Patient/123 (absolute URL) - NOT SUPPORTED YET
-                else if paramValue.includes("://") {
-                    return error(string `Invalid reference: absolute URL '${paramValue}' is not supported for parameter '${paramName}'. Use relative references instead (e.g., '${paramName}=Patient/123')`);
+                if parts.length() == 2 && parts[0] != "" && parts[1] != "" {
+                    targetType = parts[0];
+                    targetId = parts[1];
                 } else {
                     return error(string `Invalid reference format for parameter '${paramName}': '${paramValue}'`);
                 }
+            }
+            // Case 3: patient=123 (just the resource ID without type prefix) - NOT SUPPORTED YET
+            else if !paramValue.includes("://") {
+                return error(string `Invalid reference: search parameter '${paramName}' must include resource type (e.g., '${paramName}=Patient/123', not '${paramName}=${paramValue}')`);
+            }
+            // Case 4: patient=http://example.com/fhir/Patient/123 (absolute URL) - NOT SUPPORTED YET
+            else {
+                return error(string `Invalid reference: absolute URL '${paramValue}' is not supported for parameter '${paramName}'. Use relative references instead (e.g., '${paramName}=Patient/123')`);
+            }
 
-                if targetType != "" && targetId != "" {
+            if targetType != "" && targetId != "" {
 
-                    record {|string[] sourceExpressions; string|string[] validTargetTypes;|} refInfo = check self.getSourceExpressionsAndTargetTypes(jdbcClient, resourceType, paramName);
+                // For old-format references (e.g. paramName="Patient/123"), derive the search param name
+                // from the target resource type (e.g. "patient"). If old-format support is removed, use paramName directly.
+                record {|string[] sourceExpressions; string|string[] validTargetTypes;|} refInfo = check self.getSourceExpressionsAndTargetTypes(jdbcClient, resourceType, paramName.includes("/") ? targetType.toLowerAscii() : paramName);
 
                     // "any" means no resolve() is constraint in the expression 
                     // The target type is still implicitly filtered in the REFERENCES query via TARGET_RESOURCE_TYPE,
@@ -224,9 +217,7 @@ public class ReadMapper {
                         matchingResourceIds = intersection;
                     }
                 }
-            }
         }
-
         // If reference parameters were used but no matches found, return empty bundle
         if hasReferenceParams && (matchingResourceIds is string[] && matchingResourceIds.length() == 0) {
             json bundle = {
@@ -314,14 +305,7 @@ public class ReadMapper {
                 continue;
             }
 
-            // Skip reference parameters — already processed in the reference loop above
             boolean isTokenParam = paramValue.includes("|");
-            var paramDef = check self.getSearchParamDef(jdbcClient, resourceType, paramName);
-            boolean isRefParam = paramDef?.paramType == "reference";
-
-            if isRefParam && !isTokenParam {
-                continue;
-            }
 
             // Skip _count parameter (sent by default) and _include/_revinclude/_profile parameters (handled separately after main search)
             if paramName == "_count" || paramName == "_include" || paramName == "_revinclude" || paramName == "_profile" {
