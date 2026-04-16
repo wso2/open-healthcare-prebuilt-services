@@ -17,6 +17,10 @@
 configurable string ehrContextResolveUrl = "";
 configurable string hostname = "localhost";
 configurable int port = 9090;
+configurable string consentContextApiBaseUrl = "";
+configurable string consentContextApiOrganization = "";
+configurable string consentContextApiToken = "";
+configurable string consentAuthorizeRedirectUrl = "";
 configurable string approvedScopesApiBaseUrl = "http://localhost:9091/approved-scopes";
 configurable string scimApiBaseUrl = "";
 configurable string scimApiPath = "/scim2/Users";

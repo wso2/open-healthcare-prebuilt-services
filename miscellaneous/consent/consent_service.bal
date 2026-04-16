@@ -118,6 +118,35 @@ service / on consentListener {
         return response;
     }
 
+    resource function get api/patients(http:Request req) returns http:Response {
+        json|error patients = fetchScimPatients();
+        if patients is error {
+            log:printError("Failed to fetch SCIM patients", 'error = patients);
+            return buildTextResponse(502, "Failed to fetch patients from SCIM API");
+        }
+        http:Response response = new;
+        response.setHeader("Content-Type", "application/json");
+        response.setPayload(patients);
+        return response;
+    }
+
+    resource function get api/me(http:Request req) returns http:Response {
+        map<string[]> queryParams = req.getQueryParams();
+        string userId = getFirstValue(queryParams, "userId") ?: "";
+        if userId == "" {
+            return buildTextResponse(400, "Missing required query parameter: userId");
+        }
+        json|error scimUser = fetchScimUser(userId);
+        if scimUser is error {
+            log:printError("Failed to fetch SCIM user", 'error = scimUser, userId = userId);
+            return buildTextResponse(502, "Failed to fetch user from SCIM API");
+        }
+        http:Response response = new;
+        response.setHeader("Content-Type", "application/json");
+        response.setPayload(scimUser);
+        return response;
+    }
+
     // Serve Vite static assets (JS/CSS chunks)
     resource function get assets/[string... parts](http:Caller caller) returns error? {
         if parts.length() == 0 {
@@ -162,6 +191,7 @@ service / on consentListener {
         string user = getFirstValue(form, "user") ?: "";
         string spId = getFirstValue(form, "spId") ?: "";
         string[] selectedScopes = form["scope"] ?: [];
+        string[] additionalContext = form["additionalContext"] ?: [];
 
         if consentAuthorizeRedirectUrl == "" {
             json result = {
@@ -171,7 +201,8 @@ service / on consentListener {
                 User_claims_consent: userClaimsConsent,
                 user: user,
                 spId: spId,
-                scopes: selectedScopes
+                scopes: selectedScopes,
+                additionalContext: additionalContext
             };
             http:Response response = new;
             response.setHeader("Content-Type", "application/json");
@@ -350,6 +381,60 @@ function getApprovedScopesByConsentKey(string sessionDataKeyConsent) returns str
     }
 
     return [];
+}
+
+function fetchScimPatients() returns json|error {
+    http:ClientConfiguration clientConfig = {
+        auth: {username: consentContextApiUsername, password: consentContextApiPassword}
+    };
+    if consentContextApiBaseUrl.startsWith("https://") {
+        clientConfig.secureSocket = {
+            cert: {path: consentContextApiTrustStorePath, password: consentContextApiTrustStorePassword}
+        };
+    }
+    http:Client scimClient = check new (consentContextApiBaseUrl, clientConfig);
+    json requestBody = {
+        schemas: ["urn:ietf:params:scim:api:messages:2.0:SearchRequest"],
+        attributes: [
+            "urn:scim:schemas:extension:custom:User:fhirUser",
+            "userName",
+            "name.givenName",
+            "name.familyName",
+            "id"
+        ],
+        filter: "urn:scim:schemas:extension:custom:User:fhirUser co Patient",
+        domain: "PRIMARY",
+        startIndex: 1,
+        count: 100
+    };
+    http:Request scimReq = new;
+    scimReq.setPayload(requestBody, "application/scim+json");
+    scimReq.setHeader("Accept", "application/scim+json");
+    http:Response response = check scimClient->post("/scim2/Users/.search", scimReq);
+    if response.statusCode < 200 || response.statusCode >= 300 {
+        string body = check response.getTextPayload();
+        return error(string `SCIM search API returned status ${response.statusCode}: ${body}`);
+    }
+    return check response.getJsonPayload();
+}
+
+function fetchScimUser(string userId) returns json|error {
+    http:ClientConfiguration clientConfig = {
+        auth: {username: consentContextApiUsername, password: consentContextApiPassword}
+    };
+    if consentContextApiBaseUrl.startsWith("https://") {
+        clientConfig.secureSocket = {
+            cert: {path: consentContextApiTrustStorePath, password: consentContextApiTrustStorePassword}
+        };
+    }
+    http:Client scimClient = check new (consentContextApiBaseUrl, clientConfig);
+    string path = "/scim2/Users/" + getEncodedUri(userId);
+    http:Response response = check scimClient->get(path, headers = {accept: "application/scim+json"});
+    if response.statusCode < 200 || response.statusCode >= 300 {
+        string body = check response.getTextPayload();
+        return error(string `SCIM API returned status ${response.statusCode}: ${body}`);
+    }
+    return check response.getJsonPayload();
 }
 
 // ─── Context extraction ────────────────────────────────────────────────────────
