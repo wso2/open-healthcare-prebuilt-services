@@ -1,8 +1,9 @@
+import ballerina_fhir_server.utils;
+
 import ballerina/log;
+import ballerina/sql;
 import ballerina/time;
 import ballerinax/java.jdbc;
-import ballerina/sql;
-import ballerina_fhir_server.utils;
 
 // Handler for managing resource version history
 public class HistoryHandler {
@@ -16,7 +17,7 @@ public class HistoryHandler {
 
     // Save current version to history before update/delete
     public isolated function saveToHistory(string resourceType, string resourceId,
-                                          record {|anydata...;|} currentVersion, string operation) returns error? {
+            record {|anydata...;|} currentVersion, string operation) returns error? {
         log:printDebug(string `Saving ${resourceType}/${resourceId} to history (operation: ${operation})`);
         jdbc:Client jdbcConn = check utils:getValidatedJdbcClient(self.jdbcClient);
 
@@ -85,18 +86,20 @@ public class HistoryHandler {
         [string, int, string, time:Civil][] rows = [];
 
         if normalizedDbType == "postgresql" || normalizedDbType == "postgres" {
-            string pgSql = re `"RESOURCE_JSON"`.replace(sqlQuery,
+            string pgSql = re `"RESOURCE_JSON"`.replaceAll(sqlQuery,
                 string `CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON"`);
             sql:ParameterizedQuery pgQuery = new utils:RawSQLQuery(pgSql);
             stream<record {|string RESOURCE_JSON; int VERSION_ID; string OPERATION; time:Civil CREATED_AT;|}, sql:Error?> pgStream = jdbcConn->query(pgQuery);
-            record {|string RESOURCE_JSON; int VERSION_ID; string OPERATION; time:Civil CREATED_AT;|}[] pgResults = check from var r in pgStream select r;
+            record {|string RESOURCE_JSON; int VERSION_ID; string OPERATION; time:Civil CREATED_AT;|}[] pgResults = check from var r in pgStream
+                select r;
             foreach var r in pgResults {
                 rows.push([r.RESOURCE_JSON, r.VERSION_ID, r.OPERATION, r.CREATED_AT]);
             }
         } else {
             sql:ParameterizedQuery h2Query = new utils:RawSQLQuery(sqlQuery);
             stream<record {|byte[] RESOURCE_JSON; int VERSION_ID; string OPERATION; time:Civil CREATED_AT;|}, sql:Error?> h2Stream = jdbcConn->query(h2Query);
-            record {|byte[] RESOURCE_JSON; int VERSION_ID; string OPERATION; time:Civil CREATED_AT;|}[] h2Results = check from var r in h2Stream select r;
+            record {|byte[] RESOURCE_JSON; int VERSION_ID; string OPERATION; time:Civil CREATED_AT;|}[] h2Results = check from var r in h2Stream
+                select r;
             foreach var r in h2Results {
                 string jsonStr = check string:fromBytes(r.RESOURCE_JSON);
                 rows.push([jsonStr, r.VERSION_ID, r.OPERATION, r.CREATED_AT]);

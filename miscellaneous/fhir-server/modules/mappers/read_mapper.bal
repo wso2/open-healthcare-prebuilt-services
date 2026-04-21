@@ -38,7 +38,7 @@ public class ReadMapper {
         time:Civil resLastUpdated;
         string normalizedDbType = mapperUtils:dbType.toLowerAscii().trim();
         if normalizedDbType == "postgresql" || normalizedDbType == "postgres" {
-            string pgSql = re `"RESOURCE_JSON"`.replace(sqlQuery,
+            string pgSql = re `"RESOURCE_JSON"`.replaceAll(sqlQuery,
                 string `CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON"`);
             sql:ParameterizedQuery pgQuery = new RawSQLQuery(pgSql);
             stream<record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}, sql:Error?> pgStream = jdbcClient->query(pgQuery);
@@ -466,7 +466,7 @@ public class ReadMapper {
         record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}[] results;
         string normalizedDbType2 = mapperUtils:dbType.toLowerAscii().trim();
         if normalizedDbType2 == "postgresql" || normalizedDbType2 == "postgres" {
-            string pgSql = re `"RESOURCE_JSON"`.replace(sqlQuery,
+            string pgSql = re `"RESOURCE_JSON"`.replaceAll(sqlQuery,
                 string `CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON"`);
             sql:ParameterizedQuery pgQuery = new RawSQLQuery(pgSql);
             stream<record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}, sql:Error?> pgStream = jdbcClient->query(pgQuery);
@@ -695,7 +695,7 @@ public class ReadMapper {
         record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}[] results3;
         string normalizedDbType3 = mapperUtils:dbType.toLowerAscii().trim();
         if normalizedDbType3 == "postgresql" || normalizedDbType3 == "postgres" {
-            string pgSql = re `"RESOURCE_JSON"`.replace(sqlQuery,
+            string pgSql = re `"RESOURCE_JSON"`.replaceAll(sqlQuery,
                 string `CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON"`);
             sql:ParameterizedQuery pgQuery = new RawSQLQuery(pgSql);
             stream<record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}, sql:Error?> pgStream = jdbcClient->query(pgQuery);
