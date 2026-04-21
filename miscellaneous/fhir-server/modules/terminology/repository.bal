@@ -28,34 +28,50 @@ public isolated function readResourceJsonById(jdbc:Client jdbcClient, string res
     log:printDebug("Reading resource JSON by ID", resourceType = resourceType, id = id);
     string tableName = utils:getTableName(resourceType);
     string primaryKey = utils:getPrimaryKeyColumn(resourceType);
-    string sqlQuery = string `SELECT "RESOURCE_JSON" FROM "${tableName}" WHERE "${primaryKey}" = '${utils:escapeSql(id)}'`;
-    sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
-
-    stream<record {|byte[] RESOURCE_JSON;|}, sql:Error?> resultStream = jdbcClient->query(query);
-    record {|byte[] RESOURCE_JSON;|}[] results = check from var result in resultStream select result;
-
-    if results.length() == 0 {
-        return error(string `${resourceType}/${id} not found`);
+    string normalizedDbType = utils:dbType.toLowerAscii().trim();
+    string resourceJsonString;
+    if normalizedDbType == "postgresql" || normalizedDbType == "postgres" {
+        string pgSql = string `SELECT CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON" FROM "${tableName}" WHERE "${primaryKey}" = '${utils:escapeSql(id)}'`;
+        stream<record {|string RESOURCE_JSON;|}, sql:Error?> pgStream = jdbcClient->query(new utils:RawSQLQuery(pgSql));
+        record {|string RESOURCE_JSON;|}[] pgResults = check from var r in pgStream select r;
+        if pgResults.length() == 0 {
+            return error(string `${resourceType}/${id} not found`);
+        }
+        resourceJsonString = pgResults[0].RESOURCE_JSON;
+    } else {
+        string sqlQuery = string `SELECT "RESOURCE_JSON" FROM "${tableName}" WHERE "${primaryKey}" = '${utils:escapeSql(id)}'`;
+        stream<record {|byte[] RESOURCE_JSON;|}, sql:Error?> resultStream = jdbcClient->query(new utils:RawSQLQuery(sqlQuery));
+        record {|byte[] RESOURCE_JSON;|}[] results = check from var result in resultStream select result;
+        if results.length() == 0 {
+            return error(string `${resourceType}/${id} not found`);
+        }
+        resourceJsonString = check string:fromBytes(results[0].RESOURCE_JSON);
     }
-
-    string resourceJsonString = check string:fromBytes(results[0].RESOURCE_JSON);
     return check resourceJsonString.fromJsonString();
 }
 
 public isolated function readResourceJsonByColumn(jdbc:Client jdbcClient, string resourceType, string columnName, string value) returns json|error {
     string tableName = utils:getTableName(resourceType);
     string safeColumn = check getWhitelistedColumnName(resourceType, columnName);
-    string sqlQuery = string `SELECT "RESOURCE_JSON" FROM "${tableName}" WHERE "${safeColumn}" = '${utils:escapeSql(value)}' LIMIT 1`;
-    sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
-
-    stream<record {|byte[] RESOURCE_JSON;|}, sql:Error?> resultStream = jdbcClient->query(query);
-    record {|byte[] RESOURCE_JSON;|}[] results = check from var result in resultStream select result;
-
-    if results.length() == 0 {
-        return error(string `${resourceType} not found for ${columnName}=${value}`);
+    string normalizedDbType = utils:dbType.toLowerAscii().trim();
+    string resourceJsonString;
+    if normalizedDbType == "postgresql" || normalizedDbType == "postgres" {
+        string pgSql = string `SELECT CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON" FROM "${tableName}" WHERE "${safeColumn}" = '${utils:escapeSql(value)}' LIMIT 1`;
+        stream<record {|string RESOURCE_JSON;|}, sql:Error?> pgStream = jdbcClient->query(new utils:RawSQLQuery(pgSql));
+        record {|string RESOURCE_JSON;|}[] pgResults = check from var r in pgStream select r;
+        if pgResults.length() == 0 {
+            return error(string `${resourceType} not found for ${columnName}=${value}`);
+        }
+        resourceJsonString = pgResults[0].RESOURCE_JSON;
+    } else {
+        string sqlQuery = string `SELECT "RESOURCE_JSON" FROM "${tableName}" WHERE "${safeColumn}" = '${utils:escapeSql(value)}' LIMIT 1`;
+        stream<record {|byte[] RESOURCE_JSON;|}, sql:Error?> resultStream = jdbcClient->query(new utils:RawSQLQuery(sqlQuery));
+        record {|byte[] RESOURCE_JSON;|}[] results = check from var result in resultStream select result;
+        if results.length() == 0 {
+            return error(string `${resourceType} not found for ${columnName}=${value}`);
+        }
+        resourceJsonString = check string:fromBytes(results[0].RESOURCE_JSON);
     }
-
-    string resourceJsonString = check string:fromBytes(results[0].RESOURCE_JSON);
     return check resourceJsonString.fromJsonString();
 }
 

@@ -117,23 +117,31 @@ public isolated function removeSearchParameterById(jdbc:Client? jdbcClient, stri
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
     
     // First, read the SearchParameter resource to get the code
-    sql:ParameterizedQuery readQuery = `
-        SELECT "RESOURCE_JSON" FROM "SearchParameterTable" 
-        WHERE "SEARCHPARAMETERTABLE_ID" = ${resourceId}
-    `;
-    
-    stream<record {byte[] RESOURCE_JSON;}, error?> resultStream = validatedClient->query(readQuery);
-    record {|record {byte[] RESOURCE_JSON;} value;|}|error? nextRecord = resultStream.next();
-    check resultStream.close();
-    
-    if nextRecord is () || nextRecord is error {
-        log:printWarn(string `SearchParameter with ID '${resourceId}' not found, skipping expression cleanup`);
-        return;
+    string normalizedDbType = dbType.toLowerAscii().trim();
+    string jsonString;
+    if normalizedDbType == "postgresql" || normalizedDbType == "postgres" {
+        string pgSql = string `SELECT CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON" FROM "SearchParameterTable" WHERE "SEARCHPARAMETERTABLE_ID" = '${resourceId}'`;
+        stream<record {|string RESOURCE_JSON;|}, sql:Error?> pgStream = validatedClient->query(new RawSQLQuery(pgSql));
+        record {|string RESOURCE_JSON;|}[] pgResults = check from var r in pgStream select r;
+        if pgResults.length() == 0 {
+            log:printWarn(string `SearchParameter with ID '${resourceId}' not found, skipping expression cleanup`);
+            return;
+        }
+        jsonString = pgResults[0].RESOURCE_JSON;
+    } else {
+        sql:ParameterizedQuery readQuery = `
+            SELECT "RESOURCE_JSON" FROM "SearchParameterTable"
+            WHERE "SEARCHPARAMETERTABLE_ID" = ${resourceId}
+        `;
+        stream<record {byte[] RESOURCE_JSON;}, error?> resultStream = validatedClient->query(readQuery);
+        record {|record {byte[] RESOURCE_JSON;} value;|}|error? nextRecord = resultStream.next();
+        check resultStream.close();
+        if nextRecord is () || nextRecord is error {
+            log:printWarn(string `SearchParameter with ID '${resourceId}' not found, skipping expression cleanup`);
+            return;
+        }
+        jsonString = check string:fromBytes(nextRecord.value.RESOURCE_JSON);
     }
-    
-    // Parse the JSON to get the code
-    byte[] resourceBytes = nextRecord.value.RESOURCE_JSON;
-    string jsonString = check string:fromBytes(resourceBytes);
     json searchParamJson = check jsonString.fromJsonString();
     string code = check searchParamJson.code;
     
