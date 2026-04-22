@@ -345,7 +345,7 @@ public class UpdateHandler {
             record {|string RESOURCE_JSON;|}[] pgResults = check from var r in pgStream
                 select r;
             if pgResults.length() == 0 {
-                log:printWarn("Resource not found: " + resourceType + "/" + resourceId);
+                log:printDebug("Resource not found: " + resourceType + "/" + resourceId);
                 return error(string `${resourceType}/${resourceId} not found`);
             }
             jsonString = pgResults[0].RESOURCE_JSON;

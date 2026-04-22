@@ -18,7 +18,7 @@ public class HistoryHandler {
     // Save current version to history before update/delete
     public isolated function saveToHistory(string resourceType, string resourceId,
             record {|anydata...;|} currentVersion, string operation) returns error? {
-        log:printInfo(string `Saving ${resourceType}/${resourceId} to history (operation: ${operation})`);
+        log:printDebug(string `Saving ${resourceType}/${resourceId} to history (operation: ${operation})`);
         jdbc:Client jdbcConn = check utils:getValidatedJdbcClient(self.jdbcClient);
 
         // Get RESOURCE_JSON from current version — may be byte[] (H2) or json/string (PostgreSQL JSONB)
@@ -61,7 +61,7 @@ public class HistoryHandler {
 
         _ = check jdbcConn->execute(query);
 
-        log:printInfo(string `Saved version ${newVersionId} of ${resourceType}/${resourceId} to unified history table`);
+        log:printDebug(string `Saved version ${newVersionId} of ${resourceType}/${resourceId} to unified history table`);
     }
 
     // Build a history entry map from a raw JSON string and metadata fields

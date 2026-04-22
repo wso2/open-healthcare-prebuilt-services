@@ -30,7 +30,7 @@ public class CreateMapper {
         }
 
         string tableName = mapperUtils:getTableName(resourceType);
-        log:printInfo("Building insert record for resource type: " + resourceType + ", table: " + tableName);
+        log:printDebug("Building insert record for resource type: " + resourceType + ", table: " + tableName);
 
         // Get actual column names from database schema
         string[] tableColumns = check mapperUtils:getTableColumns(jdbcConn, tableName);
