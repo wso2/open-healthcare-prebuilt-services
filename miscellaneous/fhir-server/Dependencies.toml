@@ -68,7 +68,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "data.xmldata"
-version = "1.6.1"
+version = "1.6.2"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.object"}
@@ -91,7 +91,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "ftp"
-version = "2.16.0"
+version = "2.17.1"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "data.csv"},
@@ -107,7 +107,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "http"
-version = "2.14.9"
+version = "2.14.10"
 dependencies = [
 	{org = "ballerina", name = "auth"},
 	{org = "ballerina", name = "cache"},
@@ -435,7 +435,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.clients.fhir"
-version = "3.0.4"
+version = "3.0.6"
 dependencies = [
 	{org = "ballerina", name = "file"},
 	{org = "ballerina", name = "ftp"},
@@ -454,7 +454,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4"
-version = "6.3.0"
+version = "6.3.2"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "http"},
@@ -475,7 +475,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4.international401"
-version = "4.0.2"
+version = "4.0.3"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "log"},
@@ -488,7 +488,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4.ips"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "http"},
@@ -503,7 +503,7 @@ dependencies = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4.parser"
-version = "7.1.0"
+version = "7.1.1"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "http"},
@@ -520,7 +520,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "health.fhir.r4.validator"
-version = "6.0.0"
+version = "6.0.1"
 dependencies = [
 	{org = "ballerina", name = "constraint"},
 	{org = "ballerina", name = "http"},
@@ -554,7 +554,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "health.fhirr4"
-version = "3.0.5"
+version = "3.0.7"
 dependencies = [
 	{org = "ballerina", name = "file"},
 	{org = "ballerina", name = "http"},

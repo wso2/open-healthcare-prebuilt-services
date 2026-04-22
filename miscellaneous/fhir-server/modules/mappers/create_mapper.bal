@@ -18,76 +18,79 @@ public class CreateMapper {
     // Generic helper to build insert record from extracted search parameters
     // Queries database schema to determine which columns exist in the table
     private isolated function buildInsertRecord(
-        string resourceType,
-        string resourceId,
-        map<json> extractedValues,
-        byte[] resourceJsonBytes
+            string resourceType,
+            string resourceId,
+            map<json> extractedValues,
+            anydata resourceJsonData
     ) returns map<anydata>|error {
-        
+
         jdbc:Client? jdbcConn = self.jdbcClient;
         if jdbcConn is () {
             return error("JDBC client is required for generic column mapping");
         }
-        
+
         string tableName = mapperUtils:getTableName(resourceType);
-        
+        log:printDebug("Building insert record for resource type: " + resourceType + ", table: " + tableName);
+
         // Get actual column names from database schema
         string[] tableColumns = check mapperUtils:getTableColumns(jdbcConn, tableName);
-        
+
+        log:printDebug("Retrieved " + tableColumns.length().toString() + " columns for table " + tableName);
+
         // Convert column names to a set for fast lookup
         map<boolean> columnSet = {};
         foreach string column in tableColumns {
             columnSet[column] = true;
         }
-        
+
         map<anydata> insertRecord = {};
-        
+
         // Add the resource ID (primary key)
         string primaryKeyColumn = mapperUtils:getPrimaryKeyColumn(resourceType);
         if columnSet.hasKey(primaryKeyColumn) {
             insertRecord[primaryKeyColumn] = resourceId;
         }
-        
+
         // First, initialize all columns with null/default values
         foreach string column in tableColumns {
             // Skip primary key (already set)
             if column == primaryKeyColumn {
                 continue;
             }
-            
+
             // Skip metadata fields (they're added at the end)
-            if column == "VERSION_ID" || column == "CREATED_AT" || 
-               column == "UPDATED_AT" || column == "LAST_UPDATED" || 
-               column == "RESOURCE_JSON" {
+            if column == "VERSION_ID" || column == "CREATED_AT" ||
+                column == "UPDATED_AT" || column == "LAST_UPDATED" ||
+                column == "RESOURCE_JSON" {
                 continue;
             }
-            
+
             // Initialize with null for optional fields
             insertRecord[column] = ();
         }
-        
+
         // Now populate with actual values from extractedValues
         foreach string searchParam in extractedValues.keys() {
             string dbColumn = mapperUtils:toDbColumnName(searchParam);
-            
+
             // Only include if this column exists in the table
             if !columnSet.hasKey(dbColumn) {
                 continue;
             }
-            
+
             // Skip if primary key or metadata
-            if dbColumn == primaryKeyColumn || dbColumn == "VERSION_ID" || 
-               dbColumn == "CREATED_AT" || dbColumn == "UPDATED_AT" || 
-               dbColumn == "LAST_UPDATED" || dbColumn == "RESOURCE_JSON" {
+            if dbColumn == primaryKeyColumn || dbColumn == "VERSION_ID" ||
+                dbColumn == "CREATED_AT" || dbColumn == "UPDATED_AT" ||
+                dbColumn == "LAST_UPDATED" || dbColumn == "RESOURCE_JSON" {
                 continue;
             }
-            
+
             json value = extractedValues.get(searchParam);
-            
+
             // Determine field type based on parameter name patterns
-            if searchParam.endsWith("date") || searchParam == "period" || 
-               searchParam == "effective" || searchParam == "authored" || searchParam == "authoredon" || 
-               searchParam == "created" || searchParam == "started" || searchParam == "issued" || searchParam == "recorded" {
+            if searchParam.endsWith("date") || searchParam == "period" ||
+                searchParam == "effective" || searchParam == "authored" || searchParam == "authoredon" ||
+                searchParam == "created" || searchParam == "started" || searchParam == "issued" || searchParam == "recorded" {
                 // Handle date fields
                 string valueStr = value.toString();
                 if valueStr.trim().length() > 0 {
@@ -118,14 +121,14 @@ public class CreateMapper {
                 // If empty, leave as () which was initialized above
             }
         }
-        
+
         // Add standard metadata fields (only if they exist in table)
         if columnSet.hasKey("VERSION_ID") {
             insertRecord["VERSION_ID"] = 1;
         }
-        
+
         time:Civil currentTime = time:utcToCivil(time:utcNow());
-        
+
         if columnSet.hasKey("CREATED_AT") {
             insertRecord["CREATED_AT"] = currentTime;
         }
@@ -136,9 +139,9 @@ public class CreateMapper {
             insertRecord["LAST_UPDATED"] = currentTime;
         }
         if columnSet.hasKey("RESOURCE_JSON") {
-            insertRecord["RESOURCE_JSON"] = resourceJsonBytes;
+            insertRecord["RESOURCE_JSON"] = resourceJsonData;
         }
-        
+
         return insertRecord;
     }
 
@@ -178,11 +181,16 @@ public class CreateMapper {
         json resourceJsonWithId = resourceJsonMap.toJson();
         self.resourceJsonWithId = resourceJsonWithId;
 
+        string normalizedDbType = mapperUtils:dbType.toLowerAscii().trim();
+        anydata resourceJsonData = (normalizedDbType == "postgresql" || normalizedDbType == "postgres")
+            ? resourceJsonWithId.toJsonString()
+            : resourceJsonWithId.toJsonString().toBytes();
+
         map<anydata> insertRecord = check self.buildInsertRecord(
             resourceType,
             resourceId,
             extractedValues,
-            resourceJsonWithId.toJsonString().toBytes()
+            resourceJsonData
         );
 
         return insertRecord;

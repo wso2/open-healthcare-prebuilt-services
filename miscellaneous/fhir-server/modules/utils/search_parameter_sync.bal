@@ -21,22 +21,22 @@ import ballerinax/java.jdbc;
 // Sync SearchParameter to SEARCH_PARAM_RES_EXPRESSIONS table
 public isolated function syncSearchParameterToExpressions(jdbc:Client? jdbcClient, json searchParamJson) returns error? {
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
-    
+
     // Extract required fields from SearchParameter JSON
     string code = check searchParamJson.code;
     string 'type = check searchParamJson.'type;
     string expression = check searchParamJson.expression;
     json baseArray = check searchParamJson.base;
-    
+
     // Handle base as array (it's an array of resource types)
     json[] baseResources = <json[]>baseArray;
-    
+
     log:printInfo(string `Syncing SearchParameter '${code}' to SEARCH_PARAM_RES_EXPRESSIONS for ${baseResources.length()} resource type(s)`);
-    
+
     // Insert entry for each base resource type
     foreach json baseResource in baseResources {
         string resourceName = baseResource.toString();
-        
+
         // Check if entry already exists
         sql:ParameterizedQuery checkQuery = `
             SELECT COUNT(*) as count FROM "SEARCH_PARAM_RES_EXPRESSIONS" 
@@ -44,16 +44,16 @@ public isolated function syncSearchParameterToExpressions(jdbc:Client? jdbcClien
             AND "RESOURCE_NAME" = ${resourceName}
             AND "IS_CUSTOM" = ${true}
         `;
-        
+
         stream<record {int count;}, error?> checkResult = validatedClient->query(checkQuery);
         record {|record {int count;} value;|}|error? nextRecord = checkResult.next();
         check checkResult.close();
-        
+
         boolean exists = false;
         if nextRecord is record {|record {int count;} value;|} {
             exists = nextRecord.value.count > 0;
         }
-        
+
         if exists {
             // Update existing entry
             log:printDebug(string `Updating existing SearchParameter expression for '${code}' on ${resourceName}`);
@@ -76,78 +76,89 @@ public isolated function syncSearchParameterToExpressions(jdbc:Client? jdbcClien
             `;
             _ = check validatedClient->execute(insertQuery);
         }
-        
+
         log:printInfo(string `Successfully synced SearchParameter '${code}' for resource type '${resourceName}'`);
     }
-    
+
     // Clear the search parameter cache
     clearSearchParamCache();
-    
+
     return;
 }
 
 // Remove SearchParameter from SEARCH_PARAM_RES_EXPRESSIONS table
 public isolated function removeSearchParameterFromExpressions(jdbc:Client? jdbcClient, json searchParamJson) returns error? {
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
-    
+
     // Extract code from SearchParameter
     string code = check searchParamJson.code;
-    
+
     log:printInfo(string `Removing SearchParameter '${code}' from SEARCH_PARAM_RES_EXPRESSIONS`);
-    
+
     sql:ParameterizedQuery deleteQuery = `
         DELETE FROM "SEARCH_PARAM_RES_EXPRESSIONS" 
         WHERE "SEARCH_PARAM_NAME" = ${code}
         AND "IS_CUSTOM" = ${true}
     `;
-    
+
     sql:ExecutionResult result = check validatedClient->execute(deleteQuery);
-    
+
     // Clear the search parameter cache
     clearSearchParamCache();
-    
+
     int affectedRows = result.affectedRowCount ?: 0;
     log:printInfo(string `Removed ${affectedRows} SearchParameter expression(s) for '${code}'`);
-    
+
     return;
 }
 
 // Remove SearchParameter by ID (when we only have the resource ID)
 public isolated function removeSearchParameterById(jdbc:Client? jdbcClient, string resourceId) returns error? {
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
-    
+
     // First, read the SearchParameter resource to get the code
-    sql:ParameterizedQuery readQuery = `
-        SELECT "RESOURCE_JSON" FROM "SearchParameterTable" 
-        WHERE "SEARCHPARAMETERTABLE_ID" = ${resourceId}
-    `;
-    
-    stream<record {byte[] RESOURCE_JSON;}, error?> resultStream = validatedClient->query(readQuery);
-    record {|record {byte[] RESOURCE_JSON;} value;|}|error? nextRecord = resultStream.next();
-    check resultStream.close();
-    
-    if nextRecord is () || nextRecord is error {
-        log:printWarn(string `SearchParameter with ID '${resourceId}' not found, skipping expression cleanup`);
-        return;
+    string normalizedDbType = dbType.toLowerAscii().trim();
+    string jsonString;
+    if normalizedDbType == "postgresql" || normalizedDbType == "postgres" {
+        string pgSql = string `SELECT CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON" FROM "SearchParameterTable" WHERE "SEARCHPARAMETERTABLE_ID" = '${escapeSql(resourceId)}'`;
+        stream<record {|string RESOURCE_JSON;|}, sql:Error?> pgStream = validatedClient->query(new RawSQLQuery(pgSql));
+        record {|string RESOURCE_JSON;|}[] pgResults = check from var r in pgStream
+            select r;
+        if pgResults.length() == 0 {
+            log:printWarn(string `SearchParameter with ID '${resourceId}' not found, skipping expression cleanup`);
+            return;
+        }
+        jsonString = pgResults[0].RESOURCE_JSON;
+    } else {
+        sql:ParameterizedQuery readQuery = `
+            SELECT "RESOURCE_JSON" FROM "SearchParameterTable"
+            WHERE "SEARCHPARAMETERTABLE_ID" = ${resourceId}
+        `;
+        stream<record {byte[] RESOURCE_JSON;}, error?> resultStream = validatedClient->query(readQuery);
+        record {|record {byte[] RESOURCE_JSON;} value;|}|error? nextRecord = resultStream.next();
+        check resultStream.close();
+        if nextRecord is () || nextRecord is error {
+            log:printWarn(string `SearchParameter with ID '${resourceId}' not found, skipping expression cleanup`);
+            return;
+        }
+        jsonString = check string:fromBytes(nextRecord.value.RESOURCE_JSON);
     }
-    
-    // Parse the JSON to get the code
-    byte[] resourceBytes = nextRecord.value.RESOURCE_JSON;
-    string jsonString = check string:fromBytes(resourceBytes);
     json searchParamJson = check jsonString.fromJsonString();
     string code = check searchParamJson.code;
-    
+
+    log:printInfo(string `Successfully retrieved SearchParameter with code: ${code} for removal`);
+
     log:printInfo(string `Removing SearchParameter '${code}' (ID: ${resourceId}) from SEARCH_PARAM_RES_EXPRESSIONS`);
-    
+
     sql:ParameterizedQuery deleteQuery = `
         DELETE FROM "SEARCH_PARAM_RES_EXPRESSIONS" 
         WHERE "SEARCH_PARAM_NAME" = ${code}
         AND "IS_CUSTOM" = ${true}
     `;
-    
+
     sql:ExecutionResult result = check validatedClient->execute(deleteQuery);
     int affectedRows = result.affectedRowCount ?: 0;
     log:printInfo(string `Removed ${affectedRows} SearchParameter expression(s) for '${code}'`);
-    
+
     return;
 }
