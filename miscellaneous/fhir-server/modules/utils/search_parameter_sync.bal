@@ -146,6 +146,8 @@ public isolated function removeSearchParameterById(jdbc:Client? jdbcClient, stri
     json searchParamJson = check jsonString.fromJsonString();
     string code = check searchParamJson.code;
 
+    log:printInfo(string `Successfully retrieved SearchParameter with code: ${code} for removal`);
+
     log:printInfo(string `Removing SearchParameter '${code}' (ID: ${resourceId}) from SEARCH_PARAM_RES_EXPRESSIONS`);
 
     sql:ParameterizedQuery deleteQuery = `

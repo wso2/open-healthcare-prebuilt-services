@@ -335,23 +335,27 @@ public class UpdateHandler {
         string tableName = utils:getTableName(resourceType);
         string primaryKey = utils:getPrimaryKeyColumn(resourceType);
 
-        string sqlQuery = string `SELECT "RESOURCE_JSON" FROM "${tableName}" WHERE "${primaryKey}" = '${utils:escapeSql(resourceId)}'`;
-
         string jsonString;
         string normalizedDbType = dbType.toLowerAscii().trim();
         if normalizedDbType == "postgresql" || normalizedDbType == "postgres" {
             string pgSql = string `SELECT CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON" FROM "${tableName}" WHERE "${primaryKey}" = '${utils:escapeSql(resourceId)}'`;
+            log:printDebug("Fetching resource: " + resourceType + "/" + resourceId + " from table: " + tableName);
             sql:ParameterizedQuery pgQuery = new utils:RawSQLQuery(pgSql);
             stream<record {|string RESOURCE_JSON;|}, sql:Error?> pgStream = jdbcConn->query(pgQuery);
-            record {|string RESOURCE_JSON;|}[] pgResults = check from var r in pgStream select r;
+            record {|string RESOURCE_JSON;|}[] pgResults = check from var r in pgStream
+                select r;
             if pgResults.length() == 0 {
+                log:printWarn("Resource not found: " + resourceType + "/" + resourceId);
                 return error(string `${resourceType}/${resourceId} not found`);
             }
             jsonString = pgResults[0].RESOURCE_JSON;
         } else {
+            string sqlQuery = string `SELECT "RESOURCE_JSON" FROM "${tableName}" WHERE "${primaryKey}" = '${utils:escapeSql(resourceId)}'`;
             sql:ParameterizedQuery h2Query = new utils:RawSQLQuery(sqlQuery);
+            log:printDebug("Fetching resource: " + resourceType + "/" + resourceId + " from table: " + tableName);
             stream<record {|byte[] RESOURCE_JSON;|}, sql:Error?> h2Stream = jdbcConn->query(h2Query);
-            record {|byte[] RESOURCE_JSON;|}[] h2Results = check from var r in h2Stream select r;
+            record {|byte[] RESOURCE_JSON;|}[] h2Results = check from var r in h2Stream
+                select r;
             if h2Results.length() == 0 {
                 return error(string `${resourceType}/${resourceId} not found`);
             }

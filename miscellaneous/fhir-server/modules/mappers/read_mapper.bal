@@ -45,6 +45,7 @@ public class ReadMapper {
             record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}[] pgResults = check from var r in pgStream
                 select r;
             if pgResults.length() == 0 {
+                log:printInfo(string `Resource not found: ${resourceType}/${resourceId}`);
                 return error(string `${resourceType}/${resourceId} not found`);
             }
             resourceJsonString = pgResults[0].RESOURCE_JSON;

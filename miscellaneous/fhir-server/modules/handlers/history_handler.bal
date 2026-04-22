@@ -18,6 +18,7 @@ public class HistoryHandler {
     // Save current version to history before update/delete
     public isolated function saveToHistory(string resourceType, string resourceId,
             record {|anydata...;|} currentVersion, string operation) returns error? {
+        log:printInfo(string `Saving ${resourceType}/${resourceId} to history (operation: ${operation})`);
         log:printDebug(string `Saving ${resourceType}/${resourceId} to history (operation: ${operation})`);
         jdbc:Client jdbcConn = check utils:getValidatedJdbcClient(self.jdbcClient);
 
@@ -45,7 +46,7 @@ public class HistoryHandler {
             } else {
                 jsonStr = rawResourceJson.toJsonString();
             }
-            string escapedJson = re `'`.replaceAll(jsonStr, "''");
+            string escapedJson = utils:escapeSql(jsonStr);
             resourceJsonValue = string `'${escapedJson}'`;
         } else {
             // H2: Use X'...' hex literal format
@@ -56,11 +57,12 @@ public class HistoryHandler {
         }
 
         // Insert into unified RESOURCE_HISTORY table with incremented version
-        string sqlQuery = string `INSERT INTO "RESOURCE_HISTORY" ("RESOURCE_TYPE", "RESOURCE_ID", "VERSION_ID", "OPERATION", "CREATED_AT", "RESOURCE_JSON") VALUES ('${utils:escapeSql(resourceType)}', '${utils:escapeSql(resourceId)}', ${newVersionId}, '${operation}', ${timestamp}, ${resourceJsonValue})`;
+        string sqlQuery = string `INSERT INTO "RESOURCE_HISTORY" ("RESOURCE_TYPE", "RESOURCE_ID", "VERSION_ID", "OPERATION", "CREATED_AT", "RESOURCE_JSON") VALUES ('${utils:escapeSql(resourceType)}', '${utils:escapeSql(resourceId)}', ${newVersionId}, '${utils:escapeSql(operation)}', ${timestamp}, ${resourceJsonValue})`;
         sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
 
         _ = check jdbcConn->execute(query);
 
+        log:printInfo(string `Saved version ${newVersionId} of ${resourceType}/${resourceId} to unified history table`);
         log:printDebug(string `Saved version ${newVersionId} of ${resourceType}/${resourceId} to unified history table`);
     }
 
