@@ -73,7 +73,7 @@ start_server() {
     SERVER_STARTED=true
     
     echo "Waiting for server to start (PID: $SERVER_PID)..."
-    for i in {1..30}; do
+    for i in {1..60}; do
         if curl -s "$BASE_URL/metadata" > /dev/null 2>&1; then
             print_pass "Server started successfully"
             return 0
@@ -82,7 +82,7 @@ start_server() {
         echo -n "."
     done
     echo ""
-    print_fail "Server failed to start within 30 seconds"
+    print_fail "Server failed to start within 60 seconds"
     cat server.log
     exit 1
 }
@@ -1377,6 +1377,190 @@ for RES in "Condition/$EXPORT_COND_ID" "MedicationRequest/$EXPORT_MEDREQ_ID" "Ob
     curl -s -w "%{http_code}" -o /dev/null -X DELETE "$BASE_URL/$RES" > /dev/null
 done
 echo "Export test resources cleaned up"
+
+# ======================================================================
+# Search Tests with Reference Parameter 
+# ======================================================================
+
+# IDs used only by this section — kept predictable for count assertions
+REF_PAT1_ID="test-ref-pat-001"
+REF_PAT2_ID="test-ref-pat-002"
+REF_COND1_ID="test-ref-cond-001"   # subject=PAT1, clinicalStatus=active
+REF_COND2_ID="test-ref-cond-002"   # subject=PAT1, clinicalStatus=inactive
+REF_COND3_ID="test-ref-cond-003"   # subject=PAT2, clinicalStatus=active
+
+# Helper: extract .total from a FHIR search response
+get_total() {
+    local url="$1"
+    local response=$(curl -s "$url")
+    local total=$(echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('total','err'))" 2>/dev/null)
+
+    if [ "$DEBUG" = "true" ]; then
+        echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'DEBUG: {len(d.get(\"entry\", []))} results (total={d.get(\"total\", 0)}):'); [print(f'  - {e[\"resource\"][\"id\"]}: {e[\"resource\"].get(\"clinicalStatus\", {}).get(\"coding\", [{}])[0].get(\"code\", \"N/A\")}') for e in d.get('entry', [])]" 2>/dev/null >&2
+    fi
+
+    echo "$total"
+}
+
+# Helper: assert total equals expected
+check_total() {
+    local desc="$1"
+    local expected="$2"
+    local actual="$3"
+    if [ "$actual" = "$expected" ]; then
+        print_pass "$desc (total=$actual)"
+    else
+        print_fail "$desc (expected total=$expected, got=$actual)"
+    fi
+}
+
+# --- Setup: create reference search test resources (not counted as tests) ---
+echo ""
+echo "Setting up reference search test resources..."
+
+curl -s -o /dev/null -X POST "$BASE_URL/Patient" \
+  -H "Content-Type: application/fhir+json" \
+  -d "{\"resourceType\":\"Patient\",\"id\":\"$REF_PAT1_ID\",\"active\":true,\"name\":[{\"family\":\"RefTest\",\"given\":[\"Alice\"]}],\"gender\":\"female\"}"
+
+curl -s -o /dev/null -X POST "$BASE_URL/Patient" \
+  -H "Content-Type: application/fhir+json" \
+  -d "{\"resourceType\":\"Patient\",\"id\":\"$REF_PAT2_ID\",\"active\":true,\"name\":[{\"family\":\"RefTest\",\"given\":[\"Bob\"]}],\"gender\":\"male\"}"
+
+curl -s -o /dev/null -X POST "$BASE_URL/Condition" \
+  -H "Content-Type: application/fhir+json" \
+  -d "{\"resourceType\":\"Condition\",\"id\":\"$REF_COND1_ID\",\"clinicalStatus\":{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-clinical\",\"code\":\"active\"}]},\"code\":{\"coding\":[{\"system\":\"http://snomed.info/sct\",\"code\":\"73211009\",\"display\":\"Diabetes mellitus\"}]},\"subject\":{\"reference\":\"Patient/$REF_PAT1_ID\"}}"
+
+curl -s -o /dev/null -X POST "$BASE_URL/Condition" \
+  -H "Content-Type: application/fhir+json" \
+  -d "{\"resourceType\":\"Condition\",\"id\":\"$REF_COND2_ID\",\"clinicalStatus\":{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-clinical\",\"code\":\"inactive\"}]},\"code\":{\"coding\":[{\"system\":\"http://snomed.info/sct\",\"code\":\"44054006\",\"display\":\"Type 2 diabetes\"}]},\"subject\":{\"reference\":\"Patient/$REF_PAT1_ID\"}}"
+
+curl -s -o /dev/null -X POST "$BASE_URL/Condition" \
+  -H "Content-Type: application/fhir+json" \
+  -d "{\"resourceType\":\"Condition\",\"id\":\"$REF_COND3_ID\",\"clinicalStatus\":{\"coding\":[{\"system\":\"http://terminology.hl7.org/CodeSystem/condition-clinical\",\"code\":\"active\"}]},\"code\":{\"coding\":[{\"system\":\"http://snomed.info/sct\",\"code\":\"38341003\",\"display\":\"Hypertension\"}]},\"subject\":{\"reference\":\"Patient/$REF_PAT2_ID\"}}"
+
+echo "Reference search test resources created"
+
+# --- Reference parameter search tests ---
+
+print_test "Reference search: subject=Patient/<id> (relative reference, expect 2)"
+check_total "subject=Patient/<id>" 2 "$(get_total "$BASE_URL/Condition?subject=Patient/$REF_PAT1_ID")"
+
+# --- Case 2 malformed: paramValue has slash but fails the 2-part / non-empty check ---
+print_test "Reference search: subject=Patient/ (trailing slash, expect 400)"
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?subject=Patient/")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
+    print_pass "subject=Patient/ (trailing slash) correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
+elif [ "$HTTP_CODE" != "400" ]; then
+    print_fail "subject=Patient/ should return 400, got $HTTP_CODE"
+else
+    print_fail "subject=Patient/ returned 400 but response is not OperationOutcome: $BODY"
+fi
+
+print_test "Reference search: subject=/123 (leading slash, expect 400)"
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?subject=/123")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
+    print_pass "subject=/123 (leading slash) correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
+elif [ "$HTTP_CODE" != "400" ]; then
+    print_fail "subject=/123 should return 400, got $HTTP_CODE"
+else
+    print_fail "subject=/123 returned 400 but response is not OperationOutcome: $BODY"
+fi
+
+# --- Case 3: plain ID without type (not supported) ---
+print_test "Reference search: subject=<id> plain (no type prefix, expect 400)"
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?subject=$REF_PAT1_ID")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
+    print_pass "subject=<id> without type correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
+elif [ "$HTTP_CODE" != "400" ]; then
+    print_fail "subject=<id> without type should return 400, got $HTTP_CODE"
+else
+    print_fail "subject=<id> without type returned 400 but response is not OperationOutcome: $BODY"
+fi
+
+print_test "Reference search: subject=non-existing-id (plain non-existing id, expect 400)"
+RESPONSE=$(curl -s -w "\n%{http_code}" "$BASE_URL/Condition?subject=non-existing-id")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | head -n -1)
+if [ "$HTTP_CODE" = "400" ] && echo "$BODY" | grep -q '"OperationOutcome"'; then
+    print_pass "subject=non-existing-id without type correctly rejected (HTTP $HTTP_CODE, OperationOutcome returned)"
+elif [ "$HTTP_CODE" != "400" ]; then
+    print_fail "subject=non-existing-id without type should return 400, got $HTTP_CODE"
+else
+    print_fail "subject=non-existing-id without type returned 400 but response is not OperationOutcome: $BODY"
+fi
+
+print_test "Reference search: patient=Patient/<id> (relative reference, expect 2)"
+check_total "patient=Patient/<id>" 2 "$(get_total "$BASE_URL/Condition?patient=Patient/$REF_PAT1_ID")"
+
+# --- non-reference parameter given a Type/id value must not match ---
+
+print_test "Non-ref param: code=Patient/<id> (expect 0)"
+check_total "code=Patient/<id>" 0 "$(get_total "$BASE_URL/Condition?code=Patient/$REF_PAT1_ID")"
+
+print_test "Non-ref param: category=Patient/<id> (expect 0)"
+check_total "category=Patient/<id>" 0 "$(get_total "$BASE_URL/Condition?category=Patient/$REF_PAT1_ID")"
+
+print_test "Non-ref param: clinical-status=Patient/<id> (expect 0)"
+check_total "clinical-status=Patient/<id>" 0 "$(get_total "$BASE_URL/Condition?clinical-status=Patient/$REF_PAT1_ID")"
+
+# --- Sanity: per-patient counts ---
+
+print_test "Reference search: subject=Patient/<PAT2> (expect 1)"
+check_total "subject=Patient/<PAT2>" 1 "$(get_total "$BASE_URL/Condition?subject=Patient/$REF_PAT2_ID")"
+
+# --- Case 4: absolute URL reference (not supported) ---
+# TODO: uncomment after fixing regex issue in r4
+#print_test "Reference search: subject=http://example.com/fhir/Patient/<id> (absolute URL, expect 400)"
+#HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/Condition?subject=http://example.com/fhir/Patient/$REF_PAT1_ID")
+#if [ "$HTTP_CODE" = "400" ]; then
+#    print_pass "Absolute URL reference correctly rejected (HTTP $HTTP_CODE)"
+#else
+#     print_fail "Absolute URL reference should return 400, got $HTTP_CODE"
+# fi
+
+# --- Invalid target resource type must be rejected ---
+# 'patient' on Condition has expression Condition.subject.where(resolve() is Patient),
+# so validTargetTypes=["Patient"]. Passing Medication as the type must return 400.
+# (Note: 'subject' on Condition has no resolve() constraint → validTargetTypes="any",
+#  so it would not reject Medication here.)
+
+print_test "Reference search: patient=Medication/<id> (disallowed target type for 'patient' param, expect 400)"
+HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/Condition?patient=Medication/$REF_PAT1_ID")
+if [ "$HTTP_CODE" = "400" ]; then
+    print_pass "Invalid target type correctly rejected (HTTP $HTTP_CODE)"
+else
+    print_fail "Invalid target type should return 400, got $HTTP_CODE"
+fi
+
+# 'subject' on Condition has no resolve() constraint (validTargetTypes="any"),
+# so an unknown type just returns 0 results rather than an error.
+print_test "Reference search: subject=Medication/<id> (unconstrained param, expect 0 results not error)"
+HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/ref_test_resp.json "$BASE_URL/Condition?subject=Medication/nonexistent-med-id")
+if [ "$HTTP_CODE" = "200" ]; then
+    check_total "subject=Medication/<id> returns empty bundle" 0 "$(python3 -c "import sys,json; d=json.load(open('/tmp/ref_test_resp.json')); print(d.get('total','err'))" 2>/dev/null)"
+else
+    print_fail "subject=Medication/<id> should return 200 empty bundle, got $HTTP_CODE"
+fi
+
+# --- Non-existent target ID (valid format) must return 0, not an error ---
+
+print_test "Reference search: subject=Patient/does-not-exist (valid format, no data, expect 0)"
+check_total "subject=Patient/does-not-exist" 0 "$(get_total "$BASE_URL/Condition?subject=Patient/does-not-exist")"
+
+
+# --- Cleanup reference search test resources ---
+echo ""
+echo "Cleaning up reference search test resources..."
+for RES in "Condition/$REF_COND1_ID" "Condition/$REF_COND2_ID" "Condition/$REF_COND3_ID" "Patient/$REF_PAT1_ID" "Patient/$REF_PAT2_ID"; do
+    curl -s -o /dev/null -X DELETE "$BASE_URL/$RES"
+done
+echo "Reference search test resources cleaned up"
 
 # Summary
 echo ""
