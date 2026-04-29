@@ -5,8 +5,7 @@
 
 import ballerinax/java.jdbc;
 
-configurable string url = ?;
-configurable string user = ?;
-configurable string password = ?;
+configurable string url = "";
+configurable string user = "";
+configurable string password = "";
 configurable jdbc:Options & readonly connectionOptions = {};
-

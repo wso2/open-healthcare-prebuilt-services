@@ -13,7 +13,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-import terminology_service.store;
+import terminology_service.store_h2;
 
 import ballerina/http;
 import ballerina/persist;
@@ -158,20 +158,20 @@ isolated function byteToValueSet(byte[] byteArray) returns r4:ValueSet|error {
     return parsedValueSet;
 }
 
-isolated function streamToStoreCodeSystem(stream<store:CodeSystem, persist:Error?> codeSystemStream) returns store:CodeSystem[]|error {
-    store:CodeSystem[] dbCodeSystems = check from store:CodeSystem codeSystem in codeSystemStream
+isolated function streamToStoreCodeSystem(stream<store_h2:CodeSystem, persist:Error?> codeSystemStream) returns store_h2:CodeSystem[]|error {
+    store_h2:CodeSystem[] dbCodeSystems = check from store_h2:CodeSystem codeSystem in codeSystemStream
         select codeSystem;
     return dbCodeSystems;
 }
 
-isolated function streamToStoreConcept(stream<store:Concept, persist:Error?> conceptStream) returns store:Concept[]|error {
-    store:Concept[] dbConcepts = check from store:Concept concept in conceptStream
+isolated function streamToStoreConcept(stream<store_h2:Concept, persist:Error?> conceptStream) returns store_h2:Concept[]|error {
+    store_h2:Concept[] dbConcepts = check from store_h2:Concept concept in conceptStream
         select concept;
     return dbConcepts;
 }
 
-isolated function streamToStoreValueSet(stream<store:ValueSet, persist:Error?> valueSetStream) returns store:ValueSet[]|error {
-    store:ValueSet[] dbValueSets = check from store:ValueSet valueSet in valueSetStream
+isolated function streamToStoreValueSet(stream<store_h2:ValueSet, persist:Error?> valueSetStream) returns store_h2:ValueSet[]|error {
+    store_h2:ValueSet[] dbValueSets = check from store_h2:ValueSet valueSet in valueSetStream
         select valueSet;
     return dbValueSets;
 }
