@@ -20,7 +20,7 @@ CREATE TABLE "codesystems" (
 	"status" VARCHAR(191) NOT NULL,
 	"date" VARCHAR(191) NOT NULL,
 	"publisher" VARCHAR(191) NOT NULL,
-	"codeSystem" BYTEA NOT NULL,
+	"codeSystem" BLOB NOT NULL,
 	PRIMARY KEY("codeSystemId")
 );
 
@@ -34,7 +34,7 @@ CREATE TABLE "valuesets" (
 	"status" VARCHAR(191) NOT NULL,
 	"date" VARCHAR(191) NOT NULL,
 	"publisher" VARCHAR(191) NOT NULL,
-	"valueSet" BYTEA NOT NULL,
+	"valueSet" BLOB NOT NULL,
 	PRIMARY KEY("valueSetId")
 );
 

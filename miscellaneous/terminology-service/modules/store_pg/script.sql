@@ -4,9 +4,9 @@
 -- Please verify the generated scripts and execute them against the target DB server.
 
 DROP TABLE IF EXISTS "valueset_compose_include_value_sets";
-DROP TABLE IF EXISTS "concepts";
 DROP TABLE IF EXISTS "valueset_compose_include_concepts";
 DROP TABLE IF EXISTS "valueset_compose_includes";
+DROP TABLE IF EXISTS "concepts";
 DROP TABLE IF EXISTS "valuesets";
 DROP TABLE IF EXISTS "codesystems";
 
