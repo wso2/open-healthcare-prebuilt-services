@@ -27,16 +27,19 @@ import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.international401;
 import ballerinax/health.fhir.r4.terminology;
 
-// Improve after the issue https://github.com/wso2-enterprise/wso2-integration-internal/issues/4957 is fixed
+// Improve after the issue https://github.com/wso2/open-healthcare-prebuilt-services/issues/151 is fixed
 final store_pg:Client sClient = check initializeClient();
 
 function initializeClient() returns store_pg:Client|store_h2:Client|error {
     
-    if db_type == "postgres" {
+    if db_type == "postgresql" {
+        log:printInfo("Initializing PostgreSQL client for terminology service");
         return check new store_pg:Client();
     } else if db_type == "h2" {
+        log:printInfo("Initializing H2 client for terminology service");
         return check new store_h2:Client();
     } else {
+        log:printError("Unsupported database type provided: " + db_type);
         return error("Unsupported database type: " + db_type);
     }
 }

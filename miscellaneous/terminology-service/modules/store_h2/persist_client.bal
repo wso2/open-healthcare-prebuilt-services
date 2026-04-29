@@ -10,7 +10,6 @@ import ballerinax/h2.driver as _;
 import ballerinax/postgresql.driver as _;
 import ballerinax/java.jdbc;
 import ballerinax/persist.sql as psql;
-import ballerina/io;
 
 const CODE_SYSTEM = "codesystems";
 const CONCEPT = "concepts";
@@ -233,7 +232,6 @@ public isolated client class Client {
     } external;
 
     isolated resource function post codesystems(CodeSystemInsert[] data) returns int[]|persist:Error {
-        io:println("((((((((((((((((((((((((((( H2 )))))))))))))))))))))))))))");
         psql:SQLClient sqlClient;
         lock {
             sqlClient = self.persistClients.get(CODE_SYSTEM);

@@ -4,7 +4,6 @@
 // It should not be modified by hand.
 
 import ballerinax/java.jdbc;
-// import ballerinax/postgresql as postgresql;
 
 configurable string url = "";
 configurable string user = "";

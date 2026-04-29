@@ -9,7 +9,6 @@ import ballerina/sql;
 import ballerinax/persist.sql as psql;
 import ballerinax/postgresql;
 import ballerinax/postgresql.driver as _;
-import ballerina/io;
 
 const CODE_SYSTEM = "codesystems";
 const CONCEPT = "concepts";
@@ -251,7 +250,6 @@ public isolated client class Client {
     } external;
 
     isolated resource function post codesystems(CodeSystemInsert[] data) returns int[]|persist:Error {
-        io:println("((((((((((((((((((((((((((( POSTGRES )))))))))))))))))))))))))))");
         psql:SQLClient sqlClient;
         lock {
             sqlClient = self.persistClients.get(CODE_SYSTEM);
