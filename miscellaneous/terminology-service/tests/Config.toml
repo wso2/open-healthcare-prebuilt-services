@@ -1,6 +1,6 @@
 db_type = "h2"
 
-[terminology_service.store]
+[terminology_service.store_h2]
 user = ""
 password = ""
 url = ""

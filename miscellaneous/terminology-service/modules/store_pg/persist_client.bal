@@ -6,9 +6,10 @@
 import ballerina/jballerina.java;
 import ballerina/persist;
 import ballerina/sql;
-import ballerinax/h2.driver as _;
-import ballerinax/java.jdbc;
 import ballerinax/persist.sql as psql;
+import ballerinax/postgresql;
+import ballerinax/postgresql.driver as _;
+import ballerina/io;
 
 const CODE_SYSTEM = "codesystems";
 const CONCEPT = "concepts";
@@ -20,11 +21,11 @@ const VALUE_SET_COMPOSE_INCLUDE_CONCEPT = "valuesetcomposeincludeconcepts";
 public isolated client class Client {
     *persist:AbstractPersistClient;
 
-    private final jdbc:Client dbClient;
+    private final postgresql:Client dbClient;
 
     private final map<psql:SQLClient> persistClients;
 
-    private final record {|psql:SQLMetadata...;|} & readonly metadata = {
+    private final record {|psql:SQLMetadata...;|} metadata = {
         [CODE_SYSTEM]: {
             entityName: "CodeSystem",
             tableName: "codesystems",
@@ -205,32 +206,52 @@ public isolated client class Client {
     };
 
     public isolated function init() returns persist:Error? {
-        jdbc:Client|error dbClient = new (url = url, user = user, password = password, options = connectionOptions);
+        postgresql:Client|error dbClient = new (host = host, username = user, password = password, database = database, port = port, options = connectionOptions);
         if dbClient is error {
             return <persist:Error>error(dbClient.message());
         }
         self.dbClient = dbClient;
+        if defaultSchema != () {
+            lock {
+                foreach string key in self.metadata.keys() {
+                    psql:SQLMetadata metadata = self.metadata.get(key);
+                    if metadata.schemaName == () {
+                        metadata.schemaName = defaultSchema;
+                    }
+                    map<psql:JoinMetadata>? joinMetadataMap = metadata.joinMetadata;
+                    if joinMetadataMap == () {
+                        continue;
+                    }
+                    foreach [string, psql:JoinMetadata] [_, joinMetadata] in joinMetadataMap.entries() {
+                        if joinMetadata.refSchema == () {
+                            joinMetadata.refSchema = defaultSchema;
+                        }
+                    }
+                }
+            }
+        }
         self.persistClients = {
-            [CODE_SYSTEM]: check new (dbClient, self.metadata.get(CODE_SYSTEM), psql:H2_SPECIFICS),
-            [CONCEPT]: check new (dbClient, self.metadata.get(CONCEPT), psql:H2_SPECIFICS),
-            [VALUE_SET]: check new (dbClient, self.metadata.get(VALUE_SET), psql:H2_SPECIFICS),
-            [VALUE_SET_COMPOSE_INCLUDE]: check new (dbClient, self.metadata.get(VALUE_SET_COMPOSE_INCLUDE), psql:H2_SPECIFICS),
-            [VALUE_SET_COMPOSE_INCLUDE_VALUE_SET]: check new (dbClient, self.metadata.get(VALUE_SET_COMPOSE_INCLUDE_VALUE_SET), psql:H2_SPECIFICS),
-            [VALUE_SET_COMPOSE_INCLUDE_CONCEPT]: check new (dbClient, self.metadata.get(VALUE_SET_COMPOSE_INCLUDE_CONCEPT), psql:H2_SPECIFICS)
+            [CODE_SYSTEM]: check new (dbClient, self.metadata.get(CODE_SYSTEM).cloneReadOnly(), psql:POSTGRESQL_SPECIFICS),
+            [CONCEPT]: check new (dbClient, self.metadata.get(CONCEPT).cloneReadOnly(), psql:POSTGRESQL_SPECIFICS),
+            [VALUE_SET]: check new (dbClient, self.metadata.get(VALUE_SET).cloneReadOnly(), psql:POSTGRESQL_SPECIFICS),
+            [VALUE_SET_COMPOSE_INCLUDE]: check new (dbClient, self.metadata.get(VALUE_SET_COMPOSE_INCLUDE).cloneReadOnly(), psql:POSTGRESQL_SPECIFICS),
+            [VALUE_SET_COMPOSE_INCLUDE_VALUE_SET]: check new (dbClient, self.metadata.get(VALUE_SET_COMPOSE_INCLUDE_VALUE_SET).cloneReadOnly(), psql:POSTGRESQL_SPECIFICS),
+            [VALUE_SET_COMPOSE_INCLUDE_CONCEPT]: check new (dbClient, self.metadata.get(VALUE_SET_COMPOSE_INCLUDE_CONCEPT).cloneReadOnly(), psql:POSTGRESQL_SPECIFICS)
         };
     }
 
     isolated resource function get codesystems(CodeSystemTargetType targetType = <>, sql:ParameterizedQuery whereClause = ``, sql:ParameterizedQuery orderByClause = ``, sql:ParameterizedQuery limitClause = ``, sql:ParameterizedQuery groupByClause = ``) returns stream<targetType, persist:Error?> = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "query"
     } external;
 
     isolated resource function get codesystems/[int codeSystemId](CodeSystemTargetType targetType = <>) returns targetType|persist:Error = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "queryOne"
     } external;
 
     isolated resource function post codesystems(CodeSystemInsert[] data) returns int[]|persist:Error {
+        io:println("((((((((((((((((((((((((((( POSTGRES )))))))))))))))))))))))))))");
         psql:SQLClient sqlClient;
         lock {
             sqlClient = self.persistClients.get(CODE_SYSTEM);
@@ -261,12 +282,12 @@ public isolated client class Client {
     }
 
     isolated resource function get concepts(ConceptTargetType targetType = <>, sql:ParameterizedQuery whereClause = ``, sql:ParameterizedQuery orderByClause = ``, sql:ParameterizedQuery limitClause = ``, sql:ParameterizedQuery groupByClause = ``) returns stream<targetType, persist:Error?> = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "query"
     } external;
 
     isolated resource function get concepts/[int conceptId](ConceptTargetType targetType = <>) returns targetType|persist:Error = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "queryOne"
     } external;
 
@@ -301,12 +322,12 @@ public isolated client class Client {
     }
 
     isolated resource function get valuesets(ValueSetTargetType targetType = <>, sql:ParameterizedQuery whereClause = ``, sql:ParameterizedQuery orderByClause = ``, sql:ParameterizedQuery limitClause = ``, sql:ParameterizedQuery groupByClause = ``) returns stream<targetType, persist:Error?> = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "query"
     } external;
 
     isolated resource function get valuesets/[int valueSetId](ValueSetTargetType targetType = <>) returns targetType|persist:Error = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "queryOne"
     } external;
 
@@ -341,12 +362,12 @@ public isolated client class Client {
     }
 
     isolated resource function get valuesetcomposeincludes(ValueSetComposeIncludeTargetType targetType = <>, sql:ParameterizedQuery whereClause = ``, sql:ParameterizedQuery orderByClause = ``, sql:ParameterizedQuery limitClause = ``, sql:ParameterizedQuery groupByClause = ``) returns stream<targetType, persist:Error?> = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "query"
     } external;
 
     isolated resource function get valuesetcomposeincludes/[int valueSetComposeIncludeId](ValueSetComposeIncludeTargetType targetType = <>) returns targetType|persist:Error = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "queryOne"
     } external;
 
@@ -381,12 +402,12 @@ public isolated client class Client {
     }
 
     isolated resource function get valuesetcomposeincludevaluesets(ValueSetComposeIncludeValueSetTargetType targetType = <>, sql:ParameterizedQuery whereClause = ``, sql:ParameterizedQuery orderByClause = ``, sql:ParameterizedQuery limitClause = ``, sql:ParameterizedQuery groupByClause = ``) returns stream<targetType, persist:Error?> = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "query"
     } external;
 
     isolated resource function get valuesetcomposeincludevaluesets/[int valueSetComposeIncludeValueSetId](ValueSetComposeIncludeValueSetTargetType targetType = <>) returns targetType|persist:Error = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "queryOne"
     } external;
 
@@ -421,12 +442,12 @@ public isolated client class Client {
     }
 
     isolated resource function get valuesetcomposeincludeconcepts(ValueSetComposeIncludeConceptTargetType targetType = <>, sql:ParameterizedQuery whereClause = ``, sql:ParameterizedQuery orderByClause = ``, sql:ParameterizedQuery limitClause = ``, sql:ParameterizedQuery groupByClause = ``) returns stream<targetType, persist:Error?> = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "query"
     } external;
 
     isolated resource function get valuesetcomposeincludeconcepts/[int valueSetComposeIncludeConceptId](ValueSetComposeIncludeConceptTargetType targetType = <>) returns targetType|persist:Error = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor",
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor",
         name: "queryOne"
     } external;
 
@@ -461,11 +482,11 @@ public isolated client class Client {
     }
 
     remote isolated function queryNativeSQL(sql:ParameterizedQuery sqlQuery, typedesc<record {}> rowType = <>) returns stream<rowType, persist:Error?> = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor"
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor"
     } external;
 
     remote isolated function executeNativeSQL(sql:ParameterizedQuery sqlQuery) returns psql:ExecutionResult|persist:Error = @java:Method {
-        'class: "io.ballerina.stdlib.persist.sql.datastore.H2Processor"
+        'class: "io.ballerina.stdlib.persist.sql.datastore.PostgreSQLProcessor"
     } external;
 
     public isolated function close() returns persist:Error? {
