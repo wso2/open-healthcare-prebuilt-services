@@ -69,6 +69,39 @@ The service will start on port `9089` by default.
 - `modules/` — Contains submodules for LOINC, SNOMED, and persistence.
 - `tests/` — Test cases and sample resources.
 
+## Supported DB Types and Configurations
+
+The following DB types are supported. 
+
+- H2
+
+```toml
+[wso2.terminology_service]
+db_type = "h2"
+```
+```toml
+# When db_type is h2, use the following configuration values to connect to the database. Make sure to update the values accordingly.
+[wso2.terminology_service.store_h2]
+url = "database url"
+user = "database user"
+password = "database password"
+```
+
+- PostgreSQL
+
+```toml
+[wso2.terminology_service]
+db_type = "postgresql" 
+```
+```toml
+# When db_type is postgresql, use the following configuration values to connect to the database. Make sure to update the values accordingly.
+[wso2.terminology_service.store_pg]
+host = "database host"
+database = "database name"
+user = "database user name"
+password = "database password"
+port = 5432
+
 ## References
 
 - [HL7 FHIR Terminology Service Specification](https://hl7.org/fhir/terminology-service.html)
