@@ -1,0 +1,7 @@
+[package]
+org = "joel"
+name = "fhir_questionnaire_reviewer"
+version = "0.1.0"
+
+[build-options]
+sticky = true
