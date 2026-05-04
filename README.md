@@ -34,6 +34,17 @@ These services can be used to integrate with an Epic instance and expose Epic FH
 - [Epic FHIR R4 Workflow Service](ehr-connectivity/epic-fhirr4-workflow-api-service/)
 
 ### Miscellaneous
+
+#### [FHIR R4 Server](miscellaneous/fhir-server/)
+A full **FHIR R4** REST server built with Ballerina: metadata, CRUD, search (standard + extension parameters loaded from bundled definitions), version history, and operations such as `$validate`, `$everything`, `$summary`, and async `$export`. Data is stored in **H2** (embedded, default) or **PostgreSQL**.
+
+| Topic | Details |
+|--------|---------|
+| **Documentation** | See the [FHIR Server README](miscellaneous/fhir-server/README.md) for features, configuration, and more information. |
+| **Run from release** | GitHub **Releases** ship a zip with Ballerina FHIR Server, then run using `server.sh` (Unix/macOS/Linux) or `server.bat` (Windows). Java 21 is required |
+| **Run from source** | Requires Ballerina (see prerequisite). From repo root: `cd miscellaneous/fhir-server` then `bal run` |
+| **Configuration** | `Config.toml` is used to configure the additional configurations for the server. Refer to the [FHIR Server README](miscellaneous/fhir-server/README.md) for more details. |
+
 #### [Authorization Service](miscellaneous/authz-fhirr4-service/)
 Apply basic patient and privileged user-based authorization policies for FHIR APIs using this service.
 

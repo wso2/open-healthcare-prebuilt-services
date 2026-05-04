@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# FHIR Server Configuration Template
+# ------------------------------------------------------------
+# Copy this file as `Config.toml` next to the server jar/scripts
+# and uncomment/update only the values you need.
+
+# serverName = "Ballerina FHIR Server"
+
+#[ballerinax.ballerina_fhir_server.utils]
+# Set true to auto-generate resource IDs at server side.
+#useServerGeneratedIds = false
+# Database type used by utils. Must match handlers.dbType.
+#dbType = "h2"
+
+#[ballerinax.ballerina_fhir_server.mappers]
+# Public base URL where this server is exposed.
+#baseUrl = "http://localhost:9090"
+
+#[ballerinax.ballerina_fhir_server.handlers]
+# Database type: "h2" or "postgresql"
+#dbType = "h2"
+#
+# H2 defaults (embedded DB)
+#dbUrl = "jdbc:h2:./data/fhir-db"
+#dbUser = "sa"
+#dbPassword = ""
+#
+# PostgreSQL example
+#dbType = "postgresql"
+#dbUrl = "jdbc:postgresql://localhost:5432/fhir_db"
+#dbUser = "<dbUser>"
+#dbPassword = "<dbPassword>"
+
+#[ballerinax.health.fhir.r4.parser]
+# Validate resources against profiles during parsing.
+#validateAgainstProfile = false
+
+[[ballerina.log.destinations]]
+type = "stderr"
+
+[[ballerina.log.destinations]]
+path = "./logs/server.log"
+[ballerina.log.destinations.rotation]
+policy = "TIME_BASED"
+maxAge = 86400

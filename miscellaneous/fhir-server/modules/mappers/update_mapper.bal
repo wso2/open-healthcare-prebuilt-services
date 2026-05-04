@@ -19,7 +19,7 @@ public class UpdateMapper {
     private isolated function buildUpdateRecord(
         string resourceType,
         map<json> extractedValues,
-        byte[] resourceJsonBytes,
+        anydata resourceJsonBytes,
         int newVersion
     ) returns map<anydata>|error {
         
@@ -152,10 +152,15 @@ public class UpdateMapper {
         log:printDebug(string `Using generic mapping for ${resourceType} update`);
         log:printDebug(string `Extracted values: ${extractedValues.toString()}`);
 
+        string normalizedDbType = mapperUtils:dbType.toLowerAscii().trim();
+        anydata resourceJsonData = (normalizedDbType == "postgresql" || normalizedDbType == "postgres")
+            ? resourceJson.toJsonString()
+            : resourceJson.toJsonString().toBytes();
+
         map<anydata> updateRecord = check self.buildUpdateRecord(
             resourceType,
             extractedValues,
-            resourceJson.toJsonString().toBytes(),
+            resourceJsonData,
             newVersion
         );
 

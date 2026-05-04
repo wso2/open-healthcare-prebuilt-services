@@ -2,11 +2,11 @@ import ballerina_fhir_server.utils;
 import ballerina_fhir_server.utils as mapperUtils;
 
 import ballerina/lang.regexp;
+import ballerina/log;
 import ballerina/sql;
 import ballerina/time;
 import ballerinax/health.fhir.r4;
 import ballerinax/java.jdbc;
-import ballerina/log;
 
 // Server base URL configuration
 configurable string baseUrl = "http://localhost:9090";
@@ -17,7 +17,7 @@ public class ReadMapper {
     }
 
     // Main function to read a single resource by ID
-    public isolated function readResourceById(jdbc:Client? jdbcClient, string resourceType, string resourceId) returns json|error {
+    public isolated function readResourceById(jdbc:Client? jdbcClient, string resourceType, string resourceId, string? sinceFilter = ()) returns json|error {
         if jdbcClient is () {
             return error("JDBC client is not initialized");
         }
@@ -26,19 +26,43 @@ public class ReadMapper {
         string primaryKey = utils:getPrimaryKeyColumn(resourceType);
 
         string sqlQuery = string `SELECT "RESOURCE_JSON", "VERSION_ID", "LAST_UPDATED" FROM "${tableName}" WHERE "${primaryKey}" = '${utils:escapeSql(resourceId)}'`;
-        sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
-
-        stream<record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}, sql:Error?> resultStream = jdbcClient->query(query);
-
-        record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}[] results = check from var result in resultStream
-            select result;
-
-        if results.length() == 0 {
-            return error(string `${resourceType}/${resourceId} not found`);
+        // Filter by _since: only return resource if updated after the given timestamp
+        if sinceFilter is string {
+            string sqlTimestamp = regexp:replaceAll(re `T`, sinceFilter, " ");
+            sqlTimestamp = regexp:replaceAll(re `Z$`, sqlTimestamp, "");
+            sqlQuery += string ` AND "LAST_UPDATED" > '${utils:escapeSql(sqlTimestamp)}'`;
         }
 
-        byte[] resourceJsonBytes = results[0].RESOURCE_JSON;
-        string resourceJsonString = check string:fromBytes(resourceJsonBytes);
+        string resourceJsonString;
+        int resVersionId;
+        time:Civil resLastUpdated;
+        string normalizedDbType = mapperUtils:dbType.toLowerAscii().trim();
+        if normalizedDbType == "postgresql" || normalizedDbType == "postgres" {
+            string pgSql = re `"RESOURCE_JSON"`.replaceAll(sqlQuery,
+                string `CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON"`);
+            sql:ParameterizedQuery pgQuery = new RawSQLQuery(pgSql);
+            stream<record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}, sql:Error?> pgStream = jdbcClient->query(pgQuery);
+            record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}[] pgResults = check from var r in pgStream
+                select r;
+            if pgResults.length() == 0 {
+                log:printDebug(string `Resource not found: ${resourceType}/${resourceId}`);
+                return error(string `${resourceType}/${resourceId} not found`);
+            }
+            resourceJsonString = pgResults[0].RESOURCE_JSON;
+            resVersionId = pgResults[0].VERSION_ID;
+            resLastUpdated = pgResults[0].LAST_UPDATED;
+        } else {
+            sql:ParameterizedQuery h2Query = new RawSQLQuery(sqlQuery);
+            stream<record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}, sql:Error?> h2Stream = jdbcClient->query(h2Query);
+            record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}[] h2Results = check from var r in h2Stream
+                select r;
+            if h2Results.length() == 0 {
+                return error(string `${resourceType}/${resourceId} not found`);
+            }
+            resourceJsonString = check string:fromBytes(h2Results[0].RESOURCE_JSON);
+            resVersionId = h2Results[0].VERSION_ID;
+            resLastUpdated = h2Results[0].LAST_UPDATED;
+        }
         json resourceJson = check resourceJsonString.fromJsonString();
 
         // Add/update meta section with versionId and lastUpdated
@@ -46,11 +70,10 @@ public class ReadMapper {
         json existingMeta = resourceMap["meta"];
         map<json> metaMap = existingMeta is map<json> ? existingMeta : {};
 
-        metaMap["versionId"] = results[0].VERSION_ID.toString();
+        metaMap["versionId"] = resVersionId.toString();
 
         // Format timestamp as ISO 8601 string
-        time:Civil lastUpdated = results[0].LAST_UPDATED;
-        string timestamp = utils:formatTimestampISO8601(lastUpdated);
+        string timestamp = utils:formatTimestampISO8601(resLastUpdated);
         metaMap["lastUpdated"] = timestamp;
 
         resourceMap["meta"] = metaMap;
@@ -440,20 +463,40 @@ public class ReadMapper {
         }
 
         string sqlQuery = string `SELECT "${primaryKey}", "RESOURCE_JSON", "VERSION_ID", "LAST_UPDATED" FROM "${tableName}"${whereClause}${paginationClause}`;
-        sql:ParameterizedQuery query = new RawSQLQuery(sqlQuery);
 
-        stream<record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}, sql:Error?> resultStream = jdbcClient->query(query);
-
-        record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}[] results = check from var result in resultStream
-            select result;
+        record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}[] results;
+        string normalizedDbType2 = mapperUtils:dbType.toLowerAscii().trim();
+        if normalizedDbType2 == "postgresql" || normalizedDbType2 == "postgres" {
+            string pgSql = re `"RESOURCE_JSON"`.replaceAll(sqlQuery,
+                string `CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON"`);
+            sql:ParameterizedQuery pgQuery = new RawSQLQuery(pgSql);
+            stream<record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}, sql:Error?> pgStream = jdbcClient->query(pgQuery);
+            results = check from var r in pgStream
+                select r;
+        } else {
+            sql:ParameterizedQuery h2Query = new RawSQLQuery(sqlQuery);
+            stream<record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}, sql:Error?> h2Stream = jdbcClient->query(h2Query);
+            record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}[] h2Results = check from var r in h2Stream
+                select r;
+            results = [];
+            foreach var r in h2Results {
+                string jsonStr = check string:fromBytes(r.RESOURCE_JSON);
+                record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|} converted = {RESOURCE_JSON: jsonStr, VERSION_ID: r.VERSION_ID, LAST_UPDATED: r.LAST_UPDATED};
+                foreach var [k, v] in r.entries() {
+                    if k != "RESOURCE_JSON" && k != "VERSION_ID" && k != "LAST_UPDATED" && v is string {
+                        converted[k] = v;
+                    }
+                }
+                results.push(converted);
+            }
+        }
 
         // Convert to FHIR Bundle
         json[] entries = [];
         string[] matchedResourceIds = [];
 
         foreach var result in results {
-            byte[] resourceJsonBytes = result.RESOURCE_JSON;
-            string resourceJsonString = check string:fromBytes(resourceJsonBytes);
+            string resourceJsonString = result.RESOURCE_JSON;
             json resourceJson = check resourceJsonString.fromJsonString();
 
             // Add/update meta section with versionId and lastUpdated
@@ -649,17 +692,37 @@ public class ReadMapper {
 
         string limitClause = 'limit is int ? string ` LIMIT ${'limit}` : "";
         string sqlQuery = string `SELECT "${primaryKey}", "RESOURCE_JSON", "VERSION_ID", "LAST_UPDATED" FROM "${tableName}"${limitClause}`;
-        sql:ParameterizedQuery query = new RawSQLQuery(sqlQuery);
 
-        stream<record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}, sql:Error?> resultStream = jdbcClient->query(query);
-
-        record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}[] results = check from var result in resultStream
-            select result;
+        record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}[] results3;
+        string normalizedDbType3 = mapperUtils:dbType.toLowerAscii().trim();
+        if normalizedDbType3 == "postgresql" || normalizedDbType3 == "postgres" {
+            string pgSql = re `"RESOURCE_JSON"`.replaceAll(sqlQuery,
+                string `CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON"`);
+            sql:ParameterizedQuery pgQuery = new RawSQLQuery(pgSql);
+            stream<record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}, sql:Error?> pgStream = jdbcClient->query(pgQuery);
+            results3 = check from var r in pgStream
+                select r;
+        } else {
+            sql:ParameterizedQuery h2Query = new RawSQLQuery(sqlQuery);
+            stream<record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}, sql:Error?> h2Stream = jdbcClient->query(h2Query);
+            record {|byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|}[] h2Results3 = check from var r in h2Stream
+                select r;
+            results3 = [];
+            foreach var r in h2Results3 {
+                string jsonStr = check string:fromBytes(r.RESOURCE_JSON);
+                record {|string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED; string...;|} converted = {RESOURCE_JSON: jsonStr, VERSION_ID: r.VERSION_ID, LAST_UPDATED: r.LAST_UPDATED};
+                foreach var [k, v] in r.entries() {
+                    if k != "RESOURCE_JSON" && k != "VERSION_ID" && k != "LAST_UPDATED" && v is string {
+                        converted[k] = v;
+                    }
+                }
+                results3.push(converted);
+            }
+        }
 
         json[] entries = [];
-        foreach var result in results {
-            byte[] resourceJsonBytes = result.RESOURCE_JSON;
-            string resourceJsonString = check string:fromBytes(resourceJsonBytes);
+        foreach var result in results3 {
+            string resourceJsonString = result.RESOURCE_JSON;
             json resourceJson = check resourceJsonString.fromJsonString();
 
             // Add/update meta section with versionId and lastUpdated
@@ -929,7 +992,7 @@ public class ReadMapper {
     }
 
     // Fetch all referenced resources for wildcard _include=*
-    public isolated function fetchAllReferencedResources(jdbc:Client? jdbcClient, string sourceResourceType, string sourceResourceId) returns json[]|error {
+    public isolated function fetchAllReferencedResources(jdbc:Client? jdbcClient, string sourceResourceType, string sourceResourceId, string? sinceFilter = (), string[]? typeFilter = ()) returns json[]|error {
         if jdbcClient is () {
             return error("JDBC client is not initialized");
         }
@@ -938,6 +1001,12 @@ public class ReadMapper {
 
         // Query all references for this source resource
         string refQuery = string `SELECT DISTINCT "TARGET_RESOURCE_TYPE", "TARGET_RESOURCE_ID" FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = '${utils:escapeSql(sourceResourceType)}' AND "SOURCE_RESOURCE_ID" = '${utils:escapeSql(sourceResourceId)}'`;
+        // Filter by target resource types if _type specified
+        if typeFilter is string[] && typeFilter.length() > 0 {
+            string[] escapedTypes = from string t in typeFilter
+                select "'" + utils:escapeSql(t) + "'";
+            refQuery += string ` AND "TARGET_RESOURCE_TYPE" IN (${string:'join(",", ...escapedTypes)})`;
+        }
         sql:ParameterizedQuery query = new utils:RawSQLQuery(refQuery);
 
         stream<record {|string TARGET_RESOURCE_TYPE; string TARGET_RESOURCE_ID;|}, sql:Error?> refStream = jdbcClient->query(query);
@@ -949,8 +1018,8 @@ public class ReadMapper {
             string targetType = refRecord.TARGET_RESOURCE_TYPE;
             string targetId = refRecord.TARGET_RESOURCE_ID;
 
-            // Use existing readResourceById to fetch the resource
-            json|error resourceResult = self.readResourceById(jdbcClient, targetType, targetId);
+            // Use existing readResourceById to fetch the resource (with optional _since filter)
+            json|error resourceResult = self.readResourceById(jdbcClient, targetType, targetId, sinceFilter);
 
             if resourceResult is json {
                 json entry = {
@@ -962,7 +1031,7 @@ public class ReadMapper {
                 };
                 includedEntries.push(entry);
             }
-            // Silently skip resources that can't be fetched (they may have been deleted)
+            // Silently skip resources that can't be fetched (they may have been deleted or filtered out)
         }
 
         return includedEntries;
@@ -1085,7 +1154,7 @@ public class ReadMapper {
     }
 
     // Fetch all resources that reference the target resource (wildcard _revinclude=*)
-    public isolated function fetchAllReferencingResources(jdbc:Client? jdbcClient, string targetResourceType, string targetResourceId) returns json[]|error {
+    public isolated function fetchAllReferencingResources(jdbc:Client? jdbcClient, string targetResourceType, string targetResourceId, string? sinceFilter = (), string[]? typeFilter = ()) returns json[]|error {
         if jdbcClient is () {
             return error("JDBC client is not initialized");
         }
@@ -1094,6 +1163,12 @@ public class ReadMapper {
 
         // Query all resources that reference this target resource
         string refQuery = string `SELECT DISTINCT "SOURCE_RESOURCE_TYPE", "SOURCE_RESOURCE_ID" FROM "REFERENCES" WHERE "TARGET_RESOURCE_TYPE" = '${utils:escapeSql(targetResourceType)}' AND "TARGET_RESOURCE_ID" = '${utils:escapeSql(targetResourceId)}'`;
+        // Filter by source resource types if _type specified
+        if typeFilter is string[] && typeFilter.length() > 0 {
+            string[] escapedTypes = from string t in typeFilter
+                select "'" + utils:escapeSql(t) + "'";
+            refQuery += string ` AND "SOURCE_RESOURCE_TYPE" IN (${string:'join(",", ...escapedTypes)})`;
+        }
         sql:ParameterizedQuery query = new utils:RawSQLQuery(refQuery);
 
         stream<record {|string SOURCE_RESOURCE_TYPE; string SOURCE_RESOURCE_ID;|}, sql:Error?> refStream = jdbcClient->query(query);
@@ -1105,8 +1180,8 @@ public class ReadMapper {
             string sourceType = refRecord.SOURCE_RESOURCE_TYPE;
             string sourceId = refRecord.SOURCE_RESOURCE_ID;
 
-            // Use existing readResourceById to fetch the resource
-            json|error resourceResult = self.readResourceById(jdbcClient, sourceType, sourceId);
+            // Use existing readResourceById to fetch the resource (with optional _since filter)
+            json|error resourceResult = self.readResourceById(jdbcClient, sourceType, sourceId, sinceFilter);
 
             if resourceResult is json {
                 json entry = {
@@ -1118,7 +1193,7 @@ public class ReadMapper {
                 };
                 revIncludedEntries.push(entry);
             }
-            // Silently skip resources that can't be fetched
+            // Silently skip resources that can't be fetched or filtered out
         }
 
         return revIncludedEntries;

@@ -13,7 +13,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-import terminology_service.store;
+import terminology_service.store_h2;
 
 import ballerina/http;
 import ballerina/test;
@@ -27,18 +27,18 @@ http:Client vsClient = check new ("http://localhost:9089/fhir/r4/ValueSet");
 
 @test:BeforeSuite
 isolated function beforeSuite() returns error? {
-    check store:setupTestDB();
+    check store_h2:setupTestDB();
     check addExampleDataToTestDB();
 }
 
 @test:AfterSuite
 function afterSuite() returns error? {
-    check store:cleanupTestDB();
+    check store_h2:cleanupTestDB();
 }
 
 @test:Mock {functionName: "initializeClient"}
-isolated function getMockClient() returns store:Client|error {
-    return test:mock(store:Client, check new store:H2Client("jdbc:h2:./tests/test", "sa", ""));
+isolated function getMockClient() returns store_h2:Client|error {
+    return test:mock(store_h2:Client, check new store_h2:H2Client("jdbc:h2:./tests/test", "sa", ""));
 }
 
 @test:Config {

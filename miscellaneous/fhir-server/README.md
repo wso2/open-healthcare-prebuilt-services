@@ -206,20 +206,39 @@ GET /fhir/r4/Patient/123/$export - Export patient data
 
 ### Prerequisites
 
-- [Ballerina](https://ballerina.io/downloads/) 2201.12.10 or later
+- [Ballerina](https://ballerina.io/downloads/) 2201.12.10 or later (for running from source)
 - Java 21 or later
 - H2 or Postgre 17 or later
 
 ### Starting the Server
 
+#### Running from a Release (Downloaded Zip)
+
+Download the release zip from the [GitHub Releases](https://github.com/wso2/open-healthcare-choreo-accelerators/releases) page, extract it, and run:
+
 **Unix/macOS/Linux:**
 ```bash
-chmod +x start-server.sh
-./start-server.sh
+sh server.sh
 ```
+
+**Windows:**
+```cmd
+server.bat
+```
+
+The release zip contains:
+
+- `ballerina_fhir_server.jar` – executable JAR
+- `server.sh` / `server.bat` – startup scripts
+- `Config.toml` – configurations for the server(uncomment and update the values as needed)
+
+Ensure `Config.toml` is in the same directory as the jar and scripts. If you need to customize the server, edit `Config.toml` before starting.
+
+#### Running from Source
 
 **Manual start:**
 ```bash
+cd miscellaneous/fhir-server
 bal run
 ```
 

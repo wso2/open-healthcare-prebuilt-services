@@ -7,6 +7,7 @@ import ballerina/jballerina.java;
 import ballerina/persist;
 import ballerina/sql;
 import ballerinax/h2.driver as _;
+import ballerinax/postgresql.driver as _;
 import ballerinax/java.jdbc;
 import ballerinax/persist.sql as psql;
 
