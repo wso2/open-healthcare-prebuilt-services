@@ -101,6 +101,7 @@ database = "database name"
 user = "database user name"
 password = "database password"
 port = 5432
+```
 
 ## References
 
