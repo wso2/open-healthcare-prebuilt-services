@@ -257,18 +257,29 @@ public class ReadMapper {
             }
         }
 
-        // Handle _profile parameter (search by meta.profile)
+        // Handle _profile parameter (search by meta.profile).
+        // PostgreSQL: use JSONB containment (@>) so the body GIN index serves
+        // the predicate (WORK.md §5.5.1). H2 falls back to LIKE since it has
+        // no JSONB / GIN.
+        string normalizedDbTypeForProfile = mapperUtils:dbType.toLowerAscii().trim();
+        boolean isPgForProfile = normalizedDbTypeForProfile == "postgresql" || normalizedDbTypeForProfile == "postgres";
         if queryParams.hasKey("_profile") {
             string[] profileValues = queryParams.get("_profile");
             if profileValues.length() > 0 {
                 string profileUrl = profileValues[0];
                 string sanitizedProfile = utils:escapeSql(profileUrl);
-                // Search for profile URL in the RESOURCE_JSON meta.profile array
-                // Format: "profile":["http://example.org/fhir/StructureDefinition/CustomPatient"]
-                if whereClause == "" {
-                    whereClause = string ` WHERE "RESOURCE_JSON" LIKE '%"profile":%"${sanitizedProfile}"%'`;
+                string profilePredicate;
+                if isPgForProfile {
+                    // {"meta":{"profile":["..."]}} — array containment is
+                    // semantic, hits IDX_<Type>TABLE_JSON_GIN.
+                    profilePredicate = string `"RESOURCE_JSON" @> '{"meta":{"profile":["${sanitizedProfile}"]}}'::jsonb`;
                 } else {
-                    whereClause = whereClause + string ` AND "RESOURCE_JSON" LIKE '%"profile":%"${sanitizedProfile}"%'`;
+                    profilePredicate = string `"RESOURCE_JSON" LIKE '%"profile":%"${sanitizedProfile}"%'`;
+                }
+                if whereClause == "" {
+                    whereClause = string ` WHERE ${profilePredicate}`;
+                } else {
+                    whereClause = whereClause + string ` AND ${profilePredicate}`;
                 }
             }
         }
@@ -297,21 +308,23 @@ public class ReadMapper {
                 continue;
             }
 
-            // Skip _count parameter (sent by default) and _include/_revinclude/_profile parameters (handled separately after main search)
-            if paramName == "_count" || paramName == "_include" || paramName == "_revinclude" || paramName == "_profile" {
+            // Skip control params handled outside the WHERE-clause loop:
+            //   _count, _include, _revinclude, _profile, _total, _summary, _elements
+            if paramName == "_count" || paramName == "_include" || paramName == "_revinclude"
+                    || paramName == "_profile" || paramName == "_total"
+                    || paramName == "_summary" || paramName == "_elements" {
                 continue;
             }
 
             // Handle other unsupported FHIR control parameters that start with _
             if paramName.startsWith("_") && paramName != "_lastUpdated" && paramName != "_id" {
-                return error(string `Unsupported search parameter: ${paramName}. Only common resource parameters of _id, _lastUpdated, _profile, _include, and _revinclude are currently supported.`);
+                return error(string `Unsupported search parameter: ${paramName}. Only common resource parameters of _id, _lastUpdated, _profile, _include, _revinclude, and _total are currently supported.`);
             }
 
             string operator = "=";
             string searchValue = paramValue;
             string? tokenSystem = ();
             string? tokenCode = ();
-            boolean tokenSystemEmpty = false;
 
             // Process token parameter (already detected above)
             // Token parameters support 4 formats per FHIR spec:
@@ -319,6 +332,10 @@ public class ReadMapper {
             // 2. [system]|[code]: Match both system and code
             // 3. |[code]: Match code where system is absent
             // 4. [system]|: Match system only, any code
+            // Note: case 1 vs case 3 (system-absent) are not distinguished —
+            // both produce a code-only predicate. JSONB @> can't express the
+            // "system must be absent" assertion concisely; the prior LIKE
+            // didn't enforce it either, so behavior is unchanged.
             if isTokenParam {
                 string[] tokenParts = regexp:split(re `\|`, paramValue);
                 if tokenParts.length() == 2 {
@@ -326,9 +343,8 @@ public class ReadMapper {
                     string codePart = tokenParts[1];
 
                     if systemPart == "" && codePart != "" {
-                        // Case 3: |[code] - code with no system
+                        // Case 3: |[code] - code with no system (best-effort: code-only)
                         tokenCode = codePart;
-                        tokenSystemEmpty = true;
                     } else if systemPart != "" && codePart == "" {
                         // Case 4: [system]| - system only, any code
                         tokenSystem = systemPart;
@@ -386,40 +402,67 @@ public class ReadMapper {
             }
 
             if columnName is string {
-                // For token parameters with system|code format
-                // Token columns contain JSON like [{"coding":[{"system":"...","code":"..."}]}]
+                // For token parameters with system|code format.
+                // PostgreSQL: use RESOURCE_JSON @> containment so the body GIN
+                // index (IDX_<Type>TABLE_JSON_GIN) serves the predicate in
+                // O(log N + matches). H2: keep the legacy LIKE on the
+                // denormalized column. WORK.md §5.5.2.
                 if isTokenParam {
                     string sanitizedSystem = tokenSystem is string ? utils:escapeSql(tokenSystem) : "";
                     string sanitizedCode = tokenCode is string ? utils:escapeSql(tokenCode) : "";
+                    string normalizedDbTypeForToken = mapperUtils:dbType.toLowerAscii().trim();
+                    boolean isPgForToken = normalizedDbTypeForToken == "postgresql" || normalizedDbTypeForToken == "postgres";
 
-                    if tokenSystem is string && tokenCode is string {
-                        // Case 2: [system]|[code] - Both system and code must match
-                        if whereClause == "" {
-                            whereClause = string ` WHERE (${columnName} LIKE '%"system":"${sanitizedSystem}"%' OR ${columnName} LIKE '%"system": "${sanitizedSystem}"%') AND (${columnName} LIKE '%"code":"${sanitizedCode}"%' OR ${columnName} LIKE '%"code": "${sanitizedCode}"%')`;
+                    // FHIR JSON path heuristic for the @> payload:
+                    //   identifier  → {identifier:[{system,value}]}  (array, "value" key)
+                    //   *           → {<param>:{coding:[{system,code}]}}  (CodeableConcept)
+                    // For unrecognized shapes the @> may not match; this is the
+                    // same correctness contract as the prior LIKE — both are
+                    // best-effort and don't honor every edge of the FHIR token
+                    // spec. The plan in WORK.md §5.7 will replace both with
+                    // typed SPIDX side tables.
+                    string jsonPath = paramName.toLowerAscii();
+                    boolean isIdentifierShape = jsonPath == "identifier";
+                    string codeKey = isIdentifierShape ? "value" : "code";
+
+                    string predicate;
+                    if isPgForToken {
+                        string innerObj;
+                        if tokenSystem is string && tokenCode is string {
+                            innerObj = string `{"system":"${sanitizedSystem}","${codeKey}":"${sanitizedCode}"}`;
+                        } else if tokenCode is string {
+                            innerObj = string `{"${codeKey}":"${sanitizedCode}"}`;
+                        } else if tokenSystem is string {
+                            innerObj = string `{"system":"${sanitizedSystem}"}`;
                         } else {
-                            whereClause = whereClause + string ` AND (${columnName} LIKE '%"system":"${sanitizedSystem}"%' OR ${columnName} LIKE '%"system": "${sanitizedSystem}"%') AND (${columnName} LIKE '%"code":"${sanitizedCode}"%' OR ${columnName} LIKE '%"code": "${sanitizedCode}"%')`;
+                            innerObj = "";
                         }
-                    } else if tokenCode is string && tokenSystemEmpty {
-                        // Case 3: |[code] - Code matches but system must be absent/null
-                        // This is complex - for simplicity, just search for code (limitation)
-                        if whereClause == "" {
-                            whereClause = string ` WHERE (${columnName} LIKE '%"code":"${sanitizedCode}"%' OR ${columnName} LIKE '%"code": "${sanitizedCode}"%')`;
+
+                        if innerObj == "" {
+                            predicate = "";
+                        } else if isIdentifierShape {
+                            predicate = string `"RESOURCE_JSON" @> '{"identifier":[${innerObj}]}'::jsonb`;
                         } else {
-                            whereClause = whereClause + string ` AND (${columnName} LIKE '%"code":"${sanitizedCode}"%' OR ${columnName} LIKE '%"code": "${sanitizedCode}"%')`;
+                            predicate = string `"RESOURCE_JSON" @> '{"${jsonPath}":{"coding":[${innerObj}]}}'::jsonb`;
                         }
-                    } else if tokenCode is string {
-                        // This shouldn't happen with current logic, but handle it
-                        if whereClause == "" {
-                            whereClause = string ` WHERE (${columnName} LIKE '%"code":"${sanitizedCode}"%' OR ${columnName} LIKE '%"code": "${sanitizedCode}"%')`;
+                    } else {
+                        // H2 fallback: original LIKE-on-denormalized-column logic.
+                        if tokenSystem is string && tokenCode is string {
+                            predicate = string `(${columnName} LIKE '%"system":"${sanitizedSystem}"%' OR ${columnName} LIKE '%"system": "${sanitizedSystem}"%') AND (${columnName} LIKE '%"${codeKey}":"${sanitizedCode}"%' OR ${columnName} LIKE '%"${codeKey}": "${sanitizedCode}"%')`;
+                        } else if tokenCode is string {
+                            predicate = string `(${columnName} LIKE '%"${codeKey}":"${sanitizedCode}"%' OR ${columnName} LIKE '%"${codeKey}": "${sanitizedCode}"%')`;
+                        } else if tokenSystem is string {
+                            predicate = string `("${columnName}" LIKE '%"system":"${sanitizedSystem}"%' OR "${columnName}" LIKE '%"system": "${sanitizedSystem}"%')`;
                         } else {
-                            whereClause = whereClause + string ` AND (${columnName} LIKE '%"code":"${sanitizedCode}"%' OR ${columnName} LIKE '%"code": "${sanitizedCode}"%')`;
+                            predicate = "";
                         }
-                    } else if tokenSystem is string {
-                        // Case 4: [system]| - System matches, any code
+                    }
+
+                    if predicate != "" {
                         if whereClause == "" {
-                            whereClause = string ` WHERE ("${columnName}" LIKE '%"system":"${sanitizedSystem}"%' OR "${columnName}" LIKE '%"system": "${sanitizedSystem}"%')`;
+                            whereClause = string ` WHERE ${predicate}`;
                         } else {
-                            whereClause = whereClause + string ` AND ("${columnName}" LIKE '%"system":"${sanitizedSystem}"%' OR "${columnName}" LIKE '%"system": "${sanitizedSystem}"%')`;
+                            whereClause = whereClause + string ` AND ${predicate}`;
                         }
                     }
                 }
@@ -443,14 +486,44 @@ public class ReadMapper {
             }
         }
 
-        // Calculate total count before pagination
-        int totalCount = 0;
-        string countQuery = string `SELECT COUNT(*) AS "COUNT" FROM "${tableName}"${whereClause}`;
-        log:printDebug(string `Executing count query for resource type: ${resourceType}`);
-        sql:ParameterizedQuery cQuery = new RawSQLQuery(countQuery);
-        record {|int COUNT;|}? countResult = check jdbcClient->queryRow(cQuery);
-        if countResult != () {
-            totalCount = countResult.COUNT;
+        // Calculate total count before pagination — but only if the caller asked.
+        // FHIR R4 §3.1.0 Bundle: `total` is optional for searchset bundles. The
+        // unconditional COUNT(*) was duplicating every search's work; per
+        // WORK.md §5.8 we now honor `_total=none|estimate|accurate` and default
+        // to "none" so the search planner does one scan instead of two.
+        // - none     : skip COUNT entirely (Bundle.total omitted).
+        // - estimate : use pg_class.reltuples (PG only); on H2 falls back to none.
+        // - accurate : run the full COUNT(*) (the previous unconditional path).
+        // See https://www.hl7.org/fhir/search.html#total
+        int? totalCount = ();
+        string totalMode = "none";
+        if queryParams.hasKey("_total") {
+            string[] vals = queryParams.get("_total");
+            if vals.length() > 0 {
+                string v = vals[0].toLowerAscii();
+                if v == "accurate" || v == "estimate" || v == "none" {
+                    totalMode = v;
+                }
+            }
+        }
+        string normalizedDbTypeForCount = mapperUtils:dbType.toLowerAscii().trim();
+        boolean isPg = normalizedDbTypeForCount == "postgresql" || normalizedDbTypeForCount == "postgres";
+        if totalMode == "accurate" {
+            string countQuery = string `SELECT COUNT(*) AS "COUNT" FROM "${tableName}"${whereClause}`;
+            log:printDebug(string `Executing accurate count query for resource type: ${resourceType}`);
+            sql:ParameterizedQuery cQuery = new RawSQLQuery(countQuery);
+            record {|int COUNT;|}? countResult = check jdbcClient->queryRow(cQuery);
+            if countResult != () {
+                totalCount = countResult.COUNT;
+            }
+        } else if totalMode == "estimate" && isPg && whereClause == "" {
+            // Cheap planner-stat estimate; only meaningful for unfiltered counts.
+            // Filtered estimates would need EXPLAIN parsing — defer.
+            sql:ParameterizedQuery cQuery = `SELECT reltuples::BIGINT AS "COUNT" FROM pg_class WHERE relname = ${tableName}`;
+            record {|int COUNT;|}? estResult = check jdbcClient->queryRow(cQuery);
+            if estResult != () {
+                totalCount = estResult.COUNT;
+            }
         }
 
         // Add pagination clause
@@ -542,117 +615,43 @@ public class ReadMapper {
             foreach string includeParam in includeParams {
                 // Parse _include parameter: format is ResourceType:searchParam or ResourceType:searchParam:targetType
                 // Example: Appointment:patient or Appointment:patient:Patient
-                // Also support wildcard: _include=* (include all references)
+                // Also support wildcard: _include=* (include all references).
+                //
+                // Batched (WORK.md §7): one REFERENCES query for ALL matched
+                // IDs + one batch read per distinct target type, instead of
+                // O(matched × refs) round-trips.
 
                 if includeParam == "*" {
-                    // Include all referenced resources from matched results
-                    foreach string sourceId in matchedResourceIds {
-                        json[] includedResources = check self.fetchAllReferencedResources(jdbcClient, resourceType, sourceId);
-                        foreach json includedEntry in includedResources {
-                            // Check for duplicates using resourceType/id as key
-                            map<json> entryMap = <map<json>>includedEntry;
-                            json includedResource = entryMap.get("resource");
-                            map<json> resourceMap = <map<json>>includedResource;
-                            string resType = resourceMap.get("resourceType").toString();
-                            string resId = resourceMap.get("id").toString();
-                            string resourceKey = string `${resType}/${resId}`;
-
-                            if !includedResourceKeys.hasKey(resourceKey) {
-                                entries.push(includedEntry);
-                                includedResourceKeys[resourceKey] = true;
-                            }
+                    json[] includedResources = check self.fetchAllReferencedResourcesBatch(jdbcClient, resourceType, matchedResourceIds);
+                    foreach json includedEntry in includedResources {
+                        map<json> entryMap = <map<json>>includedEntry;
+                        json includedResource = entryMap.get("resource");
+                        map<json> resourceMap = <map<json>>includedResource;
+                        string resType = resourceMap.get("resourceType").toString();
+                        string resId = resourceMap.get("id").toString();
+                        string resourceKey = string `${resType}/${resId}`;
+                        if !includedResourceKeys.hasKey(resourceKey) {
+                            entries.push(includedEntry);
+                            includedResourceKeys[resourceKey] = true;
                         }
                     }
                 } else {
-                    // Parse specific include parameter
                     string[] parts = regexp:split(re `:`, includeParam);
                     if parts.length() >= 2 {
                         string sourceResourceType = parts[0];
                         string searchParamName = parts[1];
                         string? targetResourceType = parts.length() > 2 ? parts[2] : ();
-
-                        // Only process if source type matches current search resource type
                         if sourceResourceType == resourceType {
-                            foreach string sourceId in matchedResourceIds {
-                                json[] includedResources = check self.fetchIncludedResources(jdbcClient, sourceResourceType, sourceId, searchParamName, targetResourceType);
-                                foreach json includedEntry in includedResources {
-                                    // Check for duplicates using resourceType/id as key
-                                    map<json> entryMap = <map<json>>includedEntry;
-                                    json includedResource = entryMap.get("resource");
-                                    map<json> resourceMap = <map<json>>includedResource;
-                                    string resType = resourceMap.get("resourceType").toString();
-                                    string resId = resourceMap.get("id").toString();
-                                    string resourceKey = string `${resType}/${resId}`;
-
-                                    if !includedResourceKeys.hasKey(resourceKey) {
-                                        entries.push(includedEntry);
-                                        includedResourceKeys[resourceKey] = true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Handle _revinclude parameters (reverse include)
-        if queryParams.hasKey("_revinclude") {
-            string[] revIncludeParams = queryParams.get("_revinclude");
-            foreach string revIncludeParam in revIncludeParams {
-                // Parse _revinclude parameter: format is ResourceType:searchParam or ResourceType:searchParam:sourceType
-                // Example: Provenance:target or Provenance:target:MedicationRequest
-                // Also support wildcard: _revinclude=* (include all resources that reference these results)
-
-                if revIncludeParam == "*" {
-                    // Include all resources that reference the matched results
-                    foreach string targetId in matchedResourceIds {
-                        json[] revIncludedResources = check self.fetchAllReferencingResources(jdbcClient, resourceType, targetId);
-                        foreach json revIncludedEntry in revIncludedResources {
-                            // Check for duplicates using resourceType/id as key
-                            map<json> entryMap = <map<json>>revIncludedEntry;
-                            json revIncludedResource = entryMap.get("resource");
-                            map<json> resourceMap = <map<json>>revIncludedResource;
-                            string resType = resourceMap.get("resourceType").toString();
-                            string resId = resourceMap.get("id").toString();
-                            string resourceKey = string `${resType}/${resId}`;
-
-                            if !includedResourceKeys.hasKey(resourceKey) {
-                                entries.push(revIncludedEntry);
-                                includedResourceKeys[resourceKey] = true;
-                            }
-                        }
-                    }
-                } else {
-                    // Parse specific revinclude parameter
-                    string[] parts = regexp:split(re `:`, revIncludeParam);
-                    if parts.length() >= 2 {
-                        string sourceResourceType = parts[0]; // The resource type that references the current results
-                        string searchParamName = parts[1]; // The search parameter on sourceResourceType
-                        string? targetResourceFilter = parts.length() > 2 ? parts[2] : ();
-
-                        // Process reverse include for each matched resource
-                        // We need to find resources of sourceResourceType that reference our matched results
-                        foreach string targetId in matchedResourceIds {
-                            json[] revIncludedResources = check self.fetchReverseIncludedResources(
-                                jdbcClient,
-                                sourceResourceType,  // e.g., "Provenance"
-                                searchParamName,  // e.g., "target"
-                                resourceType,  // e.g., "MedicationRequest" (what we searched for)
-                                targetId,  // ID of the matched resource
-                                targetResourceFilter // Optional filter if specified
-                            );
-                            foreach json revIncludedEntry in revIncludedResources {
-                                // Check for duplicates using resourceType/id as key
-                                map<json> entryMap = <map<json>>revIncludedEntry;
-                                json revIncludedResource = entryMap.get("resource");
-                                map<json> resourceMap = <map<json>>revIncludedResource;
+                            json[] includedResources = check self.fetchIncludedResourcesBatch(jdbcClient, sourceResourceType, matchedResourceIds, searchParamName, targetResourceType);
+                            foreach json includedEntry in includedResources {
+                                map<json> entryMap = <map<json>>includedEntry;
+                                json includedResource = entryMap.get("resource");
+                                map<json> resourceMap = <map<json>>includedResource;
                                 string resType = resourceMap.get("resourceType").toString();
                                 string resId = resourceMap.get("id").toString();
                                 string resourceKey = string `${resType}/${resId}`;
-
                                 if !includedResourceKeys.hasKey(resourceKey) {
-                                    entries.push(revIncludedEntry);
+                                    entries.push(includedEntry);
                                     includedResourceKeys[resourceKey] = true;
                                 }
                             }
@@ -662,12 +661,64 @@ public class ReadMapper {
             }
         }
 
-        json bundle = {
+        // Handle _revinclude parameters (reverse include) — batched.
+        if queryParams.hasKey("_revinclude") {
+            string[] revIncludeParams = queryParams.get("_revinclude");
+            foreach string revIncludeParam in revIncludeParams {
+                if revIncludeParam == "*" {
+                    json[] revIncludedResources = check self.fetchAllReferencingResourcesBatch(jdbcClient, resourceType, matchedResourceIds);
+                    foreach json revIncludedEntry in revIncludedResources {
+                        map<json> entryMap = <map<json>>revIncludedEntry;
+                        json revIncludedResource = entryMap.get("resource");
+                        map<json> resourceMap = <map<json>>revIncludedResource;
+                        string resType = resourceMap.get("resourceType").toString();
+                        string resId = resourceMap.get("id").toString();
+                        string resourceKey = string `${resType}/${resId}`;
+                        if !includedResourceKeys.hasKey(resourceKey) {
+                            entries.push(revIncludedEntry);
+                            includedResourceKeys[resourceKey] = true;
+                        }
+                    }
+                } else {
+                    string[] parts = regexp:split(re `:`, revIncludeParam);
+                    if parts.length() >= 2 {
+                        string sourceResourceType = parts[0];
+                        string searchParamName = parts[1];
+                        string? targetResourceFilter = parts.length() > 2 ? parts[2] : ();
+                        json[] revIncludedResources = check self.fetchReverseIncludedResourcesBatch(
+                            jdbcClient,
+                            sourceResourceType,
+                            searchParamName,
+                            resourceType,
+                            matchedResourceIds,
+                            targetResourceFilter
+                        );
+                        foreach json revIncludedEntry in revIncludedResources {
+                            map<json> entryMap = <map<json>>revIncludedEntry;
+                            json revIncludedResource = entryMap.get("resource");
+                            map<json> resourceMap = <map<json>>revIncludedResource;
+                            string resType = resourceMap.get("resourceType").toString();
+                            string resId = resourceMap.get("id").toString();
+                            string resourceKey = string `${resType}/${resId}`;
+                            if !includedResourceKeys.hasKey(resourceKey) {
+                                entries.push(revIncludedEntry);
+                                includedResourceKeys[resourceKey] = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        map<json> bundle = {
             "resourceType": "Bundle",
             "type": "searchset",
-            "total": totalCount,
             "entry": entries
         };
+        // Omit Bundle.total when caller didn't ask for it (default _total=none).
+        if totalCount is int {
+            bundle["total"] = totalCount;
+        }
 
         return bundle;
     }
@@ -1197,6 +1248,285 @@ public class ReadMapper {
         }
 
         return revIncludedEntries;
+    }
+
+    // ---------------------------------------------------------------------
+    // Batched fetchers for _include / _revinclude (WORK.md §5.5.4 / §7).
+    // Replace the prior O(matched × refs) round-trip pattern with:
+    //   1. ONE REFERENCES query (IN-clause over all matched IDs)
+    //   2. ONE batch SELECT per distinct target resource type (IN-clause over IDs)
+    // For 50 matched results × 5 refs each this drops 300+ round-trips to ~3.
+    // ---------------------------------------------------------------------
+
+    // Batch-fetch resources of one type by primary-key IN-list, reusing the
+    // meta-enrichment / fullUrl shaping that readResourceById does per-row.
+    private isolated function batchReadResources(jdbc:Client jdbcClient, string targetType, string[] targetIds, string? sinceFilter = (), string searchMode = "include") returns json[]|error {
+        if targetIds.length() == 0 {
+            return [];
+        }
+        string tableName = utils:getTableName(targetType);
+        string primaryKey = utils:getPrimaryKeyColumn(targetType);
+
+        string[] escaped = from string id in targetIds
+            select string `'${utils:escapeSql(id)}'`;
+        string idList = string:'join(", ", ...escaped);
+
+        string sqlQuery = string `SELECT "${primaryKey}" AS "RES_ID", "RESOURCE_JSON", "VERSION_ID", "LAST_UPDATED" FROM "${tableName}" WHERE "${primaryKey}" IN (${idList})`;
+        if sinceFilter is string {
+            string sqlTimestamp = regexp:replaceAll(re `T`, sinceFilter, " ");
+            sqlTimestamp = regexp:replaceAll(re `Z$`, sqlTimestamp, "");
+            sqlQuery += string ` AND "LAST_UPDATED" > '${utils:escapeSql(sqlTimestamp)}'`;
+        }
+
+        json[] entries = [];
+        string normalizedDbType = mapperUtils:dbType.toLowerAscii().trim();
+        if normalizedDbType == "postgresql" || normalizedDbType == "postgres" {
+            string pgSql = re `"RESOURCE_JSON"`.replaceAll(sqlQuery,
+                string `CAST("RESOURCE_JSON" AS TEXT) AS "RESOURCE_JSON"`);
+            sql:ParameterizedQuery pgQuery = new RawSQLQuery(pgSql);
+            stream<record {|string RES_ID; string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}, sql:Error?> pgStream = jdbcClient->query(pgQuery);
+            record {|string RES_ID; string RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}[] rows = check from var r in pgStream
+                select r;
+            foreach var r in rows {
+                json resourceJson = check r.RESOURCE_JSON.fromJsonString();
+                map<json> resourceMap = <map<json>>resourceJson;
+                json existingMeta = resourceMap["meta"];
+                map<json> metaMap = existingMeta is map<json> ? existingMeta : {};
+                metaMap["versionId"] = r.VERSION_ID.toString();
+                metaMap["lastUpdated"] = utils:formatTimestampISO8601(r.LAST_UPDATED);
+                resourceMap["meta"] = metaMap;
+                entries.push({
+                    "fullUrl": string `${baseUrl}/fhir/r4/${targetType}/${r.RES_ID}`,
+                    "resource": resourceMap,
+                    "search": {"mode": searchMode}
+                });
+            }
+        } else {
+            sql:ParameterizedQuery h2Query = new RawSQLQuery(sqlQuery);
+            stream<record {|string RES_ID; byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}, sql:Error?> h2Stream = jdbcClient->query(h2Query);
+            record {|string RES_ID; byte[] RESOURCE_JSON; int VERSION_ID; time:Civil LAST_UPDATED;|}[] rows = check from var r in h2Stream
+                select r;
+            foreach var r in rows {
+                string jsonStr = check string:fromBytes(r.RESOURCE_JSON);
+                json resourceJson = check jsonStr.fromJsonString();
+                map<json> resourceMap = <map<json>>resourceJson;
+                json existingMeta = resourceMap["meta"];
+                map<json> metaMap = existingMeta is map<json> ? existingMeta : {};
+                metaMap["versionId"] = r.VERSION_ID.toString();
+                metaMap["lastUpdated"] = utils:formatTimestampISO8601(r.LAST_UPDATED);
+                resourceMap["meta"] = metaMap;
+                entries.push({
+                    "fullUrl": string `${baseUrl}/fhir/r4/${targetType}/${r.RES_ID}`,
+                    "resource": resourceMap,
+                    "search": {"mode": searchMode}
+                });
+            }
+        }
+        return entries;
+    }
+
+    // Helper: build "'a','b','c'" SQL literal from a string[] (already escaped).
+    private isolated function buildEscapedInList(string[] ids) returns string {
+        string[] escaped = from string id in ids
+            select string `'${utils:escapeSql(id)}'`;
+        return string:'join(", ", ...escaped);
+    }
+
+    // Wildcard _include=* across all matched source IDs.
+    private isolated function fetchAllReferencedResourcesBatch(jdbc:Client jdbcClient, string sourceResourceType, string[] sourceIds) returns json[]|error {
+        if sourceIds.length() == 0 {
+            return [];
+        }
+        string idList = self.buildEscapedInList(sourceIds);
+        string refQuery = string `SELECT DISTINCT "TARGET_RESOURCE_TYPE", "TARGET_RESOURCE_ID" FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = '${utils:escapeSql(sourceResourceType)}' AND "SOURCE_RESOURCE_ID" IN (${idList})`;
+        sql:ParameterizedQuery query = new utils:RawSQLQuery(refQuery);
+        stream<record {|string TARGET_RESOURCE_TYPE; string TARGET_RESOURCE_ID;|}, sql:Error?> refStream = jdbcClient->query(query);
+        record {|string TARGET_RESOURCE_TYPE; string TARGET_RESOURCE_ID;|}[] refRows = check from var r in refStream
+            select r;
+
+        map<string[]> byType = {};
+        foreach var r in refRows {
+            string[] ids = byType.hasKey(r.TARGET_RESOURCE_TYPE) ? byType.get(r.TARGET_RESOURCE_TYPE) : [];
+            ids.push(r.TARGET_RESOURCE_ID);
+            byType[r.TARGET_RESOURCE_TYPE] = ids;
+        }
+
+        json[] entries = [];
+        foreach var [tt, ids] in byType.entries() {
+            json[] sub = check self.batchReadResources(jdbcClient, tt, ids);
+            foreach json e in sub {
+                entries.push(e);
+            }
+        }
+        return entries;
+    }
+
+    // Wildcard _revinclude=* across all matched target IDs.
+    private isolated function fetchAllReferencingResourcesBatch(jdbc:Client jdbcClient, string targetResourceType, string[] targetIds) returns json[]|error {
+        if targetIds.length() == 0 {
+            return [];
+        }
+        string idList = self.buildEscapedInList(targetIds);
+        string refQuery = string `SELECT DISTINCT "SOURCE_RESOURCE_TYPE", "SOURCE_RESOURCE_ID" FROM "REFERENCES" WHERE "TARGET_RESOURCE_TYPE" = '${utils:escapeSql(targetResourceType)}' AND "TARGET_RESOURCE_ID" IN (${idList})`;
+        sql:ParameterizedQuery query = new utils:RawSQLQuery(refQuery);
+        stream<record {|string SOURCE_RESOURCE_TYPE; string SOURCE_RESOURCE_ID;|}, sql:Error?> refStream = jdbcClient->query(query);
+        record {|string SOURCE_RESOURCE_TYPE; string SOURCE_RESOURCE_ID;|}[] refRows = check from var r in refStream
+            select r;
+
+        map<string[]> bySrcType = {};
+        foreach var r in refRows {
+            string[] ids = bySrcType.hasKey(r.SOURCE_RESOURCE_TYPE) ? bySrcType.get(r.SOURCE_RESOURCE_TYPE) : [];
+            ids.push(r.SOURCE_RESOURCE_ID);
+            bySrcType[r.SOURCE_RESOURCE_TYPE] = ids;
+        }
+
+        json[] entries = [];
+        foreach var [st, ids] in bySrcType.entries() {
+            json[] sub = check self.batchReadResources(jdbcClient, st, ids);
+            foreach json e in sub {
+                entries.push(e);
+            }
+        }
+        return entries;
+    }
+
+    // Specific _include=Type:param[:targetType] across all matched source IDs.
+    private isolated function fetchIncludedResourcesBatch(jdbc:Client jdbcClient, string sourceResourceType, string[] sourceIds, string searchParamName, string? targetResourceType) returns json[]|error {
+        if sourceIds.length() == 0 {
+            return [];
+        }
+
+        // Resolve the FHIRPath expression once (per directive), not per source.
+        sql:ParameterizedQuery spQuery = `SELECT "EXPRESSION" FROM "SEARCH_PARAM_RES_EXPRESSIONS" WHERE "RESOURCE_NAME" = ${sourceResourceType} AND "SEARCH_PARAM_NAME" = ${searchParamName} AND "SEARCH_PARAM_TYPE" = 'reference'`;
+        stream<record {|string EXPRESSION;|}, sql:Error?> spStream = jdbcClient->query(spQuery);
+        record {|string EXPRESSION;|}[] spResults = check from var sp in spStream
+            select sp;
+        if spResults.length() == 0 {
+            return [];
+        }
+
+        string fhirPathExpr = spResults[0].EXPRESSION;
+        string? referenceField;
+        string? extractedTargetType;
+        [referenceField, extractedTargetType] = self.parseReferenceFieldFromExpression(fhirPathExpr);
+
+        string idList = self.buildEscapedInList(sourceIds);
+        string whereClause = string `"SOURCE_RESOURCE_TYPE" = '${utils:escapeSql(sourceResourceType)}' AND "SOURCE_RESOURCE_ID" IN (${idList})`;
+        if referenceField is string {
+            whereClause = whereClause + string ` AND "SOURCE_EXPRESSION" = '${utils:escapeSql(referenceField)}'`;
+        }
+        string? finalTargetType = extractedTargetType is string ? extractedTargetType : targetResourceType;
+        if finalTargetType is string {
+            whereClause = whereClause + string ` AND "TARGET_RESOURCE_TYPE" = '${utils:escapeSql(finalTargetType)}'`;
+        }
+
+        string refQuery = string `SELECT DISTINCT "TARGET_RESOURCE_TYPE", "TARGET_RESOURCE_ID" FROM "REFERENCES" WHERE ${whereClause}`;
+        sql:ParameterizedQuery query = new utils:RawSQLQuery(refQuery);
+        stream<record {|string TARGET_RESOURCE_TYPE; string TARGET_RESOURCE_ID;|}, sql:Error?> refStream = jdbcClient->query(query);
+        record {|string TARGET_RESOURCE_TYPE; string TARGET_RESOURCE_ID;|}[] refRows = check from var r in refStream
+            select r;
+
+        map<string[]> byType = {};
+        foreach var r in refRows {
+            string[] ids = byType.hasKey(r.TARGET_RESOURCE_TYPE) ? byType.get(r.TARGET_RESOURCE_TYPE) : [];
+            ids.push(r.TARGET_RESOURCE_ID);
+            byType[r.TARGET_RESOURCE_TYPE] = ids;
+        }
+
+        json[] entries = [];
+        foreach var [tt, ids] in byType.entries() {
+            json[] sub = check self.batchReadResources(jdbcClient, tt, ids);
+            foreach json e in sub {
+                entries.push(e);
+            }
+        }
+        return entries;
+    }
+
+    // Specific _revinclude=SourceType:param across all matched target IDs.
+    private isolated function fetchReverseIncludedResourcesBatch(jdbc:Client jdbcClient, string sourceResourceType, string searchParamName, string targetResourceType, string[] targetIds, string? sourceResourceFilter) returns json[]|error {
+        if targetIds.length() == 0 {
+            return [];
+        }
+
+        sql:ParameterizedQuery spQuery = `SELECT "EXPRESSION" FROM "SEARCH_PARAM_RES_EXPRESSIONS" WHERE "RESOURCE_NAME" = ${sourceResourceType} AND "SEARCH_PARAM_NAME" = ${searchParamName} AND "SEARCH_PARAM_TYPE" = 'reference'`;
+        stream<record {|string EXPRESSION;|}, sql:Error?> spStream = jdbcClient->query(spQuery);
+        record {|string EXPRESSION;|}[] spResults = check from var sp in spStream
+            select sp;
+        if spResults.length() == 0 {
+            return [];
+        }
+
+        string fhirPathExpr = spResults[0].EXPRESSION;
+        // The expression's target type (extracted via parseReferenceFieldFromExpression)
+        // is intentionally ignored here — the reverse-include caller already
+        // pinned TARGET_RESOURCE_TYPE in the WHERE clause below.
+        [string?, string?] parsed = self.parseReferenceFieldFromExpression(fhirPathExpr);
+        string? referenceField = parsed[0];
+
+        string idList = self.buildEscapedInList(targetIds);
+        string whereClause = string `"TARGET_RESOURCE_TYPE" = '${utils:escapeSql(targetResourceType)}' AND "TARGET_RESOURCE_ID" IN (${idList}) AND "SOURCE_RESOURCE_TYPE" = '${utils:escapeSql(sourceResourceType)}'`;
+        if referenceField is string {
+            whereClause = whereClause + string ` AND "SOURCE_EXPRESSION" = '${utils:escapeSql(referenceField)}'`;
+        }
+
+        string refQuery = string `SELECT DISTINCT "SOURCE_RESOURCE_TYPE", "SOURCE_RESOURCE_ID" FROM "REFERENCES" WHERE ${whereClause}`;
+        sql:ParameterizedQuery query = new utils:RawSQLQuery(refQuery);
+        stream<record {|string SOURCE_RESOURCE_TYPE; string SOURCE_RESOURCE_ID;|}, sql:Error?> refStream = jdbcClient->query(query);
+        record {|string SOURCE_RESOURCE_TYPE; string SOURCE_RESOURCE_ID;|}[] refRows = check from var r in refStream
+            select r;
+
+        map<string[]> bySrcType = {};
+        foreach var r in refRows {
+            string[] ids = bySrcType.hasKey(r.SOURCE_RESOURCE_TYPE) ? bySrcType.get(r.SOURCE_RESOURCE_TYPE) : [];
+            ids.push(r.SOURCE_RESOURCE_ID);
+            bySrcType[r.SOURCE_RESOURCE_TYPE] = ids;
+        }
+
+        json[] entries = [];
+        foreach var [st, ids] in bySrcType.entries() {
+            json[] sub = check self.batchReadResources(jdbcClient, st, ids);
+            foreach json e in sub {
+                entries.push(e);
+            }
+        }
+        return entries;
+    }
+
+    // Extract reference field + optional target type from a FHIRPath expression.
+    // Examples:
+    //   "Appointment.participant.actor.where(resolve() is Patient)"
+    //     -> ("actor", "Patient")
+    //   "Patient.generalPractitioner" -> ("generalPractitioner", ())
+    private isolated function parseReferenceFieldFromExpression(string fhirPathExpr) returns [string?, string?] {
+        string[] pathParts = regexp:split(re `\.`, fhirPathExpr);
+        string? referenceField = ();
+        string? extractedTargetType = ();
+        foreach int i in 0 ..< pathParts.length() {
+            string part = pathParts[i];
+            if part == "where" {
+                if i > 0 {
+                    referenceField = pathParts[i - 1];
+                }
+                break;
+            } else if part.startsWith("where(") {
+                if i > 0 {
+                    referenceField = pathParts[i - 1];
+                }
+                string wherePattern = "where(resolve() is ";
+                if part.startsWith(wherePattern) {
+                    string whereContent = part.substring(wherePattern.length());
+                    int? closeParenPos = whereContent.indexOf(")");
+                    if closeParenPos is int && closeParenPos > 0 {
+                        extractedTargetType = whereContent.substring(0, closeParenPos).trim();
+                    }
+                }
+                break;
+            } else if i == pathParts.length() - 1 {
+                referenceField = part;
+            }
+        }
+        return [referenceField, extractedTargetType];
     }
 
     // Check if a search parameter is a custom extension parameter
