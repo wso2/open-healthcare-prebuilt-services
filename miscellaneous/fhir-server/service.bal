@@ -959,6 +959,36 @@ isolated function performResourcePatch(string resourceType, string id, json patc
     }
 }
 
+// WORK.md §5.3 / Phase 5: dispatch a transaction or batch Bundle to the
+// BundleHandler. The handler wraps a `transaction` Bundle in one
+// Ballerina `transaction { }` block so all entries commit atomically and
+// share a single fsync — this is the dominant Synthea ingest amortization.
+isolated function performBundleProcessing(json bundleJson) returns json|r4:OperationOutcome|r4:FHIRError {
+    log:printDebug("Bundle: Processing transaction/batch");
+    do {
+        handlers:BundleHandler bundleHandler = new handlers:BundleHandler(jdbcClient);
+        json|error result = bundleHandler.processBundle(bundleJson);
+        if result is error {
+            string errMsg = result.message();
+            log:printError(string `Bundle processing failed: ${errMsg}`);
+            if errMsg.includes("must be 'transaction' or 'batch'") || errMsg.includes("required") || errMsg.includes("Invalid Bundle") {
+                return r4:createFHIRError(errMsg, r4:ERROR, r4:INVALID, httpStatusCode = http:STATUS_BAD_REQUEST);
+            }
+            if errMsg.includes("Unresolved reference") || errMsg.includes("violates foreign key constraint") || errMsg.includes("FK_REFERENCES_TARGET") {
+                return r4:createFHIRError(errMsg, r4:ERROR, r4:INVALID, httpStatusCode = http:STATUS_UNPROCESSABLE_ENTITY);
+            }
+            if errMsg.includes("not found") {
+                return r4:createFHIRError(errMsg, r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_NOT_FOUND);
+            }
+            return r4:createFHIRError(errMsg, r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
+        }
+        return result;
+    } on fail error e {
+        log:printError(string `Bundle processing error: ${e.message()}`);
+        return r4:createFHIRError(string `Bundle processing failed: ${e.message()}`, r4:ERROR, r4:PROCESSING, httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
+    }
+}
+
 // FHIR validation error details record
 public type FHIRValidationErrorDetail record {
     *r4:FHIRErrorDetail;
@@ -1932,6 +1962,19 @@ service /fhir/r4/_export on httpListener {
     // Download export file
     resource function get download/[string jobId]/[string fileName]() returns http:Response|r4:FHIRError {
         return downloadExportFile(jobId, fileName);
+    }
+}
+
+// FHIR root service — currently only handles the system-level POST that
+// accepts a transaction or batch Bundle (WORK.md §5.3 / Phase 5). The
+// per-resource-type services bound on `/fhir/r4/{ResourceType}` are
+// unaffected because they're more-specific path matches.
+service /fhir/r4 on httpListener {
+
+    // Process a transaction or batch Bundle. Body is the Bundle as JSON;
+    // response is a transaction-response / batch-response Bundle.
+    isolated resource function post .(@http:Payload json bundleJson) returns json|r4:OperationOutcome|r4:FHIRError {
+        return performBundleProcessing(bundleJson);
     }
 }
 
