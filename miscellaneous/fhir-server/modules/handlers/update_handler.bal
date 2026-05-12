@@ -7,321 +7,179 @@ import ballerinax/java.jdbc;
 
 public class UpdateHandler {
     private mappers:UpdateMapper updateMapper;
-    private utils:TransactionHandler transactionHandler;
     private HistoryHandler historyHandler;
     private final jdbc:Client? jdbcClient;
 
     public isolated function init(jdbc:Client? jdbcClient = ()) {
         self.jdbcClient = jdbcClient;
         self.updateMapper = new mappers:UpdateMapper(jdbcClient);
-        self.transactionHandler = new utils:TransactionHandler();
         self.historyHandler = new HistoryHandler(jdbcClient);
     }
 
-    // Main function for PUT (full update)
+    // Public entry point for PUT (full update).
+    //
+    // WORK.md §5.1 / Phase 3: a real Ballerina `transaction { }` block now
+    // makes the multi-step update atomic at the JDBC layer. The previous
+    // application-level backup/restore plumbing is gone; on any failure the
+    // JDBC driver rolls back automatically.
     public isolated function updateResourceWithTransaction(string resourceType, string resourceId, json resourceJson) returns string|error {
-
-        // Begin transaction
-        utils:TransactionContext 'transaction = self.transactionHandler.beginTransaction();
-        'transaction.mainResourceId = resourceId;
-
-        do {
-            // Get JDBC client
-            jdbc:Client? jdbcConn = self.jdbcClient;
-            if jdbcConn is () {
-                return error("JDBC client not initialized");
-            }
-
-            // Check if resource exists
-            log:printDebug(string `Checking if ${resourceType}/${resourceId} exists`);
-            boolean exists = check self.checkResourceExists(resourceType, resourceId);
-
-            if !exists {
-                log:printWarn(string `Update attempted on non-existent resource: ${resourceType}/${resourceId}`);
-                return error(string `${resourceType}/${resourceId} not found`);
-            }
-
-            // Backup existing resource (for rollback)
-            log:printDebug(string `Backing up existing ${resourceType}/${resourceId}`);
-            record {|anydata...;|} backup = check self.backupResource(resourceType, resourceId);
-            'transaction.backupResource = backup;
-
-            // Delete old references (they will be recreated)
-            log:printDebug(string `Deleting old references for ${resourceType}/${resourceId}`);
-            int[] oldReferenceIds = check self.findSourceReferences(resourceType, resourceId);
-            error? deleteRefsResult = utils:deleteReferences(self.jdbcClient, oldReferenceIds, 'transaction);
-
-            if deleteRefsResult is error {
-                log:printError(string `Failed to delete old references for ${resourceType}/${resourceId}: ${deleteRefsResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                    self.jdbcClient, 'transaction, resourceType
-                );
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return deleteRefsResult;
-            }
-
-            // Get current VERSION_ID and increment it
-            int currentVersion = check self.getCurrentVersionFromBackup(backup, resourceType);
-            int newVersion = currentVersion + 1;
-
-            // Map updated resource to update model
-            log:printDebug(string `Mapping updated ${resourceType} to model (version ${newVersion})`);
-            record {|anydata...;|}|error? updateModel = self.updateMapper.mapToUpdateModel(jdbcConn, resourceType, resourceJson, newVersion);
-
-            if updateModel is () || updateModel is error {
-                log:printError(string `Failed to map update model for ${resourceType}/${resourceId}: ${updateModel is error ? updateModel.message() : "mapper returned null"}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                    self.jdbcClient, 'transaction, resourceType
-                );
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return updateModel is error ? updateModel : error("Failed to create update model");
-            }
-
-            // Get extracted references after mapping
-            json[] references = self.updateMapper.getReferences();
-
-            // Update main resource
-            // Note: reference existence is enforced by the DB FK on RESOURCE_TABLE — no app-level SELECT needed.
-            log:printDebug(string `Updating main ${resourceType}/${resourceId} record`);
-            error? updateResult = self.updateMainResource(resourceType, resourceId, updateModel);
-
-            if updateResult is error {
-                log:printError(string `Failed to update main resource ${resourceType}/${resourceId}: ${updateResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                    self.jdbcClient, 'transaction, resourceType
-                );
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return updateResult;
-            }
-
-            // Special handling for SearchParameter resources - sync to expressions table
-            if resourceType == "SearchParameter" {
-                log:printDebug(string `Syncing updated SearchParameter/${resourceId} to SEARCH_PARAM_RES_EXPRESSIONS`);
-                error? syncResult = utils:syncSearchParameterToExpressions(self.jdbcClient, resourceJson);
-                if syncResult is error {
-                    log:printError(string `Failed to sync SearchParameter/${resourceId}: ${syncResult.message()}`);
-                    error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                        self.jdbcClient, 'transaction, resourceType
-                    );
-                    if (rollbackResult is error) {
-                        log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                    }
-                    return syncResult;
-                }
-                log:printInfo(string `Successfully synced updated SearchParameter/${resourceId} to expressions table`);
-            }
-
-            // Save new version to history after successful update
-            log:printDebug(string `Saving new version of ${resourceType}/${resourceId} to history`);
-            error? historyResult = self.historyHandler.saveToHistory(resourceType, resourceId, updateModel, "PUT");
-            if historyResult is error {
-                log:printError(string `Failed to save history for ${resourceType}/${resourceId}: ${historyResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                    self.jdbcClient, 'transaction, resourceType
-                );
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return historyResult;
-            }
-
-            // Update search parameters for indexed searching
-            log:printDebug(string `Updating search parameters for ${resourceType}/${resourceId}`);
-            error? updateSearchResult = utils:updateSearchParametersForResource(jdbcConn, resourceType, resourceId, resourceJson);
-            if updateSearchResult is error {
-                log:printError(string `Failed to update search parameters for ${resourceType}/${resourceId}: ${updateSearchResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                    self.jdbcClient, 'transaction, resourceType
-                );
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return updateSearchResult;
-            }
-
-            // Save new references
-            log:printDebug(string `Saving new references for ${resourceType}/${resourceId}`);
-            error? refResult = utils:saveReferences(self.jdbcClient, references, resourceType, resourceId, 'transaction);
-
-            if refResult is error {
-                log:printError(string `Failed to save references for ${resourceType}/${resourceId}: ${refResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                    self.jdbcClient, 'transaction, resourceType
-                );
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                string refMsg = refResult.message();
-                if refMsg.includes("violates foreign key constraint") || refMsg.includes("FK_REFERENCES_TARGET") {
-                    return error(string `Unresolved reference: one or more TARGET resources referenced by ${resourceType}/${resourceId} do not exist. Ensure all referenced resources are created first.`);
-                }
-                return refResult;
-            }
-
-            // Commit transaction
-            log:printDebug(string `Committing update transaction for ${resourceType}/${resourceId}`);
-            self.transactionHandler.commitTransaction('transaction, resourceType, resourceId);
-
-            log:printDebug(string `Successfully updated ${resourceType}/${resourceId}`);
-            return resourceId;
-
+        string result;
+        transaction {
+            result = check self.persistUpdate(resourceType, resourceId, resourceJson);
+            check commit;
         } on fail error e {
             log:printError(string `Update transaction failed for ${resourceType}/${resourceId}: ${e.message()}`);
-            error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                self.jdbcClient, 'transaction, resourceType
-            );
-            if (rollbackResult is error) {
-                log:printError(string `Rollback failed during update transaction cleanup for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-            }
             return e;
         }
+        return result;
     }
 
-    // Main function for PATCH (partial update) with transaction support
+    // Public entry point for PATCH.
     public isolated function patchResourceWithTransaction(string resourceType, string resourceId, json patchJson) returns json|error {
-        // Get JDBC client
-        jdbc:Client? jdbcConn = self.jdbcClient;
-        if jdbcConn is () {
-            return error("JDBC client not initialized");
-        }
-
-        // Begin transaction
-        utils:TransactionContext 'transaction = self.transactionHandler.beginTransaction();
-        'transaction.mainResourceId = resourceId;
-
-        do {
-            // Check if resource exists and get current data
-            log:printDebug(string `Fetching existing ${resourceType}/${resourceId}`);
-            json existingResource = check self.getResourceAsJson(resourceType, resourceId);
-
-            // Backup for rollback
-            log:printDebug(string `Backing up existing resource`);
-            record {|anydata...;|} backup = check self.backupResource(resourceType, resourceId);
-            'transaction.backupResource = backup;
-
-            // Apply patch to existing resource
-            log:printDebug(string `Applying patch to ${resourceType}/${resourceId}`);
-            json mergedResource = check self.applyPatch(existingResource, patchJson);
-
-            // Delete old references
-            log:printDebug(string `Deleting old references`);
-            int[] oldReferenceIds = check self.findSourceReferences(resourceType, resourceId);
-            error? deleteRefsResult = utils:deleteReferences(self.jdbcClient, oldReferenceIds, 'transaction);
-
-            if deleteRefsResult is error {
-                log:printError(string `Failed to delete old references for ${resourceType}/${resourceId}: ${deleteRefsResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(self.jdbcClient, 'transaction, resourceType);
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return deleteRefsResult;
-            }
-
-            // Map merged resource to update model
-            log:printDebug(string `Mapping patched resource to model`);
-            record {|anydata...;|}|error? updateModel = self.updateMapper.mapToUpdateModel(jdbcConn, resourceType, mergedResource);
-
-            if updateModel is () || updateModel is error {
-                log:printError(string `Failed to map patched resource for ${resourceType}/${resourceId}: ${updateModel is error ? updateModel.message() : "mapper returned null"}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(self.jdbcClient, 'transaction, resourceType);
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return updateModel is error ? updateModel : error("Failed to create update model");
-            }
-
-            // Get extracted references after mapping
-            json[] references = self.updateMapper.getReferences();
-
-            // Update main resource
-            // Note: reference existence is enforced by the DB FK on RESOURCE_TABLE — no app-level SELECT needed.
-            log:printDebug(string `Updating main resource`);
-            error? updateResult = self.updateMainResource(resourceType, resourceId, updateModel);
-
-            if updateResult is error {
-                log:printError(string `Failed to update main resource ${resourceType}/${resourceId}: ${updateResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                    self.jdbcClient, 'transaction, resourceType
-                );
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return updateResult;
-            }
-
-            // Save new references
-            log:printDebug(string `Saving new references`);
-            error? refResult = utils:saveReferences(self.jdbcClient, references, resourceType, resourceId, 'transaction);
-
-            if refResult is error {
-                log:printError(string `Failed to save references for ${resourceType}/${resourceId}: ${refResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                    self.jdbcClient, 'transaction, resourceType);
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                string refMsg = refResult.message();
-                if refMsg.includes("violates foreign key constraint") || refMsg.includes("FK_REFERENCES_TARGET") {
-                    return error(string `Unresolved reference: one or more TARGET resources referenced by ${resourceType}/${resourceId} do not exist. Ensure all referenced resources are created first.`);
-                }
-                return refResult;
-            }
-
-            // Commit transaction
-            log:printDebug(string `Committing patch transaction for ${resourceType}/${resourceId}`);
-            self.transactionHandler.commitTransaction('transaction, resourceType, resourceId);
-
-            log:printDebug(string `Successfully patched ${resourceType}/${resourceId}`);
-            return mergedResource;
-
+        json result;
+        transaction {
+            result = check self.persistPatch(resourceType, resourceId, patchJson);
+            check commit;
         } on fail error e {
             log:printError(string `Patch transaction failed for ${resourceType}/${resourceId}: ${e.message()}`);
-            error? rollbackResult = self.transactionHandler.rollbackUpdateTransaction(
-                self.jdbcClient, 'transaction, resourceType
-            );
-            if (rollbackResult is error) {
-                log:printError(string `Rollback failed during patch transaction cleanup for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-            }
             return e;
         }
+        return result;
     }
 
-    // Check if resource exists
-    private isolated function checkResourceExists(string resourceType, string resourceId) returns boolean|error {
-        return utils:resourceExists(self.jdbcClient, resourceType, resourceId);
-    }
+    // Core PUT pipeline. Callable from inside an outer transaction (Bundle
+    // handler / Phase 5).
+    public isolated function persistUpdate(string resourceType, string resourceId, json resourceJson) returns string|error {
+        jdbc:Client jdbcConn = check utils:getValidatedJdbcClient(self.jdbcClient);
 
-    // Backup resource for rollback
-    private isolated function backupResource(string resourceType,
-            string resourceId) returns record {|anydata...;|}|error {
-
-        jdbc:Client? jdbcConn = self.jdbcClient;
-        if jdbcConn is () {
-            return error("JDBC client not initialized");
+        // Check if resource exists
+        boolean exists = check utils:resourceExists(self.jdbcClient, resourceType, resourceId);
+        if !exists {
+            log:printWarn(string `Update attempted on non-existent resource: ${resourceType}/${resourceId}`);
+            return error(string `${resourceType}/${resourceId} not found`);
         }
+
+        // We need the current VERSION_ID to write the next one. With real
+        // DB transactions there's no rollback need, so we only fetch the
+        // single column instead of the whole row.
+        int currentVersion = check self.fetchCurrentVersion(resourceType, resourceId);
+        int newVersion = currentVersion + 1;
+
+        // Bulk-delete old references (single statement, WORK.md §5.2).
+        utils:TransactionContext refCtx = utils:newTransactionContext();
+        refCtx.mainResourceId = resourceId;
+        check utils:deleteReferencesBySource(self.jdbcClient, resourceType, resourceId, refCtx);
+
+        // Map updated resource to update model
+        log:printDebug(string `Mapping updated ${resourceType} to model (version ${newVersion})`);
+        record {|anydata...;|}|error? updateModel = self.updateMapper.mapToUpdateModel(jdbcConn, resourceType, resourceJson, newVersion);
+        if updateModel is () || updateModel is error {
+            return updateModel is error ? updateModel : error("Failed to create update model");
+        }
+
+        json[] references = self.updateMapper.getReferences();
+
+        // Update main resource
+        check self.updateMainResource(resourceType, resourceId, updateModel);
+
+        // WORK.md §6 Phase 10: refresh the cross-type FHIR_RESOURCE_INDEX
+        // feed. PG-only; non-fatal.
+        error? friResult = utils:upsertFhirResourceIndex(self.jdbcClient, resourceType, resourceId, newVersion);
+        if friResult is error {
+            log:printWarn(string `Failed to upsert FHIR_RESOURCE_INDEX for ${resourceType}/${resourceId}: ${friResult.message()} (non-fatal)`);
+        }
+
+        if resourceType == "SearchParameter" {
+            check utils:syncSearchParameterToExpressions(self.jdbcClient, resourceJson);
+            log:printInfo(string `Successfully synced updated SearchParameter/${resourceId} to expressions table`);
+        }
+
+        // Save new version to history
+        check self.historyHandler.saveToHistory(resourceType, resourceId, updateModel, "PUT");
+
+        // Update search parameters for indexed searching
+        check utils:updateSearchParametersForResource(jdbcConn, resourceType, resourceId, resourceJson);
+
+        // Save new references — translate FK violation to a 422-shaped error.
+        error? refResult = utils:saveReferences(self.jdbcClient, references, resourceType, resourceId, refCtx);
+        if refResult is error {
+            string refMsg = refResult.message();
+            if refMsg.includes("violates foreign key constraint") || refMsg.includes("FK_REFERENCES_TARGET") {
+                return error(string `Unresolved reference: one or more TARGET resources referenced by ${resourceType}/${resourceId} do not exist. Ensure all referenced resources are created first.`);
+            }
+            return refResult;
+        }
+
+        log:printDebug(string `Successfully updated ${resourceType}/${resourceId}`);
+        return resourceId;
+    }
+
+    // Core PATCH pipeline. Callable from inside an outer transaction.
+    public isolated function persistPatch(string resourceType, string resourceId, json patchJson) returns json|error {
+        jdbc:Client jdbcConn = check utils:getValidatedJdbcClient(self.jdbcClient);
+
+        // Fetch existing resource (PATCH needs the JSON to merge against)
+        json existingResource = check self.getResourceAsJson(resourceType, resourceId);
+
+        // Apply patch to existing resource
+        json mergedResource = check self.applyPatch(existingResource, patchJson);
+
+        // Bulk-delete old references
+        utils:TransactionContext refCtx = utils:newTransactionContext();
+        refCtx.mainResourceId = resourceId;
+        check utils:deleteReferencesBySource(self.jdbcClient, resourceType, resourceId, refCtx);
+
+        // Map merged resource to update model
+        record {|anydata...;|}|error? updateModel = self.updateMapper.mapToUpdateModel(jdbcConn, resourceType, mergedResource);
+        if updateModel is () || updateModel is error {
+            return updateModel is error ? updateModel : error("Failed to create update model");
+        }
+
+        json[] references = self.updateMapper.getReferences();
+
+        check self.updateMainResource(resourceType, resourceId, updateModel);
+
+        // WORK.md §6 Phase 10: refresh FHIR_RESOURCE_INDEX with the version
+        // the mapper actually wrote (defaults to 2 if mapper didn't set it).
+        int patchedVersion = 2;
+        anydata patchedVersionField = updateModel["VERSION_ID"];
+        if patchedVersionField is int {
+            patchedVersion = patchedVersionField;
+        }
+        error? friResult = utils:upsertFhirResourceIndex(self.jdbcClient, resourceType, resourceId, patchedVersion);
+        if friResult is error {
+            log:printWarn(string `Failed to upsert FHIR_RESOURCE_INDEX for ${resourceType}/${resourceId}: ${friResult.message()} (non-fatal)`);
+        }
+
+        error? refResult = utils:saveReferences(self.jdbcClient, references, resourceType, resourceId, refCtx);
+        if refResult is error {
+            string refMsg = refResult.message();
+            if refMsg.includes("violates foreign key constraint") || refMsg.includes("FK_REFERENCES_TARGET") {
+                return error(string `Unresolved reference: one or more TARGET resources referenced by ${resourceType}/${resourceId} do not exist. Ensure all referenced resources are created first.`);
+            }
+            return refResult;
+        }
+
+        log:printDebug(string `Successfully patched ${resourceType}/${resourceId}`);
+        return mergedResource;
+    }
+
+    // Fetch the current VERSION_ID for a resource. Replaces the prior
+    // SELECT * "backup" — we only need the version, not the whole row.
+    private isolated function fetchCurrentVersion(string resourceType, string resourceId) returns int|error {
+        jdbc:Client jdbcConn = check utils:getValidatedJdbcClient(self.jdbcClient);
 
         string tableName = utils:getTableName(resourceType);
         string primaryKey = utils:getPrimaryKeyColumn(resourceType);
 
-        string sqlQuery = string `SELECT * FROM "${tableName}" WHERE "${primaryKey}" = '${utils:escapeSql(resourceId)}'`;
+        string sqlQuery = string `SELECT "VERSION_ID" FROM "${tableName}" WHERE "${primaryKey}" = '${utils:escapeSql(resourceId)}'`;
         sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
 
-        stream<record {|anydata...;|}, sql:Error?> resultStream = jdbcConn->query(query);
-
-        record {|anydata...;|}[] results = check from var result in resultStream
-            select result;
-
-        if results.length() == 0 {
-            return error(string `${resourceType}/${resourceId} not found for backup`);
+        int|sql:Error result = jdbcConn->queryRow(query);
+        if result is sql:Error {
+            return error(string `Failed to read VERSION_ID for ${resourceType}/${resourceId}: ${result.message()}`);
         }
-
-        return results[0];
+        return result;
     }
 
     // Get resource as JSON (for PATCH operations)
@@ -391,28 +249,6 @@ public class UpdateHandler {
         return mergedMap;
     }
 
-    // Find source references
-    private isolated function findSourceReferences(string resourceType, string resourceId) returns int[]|error {
-
-        jdbc:Client? jdbcConn = self.jdbcClient;
-        if jdbcConn is () {
-            return error("JDBC client not initialized");
-        }
-
-        string sqlQuery = string `SELECT "ID" FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = '${utils:escapeSql(resourceType)}' AND "SOURCE_RESOURCE_ID" = '${utils:escapeSql(resourceId)}'`;
-        sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
-
-        stream<record {|int ID;|}, sql:Error?> resultStream = jdbcConn->query(query);
-
-        record {|int ID;|}[] results = check from var result in resultStream
-            select result;
-
-        int[] referenceIds = from var ref in results
-            select ref.ID;
-
-        return referenceIds;
-    }
-
     private isolated function updateMainResource(string resourceType, string resourceId, record {|anydata...;|} updateModel) returns error? {
 
         jdbc:Client? jdbcConn = self.jdbcClient;
@@ -431,7 +267,7 @@ public class UpdateHandler {
             if key == "DATE" {
                 formattedValue = utils:formatDateValue(value);
             } else {
-                formattedValue = self.transactionHandler.formatValue(value);
+                formattedValue = utils:formatSqlValue(value);
             }
             setClauses.push(string `"${key}" = ${formattedValue}`);
         }
@@ -451,15 +287,5 @@ public class UpdateHandler {
         }
 
         return;
-    }
-
-    // Extract current VERSION_ID from backup
-    private isolated function getCurrentVersionFromBackup(record {|anydata...;|} backup, string resourceType) returns int|error {
-        // Generic extraction - all resource tables have VERSION_ID
-        anydata versionField = backup["VERSION_ID"];
-        if versionField is int {
-            return versionField;
-        }
-        return error(string `Could not extract VERSION_ID for ${resourceType}: field is ${versionField.toString()}`);
     }
 }
