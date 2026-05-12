@@ -2571,3 +2571,336 @@ CREATE TABLE "TestScriptTable" (
 	"RESOURCE_JSON" JSONB NOT NULL,
 	PRIMARY KEY("TESTSCRIPTTABLE_ID")
 );
+
+-- =============================================================================
+-- PERFORMANCE OPTIMIZATION SECTION
+-- =============================================================================
+-- Companion docs: WORK.md, PLAN.md, INDEX_PLAN.md
+--
+-- Strategy in one paragraph: the body GIN(jsonb_path_ops) replaces every
+-- per-column LIKE-on-VARCHAR(2048)-JSON predicate (token, identifier, profile,
+-- reference, custom-extension lookup) with an indexed @> containment scan, at
+-- ~25-30% of body size. B-tree indexes are added ONLY where GIN cannot help:
+-- on real range/sort dimensions (LAST_UPDATED, primary DATE columns). Side
+-- tables (FHIR_SPIDX_QUANTITY, FHIR_SPIDX_DATE_RANGE, FHIR_COMBO_*) handle
+-- the three search shapes GIN does poorly: quantity-with-units, period
+-- overlap (TSRANGE + GiST), and composite search params. BRIN summarizes
+-- append-only timestamp columns at <1% the size of equivalent B-trees.
+--
+-- This is sized for an 8 GB / 4 vCPU box (shared_buffers ~2 GB). We do NOT
+-- index every search column on every resource table; that proposal in
+-- INDEX_PLAN.md Part B would create hundreds of B-trees that compete for the
+-- buffer cache and bloat write amplification. We index the universal hot
+-- dimensions (LAST_UPDATED, body GIN) on the top 30 clinical resources and
+-- leave the long tail to fall through to body GIN scans, which are already
+-- O(log N + matches).
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- 1. Extensions
+-- -----------------------------------------------------------------------------
+CREATE EXTENSION IF NOT EXISTS pg_trgm;       -- substring/ILIKE acceleration on free-text
+CREATE EXTENSION IF NOT EXISTS btree_gin;     -- combine btree predicates with GIN scans
+CREATE EXTENSION IF NOT EXISTS btree_gist;    -- combine scalar leading cols with TSRANGE GiST
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;  -- query-level visibility (load via shared_preload_libraries)
+
+-- -----------------------------------------------------------------------------
+-- 2. Drop redundant / low-value indexes from the original schema
+-- -----------------------------------------------------------------------------
+-- Subset of IDX_HISTORY_VERSION (RESOURCE_TYPE, RESOURCE_ID, VERSION_ID).
+DROP INDEX IF EXISTS "IDX_HISTORY_RES";
+-- Subset of IDX_SPRE_RESOURCE_PARAM (RESOURCE_NAME, SEARCH_PARAM_NAME).
+DROP INDEX IF EXISTS "IDX_SPRE_RESOURCE_NAME";
+-- Duplicates the leading column of the composite PK (CLOSURECONTEXTTABLE_ID, VERSION_ID).
+DROP INDEX IF EXISTS "IDX_CLOSUREDELTA_CONTEXT";
+-- Replaced by the partial composite indexes added below.
+DROP INDEX IF EXISTS "IDX_CUST_PARAM_RES_TYPE";
+DROP INDEX IF EXISTS "IDX_CUST_PARAM_NAME";
+DROP INDEX IF EXISTS "IDX_CUST_PARAM_STRING";
+DROP INDEX IF EXISTS "IDX_CUST_PARAM_TOKEN";
+DROP INDEX IF EXISTS "IDX_CUST_PARAM_REF";
+
+-- -----------------------------------------------------------------------------
+-- 3. New shared tables
+-- -----------------------------------------------------------------------------
+
+-- 3.1 Cross-type lastUpdated feed. Avoids UNION across 130 tables for system-
+-- wide _history feeds, change-data-capture exports, and "modified since" syncs.
+-- Maintained by handlers as one extra row per write.
+CREATE TABLE "FHIR_RESOURCE_INDEX" (
+    "RESOURCE_TYPE"  VARCHAR(64)  NOT NULL,
+    "RESOURCE_ID"    VARCHAR(191) NOT NULL,
+    "VERSION_ID"     INT          NOT NULL,
+    "LAST_UPDATED"   TIMESTAMP    NOT NULL,
+    "DELETED"        BOOLEAN      NOT NULL DEFAULT FALSE,
+    PRIMARY KEY ("RESOURCE_TYPE", "RESOURCE_ID")
+);
+CREATE INDEX "IDX_FRI_LASTUPDATED"     ON "FHIR_RESOURCE_INDEX" ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_FRI_TYPE_LASTUPDATED" ON "FHIR_RESOURCE_INDEX" ("RESOURCE_TYPE", "LAST_UPDATED" DESC);
+
+-- 3.2 Quantity index. Typed numeric column with a composite B-tree on
+-- (RESOURCE_TYPE, PARAM_NAME, CODE, VALUE) so value-quantity searches
+-- (Observation?value-quantity=gt5|...|mg/dL,
+-- Observation?component-value-quantity=...) are O(log N).
+--
+-- VALUE_LOW / VALUE_HIGH support FHIR Range datatype (e.g., onset-age=ge0|years
+-- against Range[0..5]). When the value is scalar both are NULL and VALUE is
+-- used.
+CREATE TABLE "FHIR_SPIDX_QUANTITY" (
+    "ID"             BIGSERIAL    PRIMARY KEY,
+    "RESOURCE_TYPE"  VARCHAR(64)  NOT NULL,
+    "RESOURCE_ID"    VARCHAR(191) NOT NULL,
+    "PARAM_NAME"     VARCHAR(64)  NOT NULL,
+    "VALUE"          NUMERIC(20,6),
+    "VALUE_LOW"      NUMERIC(20,6),
+    "VALUE_HIGH"     NUMERIC(20,6),
+    "SYSTEM"         VARCHAR(255),
+    "CODE"           VARCHAR(64),
+    "UNIT"           VARCHAR(64)
+);
+CREATE INDEX "IDX_SPIDX_QUANTITY_LOOKUP"
+    ON "FHIR_SPIDX_QUANTITY" ("RESOURCE_TYPE", "PARAM_NAME", "CODE", "VALUE");
+CREATE INDEX "IDX_SPIDX_QUANTITY_RANGE"
+    ON "FHIR_SPIDX_QUANTITY" ("RESOURCE_TYPE", "PARAM_NAME", "CODE", "VALUE_LOW", "VALUE_HIGH")
+    WHERE "VALUE_LOW" IS NOT NULL;
+CREATE INDEX "IDX_SPIDX_QUANTITY_BACKREF"
+    ON "FHIR_SPIDX_QUANTITY" ("RESOURCE_TYPE", "RESOURCE_ID");
+
+-- 3.3 Date-range index. FHIR Period datatype (Encounter.period, CarePlan.period,
+-- Coverage.period, EpisodeOfCare.period, MedicationRequest.dispenseRequest.
+-- validityPeriod, etc.) requires overlap semantics: "find encounters active
+-- on 2026-03-15" must hit any row whose [start,end] contains the date.
+--
+-- TSRANGE + GiST handles this natively (operators &&, @>, <@, -|-) at log
+-- complexity.
+CREATE TABLE "FHIR_SPIDX_DATE_RANGE" (
+    "ID"             BIGSERIAL    PRIMARY KEY,
+    "RESOURCE_TYPE"  VARCHAR(64)  NOT NULL,
+    "RESOURCE_ID"    VARCHAR(191) NOT NULL,
+    "PARAM_NAME"     VARCHAR(64)  NOT NULL,
+    "DATE_RANGE"     TSRANGE      NOT NULL
+);
+CREATE INDEX "IDX_SPIDX_DATE_RANGE_GIST"
+    ON "FHIR_SPIDX_DATE_RANGE"
+    USING GIST ("RESOURCE_TYPE", "PARAM_NAME", "DATE_RANGE");
+CREATE INDEX "IDX_SPIDX_DATE_RANGE_BACKREF"
+    ON "FHIR_SPIDX_DATE_RANGE" ("RESOURCE_TYPE", "RESOURCE_ID");
+
+-- 3.4 Composite search parameter: token + number. The canonical example is
+-- Observation.code-value-quantity ("find systolic BPs > 140"), where neither
+-- a token-only nor a value-only index can answer the query without a heavy
+-- recheck. A dedicated table materialises the pair so a single composite
+-- B-tree lookup answers the query.
+CREATE TABLE "FHIR_COMBO_TOKEN_NUMBER" (
+    "ID"             BIGSERIAL    PRIMARY KEY,
+    "RESOURCE_TYPE"  VARCHAR(64)  NOT NULL,
+    "RESOURCE_ID"    VARCHAR(191) NOT NULL,
+    "PARAM_NAME"     VARCHAR(64)  NOT NULL,        -- e.g. 'code-value-quantity'
+    "TOKEN_SYSTEM"   VARCHAR(255),
+    "TOKEN_CODE"     VARCHAR(255) NOT NULL,
+    "NUMBER_VALUE"   NUMERIC(20,6) NOT NULL,
+    "NUMBER_UNIT"    VARCHAR(64)
+);
+CREATE INDEX "IDX_COMBO_TN_LOOKUP"
+    ON "FHIR_COMBO_TOKEN_NUMBER"
+       ("RESOURCE_TYPE", "PARAM_NAME", "TOKEN_CODE", "NUMBER_VALUE");
+CREATE INDEX "IDX_COMBO_TN_BACKREF"
+    ON "FHIR_COMBO_TOKEN_NUMBER" ("RESOURCE_TYPE", "RESOURCE_ID");
+
+-- 3.5 Composite token + token (e.g. context-type-value, identifier with type).
+CREATE TABLE "FHIR_COMBO_TOKEN_TOKEN" (
+    "ID"             BIGSERIAL    PRIMARY KEY,
+    "RESOURCE_TYPE"  VARCHAR(64)  NOT NULL,
+    "RESOURCE_ID"    VARCHAR(191) NOT NULL,
+    "PARAM_NAME"     VARCHAR(64)  NOT NULL,
+    "TOKEN1_SYSTEM"  VARCHAR(255),
+    "TOKEN1_CODE"    VARCHAR(255) NOT NULL,
+    "TOKEN2_SYSTEM"  VARCHAR(255),
+    "TOKEN2_CODE"    VARCHAR(255) NOT NULL
+);
+CREATE INDEX "IDX_COMBO_TT_LOOKUP"
+    ON "FHIR_COMBO_TOKEN_TOKEN"
+       ("RESOURCE_TYPE", "PARAM_NAME", "TOKEN1_CODE", "TOKEN2_CODE");
+CREATE INDEX "IDX_COMBO_TT_BACKREF"
+    ON "FHIR_COMBO_TOKEN_TOKEN" ("RESOURCE_TYPE", "RESOURCE_ID");
+
+-- -----------------------------------------------------------------------------
+-- 4. RESOURCE_TABLE — type-only filter coverage
+-- -----------------------------------------------------------------------------
+-- Composite PK is (ID, TYPE); leading-col searches by TYPE can't use it.
+CREATE INDEX "IDX_RESOURCE_TABLE_TYPE"
+    ON "RESOURCE_TABLE" ("TYPE", "ID");
+
+-- -----------------------------------------------------------------------------
+-- 5. REFERENCES — covering index for _revinclude, BRIN for time scans
+-- -----------------------------------------------------------------------------
+-- Reverse-include path: given (TARGET_TYPE, TARGET_ID), pull all
+-- (SOURCE_TYPE, SOURCE_ID) referencing it, optionally filtered by expression.
+-- Existing IDX_REFERENCES_TARGET stops at the join key; this covers the rest.
+CREATE INDEX "IDX_REFERENCES_TARGET_REVERSE"
+    ON "REFERENCES" ("TARGET_RESOURCE_TYPE", "TARGET_RESOURCE_ID",
+                     "SOURCE_RESOURCE_TYPE", "SOURCE_EXPRESSION", "SOURCE_RESOURCE_ID");
+
+-- BRIN on the append-only CREATED_AT. ~0.5% of B-tree size; cheap to maintain.
+CREATE INDEX "IDX_REFERENCES_CREATED_AT_BRIN"
+    ON "REFERENCES" USING BRIN ("CREATED_AT") WITH (pages_per_range = 32);
+
+-- -----------------------------------------------------------------------------
+-- 6. RESOURCE_HISTORY — type+time, BRIN, operation
+-- -----------------------------------------------------------------------------
+CREATE INDEX "IDX_HISTORY_TYPE_CREATED"
+    ON "RESOURCE_HISTORY" ("RESOURCE_TYPE", "CREATED_AT" DESC);
+CREATE INDEX "IDX_HISTORY_OPERATION_TIME"
+    ON "RESOURCE_HISTORY" ("OPERATION", "CREATED_AT" DESC);
+CREATE INDEX "IDX_HISTORY_CREATED_BRIN"
+    ON "RESOURCE_HISTORY" USING BRIN ("CREATED_AT") WITH (pages_per_range = 64);
+
+-- -----------------------------------------------------------------------------
+-- 7. CUSTOM_EXTENSION_SEARCH_PARAMS — partial composite indexes
+-- -----------------------------------------------------------------------------
+-- Each row carries exactly ONE non-null VALUE_* column (typed by PARAM_TYPE).
+-- The original single-column indexes had no leading selectivity; these
+-- partials start with (RESOURCE_TYPE, PARAM_NAME) and only index rows of the
+-- relevant type, so each row appears in exactly one composite instead of five.
+CREATE INDEX "IDX_CUST_RT_PN_STR"
+    ON "CUSTOM_EXTENSION_SEARCH_PARAMS"
+       ("RESOURCE_TYPE", "PARAM_NAME", "VALUE_STRING")
+    WHERE "VALUE_STRING" IS NOT NULL;
+
+CREATE INDEX "IDX_CUST_RT_PN_TOKEN"
+    ON "CUSTOM_EXTENSION_SEARCH_PARAMS"
+       ("RESOURCE_TYPE", "PARAM_NAME", "VALUE_TOKEN_SYSTEM", "VALUE_TOKEN_CODE")
+    WHERE "VALUE_TOKEN_CODE" IS NOT NULL;
+
+CREATE INDEX "IDX_CUST_RT_PN_DATE"
+    ON "CUSTOM_EXTENSION_SEARCH_PARAMS"
+       ("RESOURCE_TYPE", "PARAM_NAME", "VALUE_DATE")
+    WHERE "VALUE_DATE" IS NOT NULL;
+
+CREATE INDEX "IDX_CUST_RT_PN_NUM"
+    ON "CUSTOM_EXTENSION_SEARCH_PARAMS"
+       ("RESOURCE_TYPE", "PARAM_NAME", "VALUE_NUMBER")
+    WHERE "VALUE_NUMBER" IS NOT NULL;
+
+CREATE INDEX "IDX_CUST_RT_PN_REF"
+    ON "CUSTOM_EXTENSION_SEARCH_PARAMS"
+       ("RESOURCE_TYPE", "PARAM_NAME", "VALUE_REFERENCE_TYPE", "VALUE_REFERENCE_ID")
+    WHERE "VALUE_REFERENCE_TYPE" IS NOT NULL;
+
+-- Backref: needed by the update path to find/replace all params for a resource.
+CREATE INDEX "IDX_CUST_RES_LOOKUP"
+    ON "CUSTOM_EXTENSION_SEARCH_PARAMS" ("RESOURCE_TYPE", "RESOURCE_ID");
+
+-- -----------------------------------------------------------------------------
+-- 8. Universal LAST_UPDATED B-tree on every resource table
+-- -----------------------------------------------------------------------------
+-- ~16 bytes/row; cheap. Drives _lastUpdated filter, ORDER BY _lastUpdated,
+-- per-type history feed, sync watermarks. DESC because feeds always want
+-- newest first; Postgres can scan B-trees in either direction but the leading
+-- direction match avoids a sort.
+CREATE INDEX "IDX_PATIENTTABLE_LU"                 ON "PatientTable"                 ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_OBSERVATIONTABLE_LU"             ON "ObservationTable"             ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_ENCOUNTERTABLE_LU"               ON "EncounterTable"               ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_CONDITIONTABLE_LU"               ON "ConditionTable"               ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_MEDICATIONREQUESTTABLE_LU"       ON "MedicationRequestTable"       ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_PROCEDURETABLE_LU"               ON "ProcedureTable"               ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_ALLERGYINTOLERANCETABLE_LU"      ON "AllergyIntoleranceTable"      ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_IMMUNIZATIONTABLE_LU"            ON "ImmunizationTable"            ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_DIAGNOSTICREPORTTABLE_LU"        ON "DiagnosticReportTable"        ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_CARPLANTABLE_LU"                 ON "CarePlanTable"                ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_CARETEAMTABLE_LU"                ON "CareTeamTable"                ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_GOALTABLE_LU"                    ON "GoalTable"                    ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_COVERAGETABLE_LU"                ON "CoverageTable"                ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_PRACTITIONERTABLE_LU"            ON "PractitionerTable"            ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_ORGANIZATIONTABLE_LU"            ON "OrganizationTable"            ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_LOCATIONTABLE_LU"                ON "LocationTable"                ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_TASKTABLE_LU"                    ON "TaskTable"                    ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_SERVICEREQUESTTABLE_LU"          ON "ServiceRequestTable"          ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_EPISODEOFCARETABLE_LU"           ON "EpisodeOfCareTable"           ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_MEDICATIONSTATEMENTTABLE_LU"     ON "MedicationStatementTable"     ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_MEDICATIONDISPENSETABLE_LU"      ON "MedicationDispenseTable"      ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_MEDICATIONADMINISTRATIONTABLE_LU" ON "MedicationAdministrationTable" ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_RELATEDPERSONTABLE_LU"           ON "RelatedPersonTable"           ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_APPOINTMENTTABLE_LU"             ON "AppointmentTable"             ("LAST_UPDATED" DESC);
+CREATE INDEX "IDX_DEVICETABLE_LU"                  ON "DeviceTable"                  ("LAST_UPDATED" DESC);
+
+-- -----------------------------------------------------------------------------
+-- 9. RESOURCE_JSON GIN(jsonb_path_ops) on hot resource types
+-- -----------------------------------------------------------------------------
+-- ~25-30% of body size per index. THIS is the index that replaces every
+-- LIKE-on-VARCHAR(2048)-JSON predicate. The query layer must emit @>
+-- containment instead of LIKE for it to be used (see WORK.md §5).
+--
+-- jsonb_path_ops is preferred over jsonb_ops: smaller, faster for @>, the
+-- only operator we need. (It does not support ?, ?|, ?& key-existence; if
+-- those are ever required, we add a parallel jsonb_ops index on demand.)
+--
+-- Why only the top 25? On an 8 GB box the buffer cache holds ~2 GB. Indexing
+-- 130 resource types' JSONB inflates the set of pages competing for cache
+-- without proportional benefit — Synthea + clinical workloads concentrate
+-- 99%+ of read/write volume in this list. Cold types fall back to body
+-- LIKE (or, after Phase 2, a GIN added on demand).
+CREATE INDEX "IDX_PATIENTTABLE_JSON_GIN"             ON "PatientTable"             USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_OBSERVATIONTABLE_JSON_GIN"         ON "ObservationTable"         USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_ENCOUNTERTABLE_JSON_GIN"           ON "EncounterTable"           USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_CONDITIONTABLE_JSON_GIN"           ON "ConditionTable"           USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_MEDICATIONREQUESTTABLE_JSON_GIN"   ON "MedicationRequestTable"   USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_PROCEDURETABLE_JSON_GIN"           ON "ProcedureTable"           USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_ALLERGYINTOLERANCETABLE_JSON_GIN"  ON "AllergyIntoleranceTable"  USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_IMMUNIZATIONTABLE_JSON_GIN"        ON "ImmunizationTable"        USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_DIAGNOSTICREPORTTABLE_JSON_GIN"    ON "DiagnosticReportTable"    USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_CAREPLANTABLE_JSON_GIN"            ON "CarePlanTable"            USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_CARETEAMTABLE_JSON_GIN"            ON "CareTeamTable"            USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_GOALTABLE_JSON_GIN"                ON "GoalTable"                USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_COVERAGETABLE_JSON_GIN"            ON "CoverageTable"            USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_PRACTITIONERTABLE_JSON_GIN"        ON "PractitionerTable"        USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_ORGANIZATIONTABLE_JSON_GIN"        ON "OrganizationTable"        USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_LOCATIONTABLE_JSON_GIN"            ON "LocationTable"            USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_TASKTABLE_JSON_GIN"                ON "TaskTable"                USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_SERVICEREQUESTTABLE_JSON_GIN"      ON "ServiceRequestTable"      USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_EPISODEOFCARETABLE_JSON_GIN"       ON "EpisodeOfCareTable"       USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_MEDSTATEMENTTABLE_JSON_GIN"        ON "MedicationStatementTable" USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_MEDDISPENSETABLE_JSON_GIN"         ON "MedicationDispenseTable"  USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_MEDADMINTABLE_JSON_GIN"            ON "MedicationAdministrationTable" USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_RELATEDPERSONTABLE_JSON_GIN"       ON "RelatedPersonTable"       USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_APPOINTMENTTABLE_JSON_GIN"         ON "AppointmentTable"         USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+CREATE INDEX "IDX_DEVICETABLE_JSON_GIN"              ON "DeviceTable"              USING GIN ("RESOURCE_JSON" jsonb_path_ops);
+
+
+-- -----------------------------------------------------------------------------
+-- 10. B-tree on primary date columns where GIN can't seek/order
+-- -----------------------------------------------------------------------------
+-- For the canonical clinical query "Observation where date in [...]
+-- ORDER BY date DESC". GIN returns an unsorted bitmap; sort cost is
+-- proportional to result size. A B-tree on DATE (or DATE DESC for the lead
+-- direction) avoids the sort and supports keyset pagination.
+CREATE INDEX "IDX_OBSERVATIONTABLE_DATE"           ON "ObservationTable"        ("DATE" DESC);
+CREATE INDEX "IDX_OBSERVATIONTABLE_DATE_STATUS"    ON "ObservationTable"        ("STATUS", "DATE" DESC);  -- ?status=final&date=...
+CREATE INDEX "IDX_ENCOUNTERTABLE_DATE"             ON "EncounterTable"          ("DATE" DESC);
+CREATE INDEX "IDX_PATIENTTABLE_BIRTHDATE"          ON "PatientTable"            ("BIRTHDATE");
+CREATE INDEX "IDX_CONDITIONTABLE_RECORDED_DATE"    ON "ConditionTable"          ("RECORDED_DATE" DESC);
+CREATE INDEX "IDX_CONDITIONTABLE_ONSET_DATE"       ON "ConditionTable"          ("ONSET_DATE");
+CREATE INDEX "IDX_PROCEDURETABLE_DATE"             ON "ProcedureTable"          ("DATE" DESC);
+CREATE INDEX "IDX_DIAGNOSTICREPORTTABLE_DATE"      ON "DiagnosticReportTable"   ("DATE" DESC);
+CREATE INDEX "IDX_IMMUNIZATIONTABLE_DATE"          ON "ImmunizationTable"       ("DATE" DESC);
+CREATE INDEX "IDX_MEDREQUESTTABLE_DATE"            ON "MedicationRequestTable"  ("DATE" DESC);
+CREATE INDEX "IDX_MEDADMINTABLE_EFFECTIVE"         ON "MedicationAdministrationTable" ("EFFECTIVE_TIME" DESC);
+CREATE INDEX "IDX_ALLERGYINTOLERANCETABLE_DATE"    ON "AllergyIntoleranceTable" ("DATE" DESC);
+CREATE INDEX "IDX_APPOINTMENTTABLE_DATE"           ON "AppointmentTable"        ("DATE" DESC);
+CREATE INDEX "IDX_TASKTABLE_AUTHORED_ON"           ON "TaskTable"               ("AUTHORED_ON" DESC);
+CREATE INDEX "IDX_SERVICEREQUESTTABLE_AUTHORED"    ON "ServiceRequestTable"     ("AUTHORED" DESC);
+
+-- -----------------------------------------------------------------------------
+-- 11. pg_trgm GIN on free-text search columns
+-- -----------------------------------------------------------------------------
+-- Only on columns where users genuinely type substrings (Patient.name,
+-- Practitioner.name). NOT for Observation.code, Patient.identifier, etc. —
+-- those should use body GIN @> with a structured payload. Trigram indexes
+-- are ~5x larger than B-trees and increase write cost; keep the surface small.
+CREATE INDEX "IDX_PATIENTTABLE_NAME_TRGM"
+    ON "PatientTable" USING GIN ("NAME" gin_trgm_ops);
+CREATE INDEX "IDX_PATIENTTABLE_FAMILY_TRGM"
+    ON "PatientTable" USING GIN ("FAMILY" gin_trgm_ops);
+CREATE INDEX "IDX_PRACTITIONERTABLE_NAME_TRGM"
+    ON "PractitionerTable" USING GIN ("NAME" gin_trgm_ops);
+	
