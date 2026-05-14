@@ -53,3 +53,6 @@ Record audit events upon calling FHIR APIs using this service.
 
 #### [FHIR Path Service](miscellaneous/fhirpath-service/)
 Evaluate FHIR path expressions against a FHIR payload using this service.
+
+#### [FHIR Terminology Service](miscellaneous/terminology-service/)
+This project implements a FHIR R4 Terminology Service in Ballerina, providing RESTful APIs for managing and querying FHIR ValueSets and CodeSystems. It is designed to be compatible with HL7 FHIR R4 standards and supports key terminology operations such as expansion, validation, lookup, and subsumption. Refer to the [README.md](miscellaneous/terminology-service/README.md) for more details on the terminology service.
