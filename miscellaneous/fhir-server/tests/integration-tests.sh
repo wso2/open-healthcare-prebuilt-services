@@ -137,6 +137,39 @@ echo ""
 # Clean the test database before starting
 echo "Cleaning test database..."
 rm -f "$SCRIPT_DIR/fhir-test-db.mv.db" "$SCRIPT_DIR/fhir-test-db.trace.db" 2>/dev/null || true
+
+# Postgres cleanup: tests use deterministic ids ("test-*"), and a soft-deleted
+# row keeps the id reserved on the next run (POST → 409). Strip those rows
+# from every *Table plus the shared history/reference/index tables. The
+# script still works on H2 (handled by the file deletes above); psql block
+# is skipped when dbType != "postgresql" or psql is unavailable.
+CONFIG_FILE="$SCRIPT_DIR/../Config.toml"
+DB_TYPE=$(grep -E '^[[:space:]]*dbType[[:space:]]*=' "$CONFIG_FILE" | head -1 | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')
+if [ "$DB_TYPE" = "postgresql" ] && command -v psql > /dev/null 2>&1; then
+    DB_URL=$(grep -E '^[[:space:]]*dbUrl[[:space:]]*=' "$CONFIG_FILE" | head -1 | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')
+    DB_USER=$(grep -E '^[[:space:]]*dbUser[[:space:]]*=' "$CONFIG_FILE" | head -1 | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')
+    DB_PASS=$(grep -E '^[[:space:]]*dbPassword[[:space:]]*=' "$CONFIG_FILE" | head -1 | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')
+    # jdbc:postgresql://host:port/db -> host, port, db
+    DB_HOST=$(echo "$DB_URL" | sed -E 's|jdbc:postgresql://([^:/]+).*|\1|')
+    DB_PORT=$(echo "$DB_URL" | sed -E 's|jdbc:postgresql://[^:/]+:?([0-9]*)/.*|\1|')
+    DB_NAME=$(echo "$DB_URL" | sed -E 's|jdbc:postgresql://[^/]+/([^?]+).*|\1|')
+    [ -z "$DB_PORT" ] && DB_PORT=5432
+    echo "Wiping 'test-*' rows from Postgres ($DB_HOST:$DB_PORT/$DB_NAME)..."
+    PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=0 -q <<'SQL' > /dev/null 2>&1
+DELETE FROM "AppointmentTable"        WHERE "APPOINTMENTTABLE_ID"       LIKE 'test-%';
+DELETE FROM "PatientTable"            WHERE "PATIENTTABLE_ID"           LIKE 'test-%';
+DELETE FROM "PractitionerTable"       WHERE "PRACTITIONERTABLE_ID"      LIKE 'test-%';
+DELETE FROM "MedicationTable"         WHERE "MEDICATIONTABLE_ID"        LIKE 'test-%';
+DELETE FROM "ObservationTable"        WHERE "OBSERVATIONTABLE_ID"       LIKE 'test-%';
+DELETE FROM "MedicationRequestTable"  WHERE "MEDICATIONREQUESTTABLE_ID" LIKE 'test-%';
+DELETE FROM "ConditionTable"          WHERE "CONDITIONTABLE_ID"         LIKE 'test-%';
+DELETE FROM "RESOURCE_HISTORY"        WHERE "RESOURCE_ID"               LIKE 'test-%';
+DELETE FROM "REFERENCES"              WHERE "SOURCE_RESOURCE_ID"        LIKE 'test-%'
+                                         OR "TARGET_RESOURCE_ID"        LIKE 'test-%';
+DELETE FROM "FHIR_RESOURCE_INDEX"     WHERE "RESOURCE_ID"               LIKE 'test-%';
+SQL
+fi
+
 echo "Database cleaned"
 echo ""
 
@@ -1001,9 +1034,10 @@ else
 fi
 
 # Test 52: Search with _include and filter parameter
+# Note: test-appt-002 (only Appointment created in this run) has status=proposed
 print_test "Search Appointments by status with _include=Appointment:patient"
-RESPONSE=$(curl -s "$BASE_URL/Appointment?status=booked&_include=Appointment:patient")
-HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/Appointment?status=booked&_include=Appointment:patient")
+RESPONSE=$(curl -s "$BASE_URL/Appointment?status=proposed&_include=Appointment:patient")
+HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/Appointment?status=proposed&_include=Appointment:patient")
 if [ "$HTTP_CODE" = "200" ]; then
     # Check if response contains both match and include modes
     MATCH_MODE=$(echo "$RESPONSE" | grep -o '"mode":"match"' | wc -l)

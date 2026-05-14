@@ -466,10 +466,18 @@ public class ReadMapper {
                 // Case 1: [code] only (no pipe) - Use LIKE for string columns to support partial matching
                 else if operator == "=" {
                     string sanitizedValue = utils:escapeSql(searchValue);
+                    // Date/datetime values: use exact equality. LIKE on DATE/TIMESTAMP
+                    // columns fails on Postgres ("operator does not exist: date ~~ unknown")
+                    // and FHIR also defines a no-prefix date search as equality.
+                    boolean isDateLikeValue = regexp:isFullMatch(
+                            re `\d{4}(-\d{2}(-\d{2}(T[^']*)?)?)?`, searchValue);
+                    string predicate = isDateLikeValue
+                            ? string `"${columnName}" = '${sanitizedValue}'`
+                            : string `"${columnName}" LIKE '%${sanitizedValue}%'`;
                     if whereClause == "" {
-                        whereClause = string ` WHERE "${columnName}" LIKE '%${sanitizedValue}%'`;
+                        whereClause = string ` WHERE ${predicate}`;
                     } else {
-                        whereClause = whereClause + string ` AND "${columnName}" LIKE '%${sanitizedValue}%'`;
+                        whereClause = whereClause + string ` AND ${predicate}`;
                     }
                 } else {
                     // Use exact comparison for date/numeric operators
