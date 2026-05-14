@@ -1,3 +1,19 @@
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
+
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+
+// http://www.apache.org/licenses/LICENSE-2.0
+
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 import ballerina_fhir_server.utils;
 
 import ballerina/log;
@@ -13,12 +29,6 @@ public class DeleteHandler {
         self.historyHandler = new HistoryHandler(jdbcClient);
     }
 
-    // Public entry point for single-resource deletes.
-    //
-    // WORK.md §5.1 / Phase 3: a real Ballerina `transaction { }` block makes
-    // the multi-step delete (history snapshot → references → resource →
-    // FHIR_RESOURCE_INDEX tombstone) atomic. The previous backup/restore
-    // plumbing is gone — JDBC rollback handles failures.
     public isolated function deleteResourceWithTransaction(string resourceType, string resourceId) returns boolean|error {
         boolean result;
         transaction {
@@ -31,34 +41,23 @@ public class DeleteHandler {
         return result;
     }
 
-    // Core delete pipeline. Callable from inside an outer transaction (Bundle
-    // handler / Phase 5).
     public isolated function persistDelete(string resourceType, string resourceId) returns boolean|error {
-        // Check if resource exists
         boolean exists = check utils:resourceExists(self.jdbcClient, resourceType, resourceId);
         if !exists {
             log:printWarn(string `Delete attempted on non-existent resource: ${resourceType}/${resourceId}`);
             return error(string `${resourceType}/${resourceId} not found`);
         }
 
-        // Read the current row so we can write it to RESOURCE_HISTORY before
-        // deleting. Used purely for the history snapshot now — no longer for
-        // rollback (the JDBC transaction handles that).
         record {|anydata...;|} snapshot = check self.fetchResourceForHistory(resourceType, resourceId);
 
         int versionId = check int:fromString(snapshot.get("VERSION_ID").toString());
         log:printDebug(string `Saving version ${versionId} of ${resourceType}/${resourceId} to history before deletion`);
         check self.historyHandler.saveToHistory(resourceType, resourceId, snapshot, "DELETE");
 
-        // Bulk-delete outgoing references in one statement.
         utils:TransactionContext refCtx = utils:newTransactionContext();
         refCtx.mainResourceId = resourceId;
         check utils:deleteReferencesBySource(self.jdbcClient, resourceType, resourceId, refCtx);
 
-        // Delete search parameters for this resource. Non-fatal: drift in the
-        // search-param side tables is recoverable, but a failed primary delete
-        // must roll the whole transaction back — so search-param failures are
-        // only logged.
         jdbc:Client? jdbcConn = self.jdbcClient;
         if jdbcConn is jdbc:Client {
             error? deleteSearchResult = utils:deleteSearchParametersForResource(jdbcConn, resourceType, resourceId);
@@ -67,7 +66,6 @@ public class DeleteHandler {
             }
         }
 
-        // Special handling for SearchParameter resources - remove from expressions table
         if resourceType == "SearchParameter" {
             error? syncResult = utils:removeSearchParameterById(self.jdbcClient, resourceId);
             if syncResult is error {
@@ -77,19 +75,13 @@ public class DeleteHandler {
             }
         }
 
-        // Delete the main resource row.
         check utils:deleteResource(self.jdbcClient, resourceType, resourceId);
 
-        // Remove from RESOURCE_TABLE — ON DELETE CASCADE on REFERENCES
-        // cleans up rows pointing TO this resource.
         error? rtResult = utils:deleteFromResourceTable(self.jdbcClient, resourceType, resourceId);
         if rtResult is error {
             log:printWarn(string `Failed to remove ${resourceType}/${resourceId} from RESOURCE_TABLE: ${rtResult.message()} (non-fatal)`);
         }
 
-        // WORK.md §6 Phase 10: tombstone the row in FHIR_RESOURCE_INDEX so
-        // downstream cross-type history feeds can observe the deletion.
-        // PG-only; non-fatal.
         error? friResult = utils:markFhirResourceIndexDeleted(self.jdbcClient, resourceType, resourceId);
         if friResult is error {
             log:printWarn(string `Failed to mark FHIR_RESOURCE_INDEX deleted for ${resourceType}/${resourceId}: ${friResult.message()} (non-fatal)`);

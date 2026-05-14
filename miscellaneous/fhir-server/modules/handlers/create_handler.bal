@@ -1,3 +1,19 @@
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
+
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+
+// http://www.apache.org/licenses/LICENSE-2.0
+
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 import ballerina_fhir_server.mappers;
 import ballerina_fhir_server.utils;
 import ballerina_fhir_server.utils as mapperUtils;
@@ -16,13 +32,6 @@ public class CreateHandler {
         self.historyHandler = new HistoryHandler(jdbcClient);
     }
 
-    // Public entry point for single-resource creates.
-    //
-    // WORK.md §5.1 / Phase 3: the whole pipeline is wrapped in a real
-    // Ballerina `transaction { ... check commit; }` block, so any failure
-    // (validation, FK violation, search-param extract, reference insert)
-    // rolls the JDBC connection back automatically — no application-level
-    // backup/restore needed.
     public isolated function saveResourceWithTransaction(string resourceType, json resourceJson) returns json|error {
         json result;
         transaction {
@@ -35,9 +44,6 @@ public class CreateHandler {
         return result;
     }
 
-    // Core create pipeline. Callable from inside an outer `transaction { }`
-    // block — used by the Bundle handler (Phase 5) so a multi-entry Bundle
-    // commits atomically as a single JDBC transaction.
     public isolated function persistResource(string resourceType, json resourceJson) returns json|error {
         // Create mapper with jdbcClient
         jdbc:Client validatedClient = check utils:getValidatedJdbcClient(self.jdbcClient);
@@ -56,7 +62,6 @@ public class CreateHandler {
             return insertModel;
         }
 
-        // Get extracted references and full resource JSON (with ID) after mapping
         json[] references = mapper.getReferences();
         json resourceWithId = mapper.getResourceJsonWithId();
         log:printDebug(string `Extracted ${references.length()} reference(s) from ${resourceType}`);
@@ -68,9 +73,6 @@ public class CreateHandler {
         // Register in RESOURCE_TABLE so the DB FK on REFERENCES is satisfiable.
         check utils:saveToResourceTable(self.jdbcClient, resourceType, resourceId);
 
-        // WORK.md §6 Phase 10: maintain the cross-type FHIR_RESOURCE_INDEX
-        // feed. PG-only; H2 short-circuits. Non-fatal — a transient failure
-        // here must not invalidate the write, so we swallow the error.
         error? friResult = utils:upsertFhirResourceIndex(self.jdbcClient, resourceType, resourceId, 1);
         if friResult is error {
             log:printWarn(string `Failed to upsert FHIR_RESOURCE_INDEX for ${resourceType}/${resourceId}: ${friResult.message()} (non-fatal)`);

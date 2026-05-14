@@ -959,8 +959,7 @@ isolated function performResourcePatch(string resourceType, string id, json patc
     }
 }
 
-// WORK.md §5.3 / Phase 5: dispatch a transaction or batch Bundle to the
-// BundleHandler. The handler wraps a `transaction` Bundle in one
+// The handler wraps a `transaction` Bundle in one
 // Ballerina `transaction { }` block so all entries commit atomically and
 // share a single fsync — this is the dominant Synthea ingest amortization.
 isolated function performBundleProcessing(json bundleJson) returns json|r4:OperationOutcome|r4:FHIRError {
@@ -1966,7 +1965,7 @@ service /fhir/r4/_export on httpListener {
 }
 
 // FHIR root service — currently only handles the system-level POST that
-// accepts a transaction or batch Bundle (WORK.md §5.3 / Phase 5). The
+// accepts a transaction or batch Bundle. The
 // per-resource-type services bound on `/fhir/r4/{ResourceType}` are
 // unaffected because they're more-specific path matches.
 service /fhir/r4 on httpListener {

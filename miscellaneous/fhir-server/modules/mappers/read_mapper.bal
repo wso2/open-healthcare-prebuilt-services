@@ -259,8 +259,7 @@ public class ReadMapper {
 
         // Handle _profile parameter (search by meta.profile).
         // PostgreSQL: use JSONB containment (@>) so the body GIN index serves
-        // the predicate (WORK.md §5.5.1). H2 falls back to LIKE since it has
-        // no JSONB / GIN.
+        // the predicate. H2 falls back to LIKE since it has no JSONB / GIN.
         string normalizedDbTypeForProfile = mapperUtils:dbType.toLowerAscii().trim();
         boolean isPgForProfile = normalizedDbTypeForProfile == "postgresql" || normalizedDbTypeForProfile == "postgres";
         if queryParams.hasKey("_profile") {
@@ -406,7 +405,7 @@ public class ReadMapper {
                 // PostgreSQL: use RESOURCE_JSON @> containment so the body GIN
                 // index (IDX_<Type>TABLE_JSON_GIN) serves the predicate in
                 // O(log N + matches). H2: keep the legacy LIKE on the
-                // denormalized column. WORK.md §5.5.2.
+                // denormalized column.
                 if isTokenParam {
                     string sanitizedSystem = tokenSystem is string ? utils:escapeSql(tokenSystem) : "";
                     string sanitizedCode = tokenCode is string ? utils:escapeSql(tokenCode) : "";
@@ -418,9 +417,7 @@ public class ReadMapper {
                     //   *           → {<param>:{coding:[{system,code}]}}  (CodeableConcept)
                     // For unrecognized shapes the @> may not match; this is the
                     // same correctness contract as the prior LIKE — both are
-                    // best-effort and don't honor every edge of the FHIR token
-                    // spec. The plan in WORK.md §5.7 will replace both with
-                    // typed SPIDX side tables.
+                    // best-effort and don't honor every edge of the FHIR token spec.
                     string jsonPath = paramName.toLowerAscii();
                     boolean isIdentifierShape = jsonPath == "identifier";
                     string codeKey = isIdentifierShape ? "value" : "code";
@@ -487,10 +484,8 @@ public class ReadMapper {
         }
 
         // Calculate total count before pagination — but only if the caller asked.
-        // FHIR R4 §3.1.0 Bundle: `total` is optional for searchset bundles. The
-        // unconditional COUNT(*) was duplicating every search's work; per
-        // WORK.md §5.8 we now honor `_total=none|estimate|accurate` and default
-        // to "none" so the search planner does one scan instead of two.
+        // Bundle: `total` is optional for searchset bundles. The
+        // unconditional COUNT(*) was duplicating every search's work;
         // - none     : skip COUNT entirely (Bundle.total omitted).
         // - estimate : use pg_class.reltuples (PG only); on H2 falls back to none.
         // - accurate : run the full COUNT(*) (the previous unconditional path).
@@ -617,7 +612,7 @@ public class ReadMapper {
                 // Example: Appointment:patient or Appointment:patient:Patient
                 // Also support wildcard: _include=* (include all references).
                 //
-                // Batched (WORK.md §7): one REFERENCES query for ALL matched
+                // Batched: one REFERENCES query for ALL matched
                 // IDs + one batch read per distinct target type, instead of
                 // O(matched × refs) round-trips.
 
@@ -1251,7 +1246,7 @@ public class ReadMapper {
     }
 
     // ---------------------------------------------------------------------
-    // Batched fetchers for _include / _revinclude (WORK.md §5.5.4 / §7).
+    // Batched fetchers for _include / _revinclude.
     // Replace the prior O(matched × refs) round-trip pattern with:
     //   1. ONE REFERENCES query (IN-clause over all matched IDs)
     //   2. ONE batch SELECT per distinct target resource type (IN-clause over IDs)

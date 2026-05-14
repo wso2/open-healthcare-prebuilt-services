@@ -2575,26 +2575,6 @@ CREATE TABLE "TestScriptTable" (
 -- =============================================================================
 -- PERFORMANCE OPTIMIZATION SECTION
 -- =============================================================================
--- Companion docs: WORK.md, PLAN.md, INDEX_PLAN.md
---
--- Strategy in one paragraph: the body GIN(jsonb_path_ops) replaces every
--- per-column LIKE-on-VARCHAR(2048)-JSON predicate (token, identifier, profile,
--- reference, custom-extension lookup) with an indexed @> containment scan, at
--- ~25-30% of body size. B-tree indexes are added ONLY where GIN cannot help:
--- on real range/sort dimensions (LAST_UPDATED, primary DATE columns). Side
--- tables (FHIR_SPIDX_QUANTITY, FHIR_SPIDX_DATE_RANGE, FHIR_COMBO_*) handle
--- the three search shapes GIN does poorly: quantity-with-units, period
--- overlap (TSRANGE + GiST), and composite search params. BRIN summarizes
--- append-only timestamp columns at <1% the size of equivalent B-trees.
---
--- This is sized for an 8 GB / 4 vCPU box (shared_buffers ~2 GB). We do NOT
--- index every search column on every resource table; that proposal in
--- INDEX_PLAN.md Part B would create hundreds of B-trees that compete for the
--- buffer cache and bloat write amplification. We index the universal hot
--- dimensions (LAST_UPDATED, body GIN) on the top 30 clinical resources and
--- leave the long tail to fall through to body GIN scans, which are already
--- O(log N + matches).
--- =============================================================================
 
 -- -----------------------------------------------------------------------------
 -- 1. Extensions
@@ -2829,7 +2809,7 @@ CREATE INDEX "IDX_DEVICETABLE_LU"                  ON "DeviceTable"             
 -- -----------------------------------------------------------------------------
 -- ~25-30% of body size per index. THIS is the index that replaces every
 -- LIKE-on-VARCHAR(2048)-JSON predicate. The query layer must emit @>
--- containment instead of LIKE for it to be used (see WORK.md §5).
+-- containment instead of LIKE for it to be used.
 --
 -- jsonb_path_ops is preferred over jsonb_ops: smaller, faster for @>, the
 -- only operator we need. (It does not support ?, ?|, ?& key-existence; if
@@ -2903,4 +2883,3 @@ CREATE INDEX "IDX_PATIENTTABLE_FAMILY_TRGM"
     ON "PatientTable" USING GIN ("FAMILY" gin_trgm_ops);
 CREATE INDEX "IDX_PRACTITIONERTABLE_NAME_TRGM"
     ON "PractitionerTable" USING GIN ("NAME" gin_trgm_ops);
-	

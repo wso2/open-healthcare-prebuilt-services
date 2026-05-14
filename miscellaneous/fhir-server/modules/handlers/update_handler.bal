@@ -1,3 +1,19 @@
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
+
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+
+// http://www.apache.org/licenses/LICENSE-2.0
+
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 import ballerina_fhir_server.mappers;
 import ballerina_fhir_server.utils;
 
@@ -16,12 +32,6 @@ public class UpdateHandler {
         self.historyHandler = new HistoryHandler(jdbcClient);
     }
 
-    // Public entry point for PUT (full update).
-    //
-    // WORK.md §5.1 / Phase 3: a real Ballerina `transaction { }` block now
-    // makes the multi-step update atomic at the JDBC layer. The previous
-    // application-level backup/restore plumbing is gone; on any failure the
-    // JDBC driver rolls back automatically.
     public isolated function updateResourceWithTransaction(string resourceType, string resourceId, json resourceJson) returns string|error {
         string result;
         transaction {
@@ -47,8 +57,6 @@ public class UpdateHandler {
         return result;
     }
 
-    // Core PUT pipeline. Callable from inside an outer transaction (Bundle
-    // handler / Phase 5).
     public isolated function persistUpdate(string resourceType, string resourceId, json resourceJson) returns string|error {
         jdbc:Client jdbcConn = check utils:getValidatedJdbcClient(self.jdbcClient);
 
@@ -59,18 +67,13 @@ public class UpdateHandler {
             return error(string `${resourceType}/${resourceId} not found`);
         }
 
-        // We need the current VERSION_ID to write the next one. With real
-        // DB transactions there's no rollback need, so we only fetch the
-        // single column instead of the whole row.
         int currentVersion = check self.fetchCurrentVersion(resourceType, resourceId);
         int newVersion = currentVersion + 1;
 
-        // Bulk-delete old references (single statement, WORK.md §5.2).
         utils:TransactionContext refCtx = utils:newTransactionContext();
         refCtx.mainResourceId = resourceId;
         check utils:deleteReferencesBySource(self.jdbcClient, resourceType, resourceId, refCtx);
 
-        // Map updated resource to update model
         log:printDebug(string `Mapping updated ${resourceType} to model (version ${newVersion})`);
         record {|anydata...;|}|error? updateModel = self.updateMapper.mapToUpdateModel(jdbcConn, resourceType, resourceJson, newVersion);
         if updateModel is () || updateModel is error {
@@ -79,11 +82,8 @@ public class UpdateHandler {
 
         json[] references = self.updateMapper.getReferences();
 
-        // Update main resource
         check self.updateMainResource(resourceType, resourceId, updateModel);
 
-        // WORK.md §6 Phase 10: refresh the cross-type FHIR_RESOURCE_INDEX
-        // feed. PG-only; non-fatal.
         error? friResult = utils:upsertFhirResourceIndex(self.jdbcClient, resourceType, resourceId, newVersion);
         if friResult is error {
             log:printWarn(string `Failed to upsert FHIR_RESOURCE_INDEX for ${resourceType}/${resourceId}: ${friResult.message()} (non-fatal)`);
@@ -94,13 +94,10 @@ public class UpdateHandler {
             log:printInfo(string `Successfully synced updated SearchParameter/${resourceId} to expressions table`);
         }
 
-        // Save new version to history
         check self.historyHandler.saveToHistory(resourceType, resourceId, updateModel, "PUT");
 
-        // Update search parameters for indexed searching
         check utils:updateSearchParametersForResource(jdbcConn, resourceType, resourceId, resourceJson);
 
-        // Save new references — translate FK violation to a 422-shaped error.
         error? refResult = utils:saveReferences(self.jdbcClient, references, resourceType, resourceId, refCtx);
         if refResult is error {
             string refMsg = refResult.message();
@@ -114,22 +111,17 @@ public class UpdateHandler {
         return resourceId;
     }
 
-    // Core PATCH pipeline. Callable from inside an outer transaction.
     public isolated function persistPatch(string resourceType, string resourceId, json patchJson) returns json|error {
         jdbc:Client jdbcConn = check utils:getValidatedJdbcClient(self.jdbcClient);
 
-        // Fetch existing resource (PATCH needs the JSON to merge against)
         json existingResource = check self.getResourceAsJson(resourceType, resourceId);
 
-        // Apply patch to existing resource
         json mergedResource = check self.applyPatch(existingResource, patchJson);
 
-        // Bulk-delete old references
         utils:TransactionContext refCtx = utils:newTransactionContext();
         refCtx.mainResourceId = resourceId;
         check utils:deleteReferencesBySource(self.jdbcClient, resourceType, resourceId, refCtx);
 
-        // Map merged resource to update model
         record {|anydata...;|}|error? updateModel = self.updateMapper.mapToUpdateModel(jdbcConn, resourceType, mergedResource);
         if updateModel is () || updateModel is error {
             return updateModel is error ? updateModel : error("Failed to create update model");
@@ -139,8 +131,6 @@ public class UpdateHandler {
 
         check self.updateMainResource(resourceType, resourceId, updateModel);
 
-        // WORK.md §6 Phase 10: refresh FHIR_RESOURCE_INDEX with the version
-        // the mapper actually wrote (defaults to 2 if mapper didn't set it).
         int patchedVersion = 2;
         anydata patchedVersionField = updateModel["VERSION_ID"];
         if patchedVersionField is int {
@@ -164,8 +154,6 @@ public class UpdateHandler {
         return mergedResource;
     }
 
-    // Fetch the current VERSION_ID for a resource. Replaces the prior
-    // SELECT * "backup" — we only need the version, not the whole row.
     private isolated function fetchCurrentVersion(string resourceType, string resourceId) returns int|error {
         jdbc:Client jdbcConn = check utils:getValidatedJdbcClient(self.jdbcClient);
 
@@ -182,7 +170,6 @@ public class UpdateHandler {
         return result;
     }
 
-    // Get resource as JSON (for PATCH operations)
     private isolated function getResourceAsJson(string resourceType, string resourceId) returns json|error {
 
         jdbc:Client? jdbcConn = self.jdbcClient;
@@ -225,7 +212,6 @@ public class UpdateHandler {
         return resourceJson;
     }
 
-    // Apply JSON patch
     private isolated function applyPatch(json existing, json patch) returns json|error {
         if !(existing is map<json>) {
             return error(string `Existing resource is not a JSON object: ${existing.toString()}`);
@@ -238,10 +224,8 @@ public class UpdateHandler {
         map<json> existingMap = <map<json>>existing;
         map<json> patchMap = <map<json>>patch;
 
-        // Create a new map to hold merged values
         map<json> mergedMap = existingMap.clone();
 
-        // Patch values override existing values
         foreach var [key, value] in patchMap.entries() {
             mergedMap[key] = value;
         }
@@ -259,11 +243,9 @@ public class UpdateHandler {
         string tableName = utils:getTableName(resourceType);
         string primaryKey = utils:getPrimaryKeyColumn(resourceType);
 
-        // Build UPDATE SET clause dynamically from updateModel fields
         string[] setClauses = [];
         foreach var [key, value] in updateModel.entries() {
             string formattedValue;
-            // Use special formatting for DATE columns (date only, no time)
             if key == "DATE" {
                 formattedValue = utils:formatDateValue(value);
             } else {

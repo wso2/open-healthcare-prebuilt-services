@@ -1,34 +1,23 @@
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
+
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+
+// http://www.apache.org/licenses/LICENSE-2.0
+
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 import ballerina/log;
 import ballerina/uuid;
 import ballerinax/java.jdbc;
 
-// WORK.md §5.3 / Phase 5 — Bundle transaction handler.
-//
-// FHIR `transaction` Bundles are the dominant ingest shape for Synthea
-// (~100-300 entries each). Without this handler, every entry is a separate
-// HTTP round-trip and a separate DB transaction → fsync amplification
-// dominates throughput. Wrapping all entries from one Bundle inside a
-// single Ballerina `transaction { ... check commit; }` amortizes fsync
-// across the whole Bundle, and any per-entry failure rolls the whole
-// thing back at the JDBC layer.
-//
-// Scope (intentional):
-//   - Supports `Bundle.type = transaction` (atomic) and `batch` (best-effort).
-//   - Dispatches POST / PUT / PATCH / DELETE to the existing handler core
-//     methods (`persistResource` / `persistUpdate` / `persistPatch` /
-//     `persistDelete`) — they don't open their own transaction blocks, so
-//     they participate in the Bundle's transaction.
-//   - Resolves `urn:uuid:` placeholder references for POST entries: every
-//     POST with `fullUrl: "urn:uuid:X"` is given an id (the resource's own
-//     id if present, else a fresh UUID), and every `reference: "urn:uuid:X"`
-//     elsewhere in the Bundle is rewritten to `ResourceType/id` before any
-//     DB work happens. This is the minimum needed to ingest Synthea bundles.
-//
-// Out of scope (deferred, will return 4xx if encountered):
-//   - Conditional create / update / delete (`If-None-Exist`, search-URL).
-//   - GET entries inside a transaction.
-//   - Bundle re-ordering by entry type per FHIR §3.2.0.16.2; entries are
-//     processed in the order received.
 public class BundleHandler {
     private final jdbc:Client? jdbcClient;
     private CreateHandler createHandler;
@@ -60,9 +49,6 @@ public class BundleHandler {
         json entriesJson = bundleMap["entry"];
         json[] entries = entriesJson is json[] ? <json[]>entriesJson : [];
 
-        // Mint ids for POST entries with urn:uuid: placeholders, then rewrite
-        // any cross-entry references in resource bodies. Done once up front
-        // so the inserts inside the transaction can use real ids.
         map<string> placeholderMap = check self.assignIdsForPosts(entries);
         json[] resolvedEntries = self.rewriteReferences(entries, placeholderMap);
 
@@ -79,7 +65,6 @@ public class BundleHandler {
                 return e;
             }
         } else {
-            // batch: each entry independent — failures don't affect siblings.
             foreach json entry in resolvedEntries {
                 json|error responseEntry = self.processEntry(entry);
                 if responseEntry is error {
@@ -112,10 +97,6 @@ public class BundleHandler {
         };
     }
 
-    // For every POST entry whose fullUrl is a urn:uuid: placeholder, decide
-    // the id it will land at and remember it. Prefers the resource's own id
-    // when present (so client-assigned ids round-trip), otherwise mints a
-    // fresh v4 UUID. No DB writes here — pure planning.
     private isolated function assignIdsForPosts(json[] entries) returns map<string>|error {
         map<string> mapping = {};
 
@@ -171,10 +152,6 @@ public class BundleHandler {
         return mapping;
     }
 
-    // Walk every entry and replace placeholder references with the real
-    // ResourceType/id form. Also stamps the resolved id back into the POST
-    // resource (so the create handler sees a concrete id) for any entry
-    // whose fullUrl was minted above.
     private isolated function rewriteReferences(json[] entries, map<string> placeholderMap) returns json[] {
         json[] rewritten = [];
         foreach json entry in entries {
@@ -212,8 +189,6 @@ public class BundleHandler {
         return rewritten;
     }
 
-    // Recursively replace `"reference": "urn:uuid:X"` with the resolved
-    // value. Walks maps and arrays; leaves scalars alone.
     private isolated function replacePlaceholdersInJson(json input, map<string> placeholderMap) returns json {
         if input is map<json> {
             map<json> result = {};
@@ -263,9 +238,6 @@ public class BundleHandler {
         string url = <string>urlJson;
         json resourceJson = entryMap["resource"];
 
-        // FHIR transaction urls have the shape "ResourceType" (POST) or
-        // "ResourceType/id" (PUT / PATCH / DELETE / GET). Anything richer
-        // (search-URL conditional refs, ?_format, etc.) we don't yet handle.
         string[] urlParts = re `/`.split(url);
         if urlParts.length() == 0 || urlParts[0] == "" {
             return error(string `Invalid Bundle entry URL: '${url}'`);
