@@ -8,11 +8,9 @@ import ballerinax/java.jdbc;
 // Handler for managing resource version history
 public class HistoryHandler {
     private final jdbc:Client? jdbcClient;
-    private utils:TransactionHandler transactionHandler;
 
     public isolated function init(jdbc:Client? jdbcClient = ()) {
         self.jdbcClient = jdbcClient;
-        self.transactionHandler = new utils:TransactionHandler();
     }
 
     // Save current version to history before update/delete

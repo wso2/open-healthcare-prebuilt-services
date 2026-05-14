@@ -177,19 +177,14 @@ public isolated function deleteResource(jdbc:Client? jdbcClient, string resource
 }
 
 // Delete references using generic JDBC query
-public isolated function deleteReferences(jdbc:Client? jdbcClient, int[] referenceIds, TransactionContext 'transaction) returns error? {
+public isolated function deleteReferences(jdbc:Client? jdbcClient, int[] referenceIds) returns error? {
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
 
     foreach int refId in referenceIds {
-        // Build DELETE query for REFERENCES table
         string deleteQuery = string `DELETE FROM "REFERENCES" WHERE "ID" = ${refId}`;
-        
-        // Execute query using RawSQLQuery
         RawSQLQuery query = new(deleteQuery);
         sql:ExecutionResult result = check validatedClient->execute(query);
-        
         if result.affectedRowCount > 0 {
-            'transaction.deletedReferenceIds.push(refId);
             log:printDebug(string `Deleted reference [${refId}]`);
         } else {
             log:printWarn(string `Reference [${refId}] not found, skipping`);
@@ -197,7 +192,7 @@ public isolated function deleteReferences(jdbc:Client? jdbcClient, int[] referen
     }
 }
 
-public isolated function saveReferences(jdbc:Client? jdbcClient, json[] references, string sourceResType, string sourceResId, TransactionContext 'transaction) returns error? {
+public isolated function saveReferences(jdbc:Client? jdbcClient, json[] references, string sourceResType, string sourceResId) returns error? {
     if references.length() == 0 {
         log:printDebug("No references to save");
         return;
@@ -247,7 +242,6 @@ public isolated function saveReferences(jdbc:Client? jdbcClient, json[] referenc
     }
 
     _ = check validatedClient->batchExecute(queries);
-    'transaction.referencesSaved = true;
 
     log:printDebug(string `Batch-inserted ${queries.length()} reference(s) for ${sourceResType}/${sourceResId}`);
 }
