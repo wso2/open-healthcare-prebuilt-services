@@ -144,6 +144,10 @@ public class BundleHandler {
             }
             string resourceType = <string>resourceTypeJson;
 
+            if mapping.hasKey(fullUrl) {
+                return error(string `Duplicate urn:uuid placeholder '${fullUrl}' in bundle POST entries`);
+            }
+
             string id;
             json idJson = resourceMap["id"];
             if idJson is string && idJson != "" {
