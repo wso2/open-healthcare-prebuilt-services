@@ -1,3 +1,19 @@
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
+
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+
+// http://www.apache.org/licenses/LICENSE-2.0
+
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 import ballerina_fhir_server.utils;
 
 import ballerina/log;
@@ -5,165 +21,77 @@ import ballerina/sql;
 import ballerinax/java.jdbc;
 
 public class DeleteHandler {
-    private utils:TransactionHandler transactionHandler;
     private HistoryHandler historyHandler;
     private final jdbc:Client? jdbcClient;
 
     public isolated function init(jdbc:Client? jdbcClient = ()) {
+        log:printDebug("Initializing DeleteHandler");
         self.jdbcClient = jdbcClient;
-        self.transactionHandler = new utils:TransactionHandler();
         self.historyHandler = new HistoryHandler(jdbcClient);
     }
 
-    // Main function to delete resource with full transaction support
     public isolated function deleteResourceWithTransaction(string resourceType, string resourceId) returns boolean|error {
-
-        utils:TransactionContext 'transaction = self.transactionHandler.beginTransaction();
-        'transaction.mainResourceId = resourceId;
-
-        do {
-            // Check if resource exists
-            log:printDebug(string `Checking if ${resourceType}/${resourceId} exists`);
-            boolean exists = check self.checkResourceExists(resourceType, resourceId);
-
-            if !exists {
-                log:printWarn(string `Delete attempted on non-existent resource: ${resourceType}/${resourceId}`);
-                return error(string `${resourceType}/${resourceId} not found`);
-            }
-
-            // Backup before delete
-            log:printDebug(string `Backing up ${resourceType}/${resourceId} before deletion`);
-            record {|anydata...;|}? backup = check self.backupResource(resourceType, resourceId);
-            'transaction.backupResource = backup;
-            'transaction.backupReferences = check self.backupReferences(resourceType, resourceId);
-
-            // Save to history before deletion
-            if backup is record {|anydata...;|} {
-                int versionId = check int:fromString(backup.get("VERSION_ID").toString());
-                log:printDebug(string `Saving version ${versionId} of ${resourceType}/${resourceId} to history before deletion`);
-                error? historyResult = self.historyHandler.saveToHistory(resourceType, resourceId, backup, "DELETE");
-                if historyResult is error {
-                    log:printError(string `Failed to save history for ${resourceType}/${resourceId}: ${historyResult.message()}`);
-                    error? rollbackResult = self.transactionHandler.rollbackDeleteTransaction(
-                        self.jdbcClient, 'transaction, resourceType
-                    );
-                    if (rollbackResult is error) {
-                        log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                    }
-                    return historyResult;
-                }
-            }
-
-            // Find references
-            log:printDebug(string `Finding references for ${resourceType}/${resourceId}`);
-            int[] referenceIds = check self.findSourceReferences(resourceType, resourceId);
-            log:printDebug(string `Found ${referenceIds.length()} reference(s) to delete for ${resourceType}/${resourceId}`);
-
-            // Delete references
-            error? refResult = utils:deleteReferences(self.jdbcClient, referenceIds, 'transaction);
-
-            if refResult is error {
-                log:printError(string `Failed to delete references for ${resourceType}/${resourceId}: ${refResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackDeleteTransaction(self.jdbcClient, 'transaction, resourceType);
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return refResult;
-            }
-
-            // Delete main resource
-            log:printDebug(string `Deleting main ${resourceType}/${resourceId} record`);
-            
-            // Delete search parameters for this resource
-            jdbc:Client? jdbcConn = self.jdbcClient;
-            if jdbcConn is jdbc:Client {
-                log:printDebug(string `Deleting search parameters for ${resourceType}/${resourceId}`);
-                error? deleteSearchResult = utils:deleteSearchParametersForResource(jdbcConn, resourceType, resourceId);
-                if deleteSearchResult is error {
-                    log:printError(string `Failed to delete search parameters for ${resourceType}/${resourceId}: ${deleteSearchResult.message()}`);
-                    // Continue with delete even if search param cleanup fails
-                    log:printWarn(string `Continuing with delete despite search parameter cleanup failure`);
-                }
-            }
-            
-            // Special handling for SearchParameter resources - remove from expressions table
-            if resourceType == "SearchParameter" {
-                log:printDebug(string `Removing SearchParameter/${resourceId} from SEARCH_PARAM_RES_EXPRESSIONS`);
-                error? syncResult = utils:removeSearchParameterById(self.jdbcClient, resourceId);
-                if syncResult is error {
-                    log:printError(string `Failed to remove SearchParameter/${resourceId} from expressions: ${syncResult.message()}`);
-                    // Continue with delete even if sync fails (log warning)
-                    log:printWarn(string `Continuing with delete despite expression cleanup failure`);
-                } else {
-                    log:printInfo(string `Successfully removed SearchParameter/${resourceId} from expressions table`);
-                }
-            }
-            
-            error? deleteResult = utils:deleteResource(self.jdbcClient, resourceType, resourceId);
-
-            if deleteResult is error {
-                log:printError(string `Failed to delete main resource ${resourceType}/${resourceId}: ${deleteResult.message()}`);
-                error? rollbackResult = self.transactionHandler.rollbackDeleteTransaction(self.jdbcClient, 'transaction, resourceType);
-                if (rollbackResult is error) {
-                    log:printError(string `Rollback failed for ${resourceType}/${resourceId}: ${rollbackResult.message()}`);
-                }
-                return deleteResult;
-            }
-
-            // Remove from RESOURCE_TABLE so cascaded REFERENCES rows (target side)
-            // pointing to this resource are also cleaned up via ON DELETE CASCADE.
-            error? rtResult = utils:deleteFromResourceTable(self.jdbcClient, resourceType, resourceId);
-            if rtResult is error {
-                // Non-fatal: log the error but continue — main resource is already gone
-                log:printWarn(string `Failed to remove ${resourceType}/${resourceId} from RESOURCE_TABLE: ${rtResult.message()}`);
-            }
-
-            // Commit Transaction
-            log:printDebug(string `Committing delete transaction for ${resourceType}/${resourceId}`);
-            self.transactionHandler.commitTransaction('transaction, resourceType, resourceId);
-
-            log:printInfo(string `Successfully deleted ${resourceType}/${resourceId}`);
-            return true;
-
+        boolean result;
+        transaction {
+            result = check self.persistDelete(resourceType, resourceId);
+            check commit;
         } on fail error e {
             log:printError(string `Delete transaction failed for ${resourceType}/${resourceId}: ${e.message()}`);
-            error? rollbackResult = self.transactionHandler.rollbackDeleteTransaction(self.jdbcClient, 'transaction, resourceType);
-            if (rollbackResult is error) {
-                log:printError(string `Rollback failed during delete transaction cleanup for ${resourceType}: ${rollbackResult.message()}`);
-            }
             return e;
         }
+        return result;
     }
 
-    // Check if resource exists
-    private isolated function checkResourceExists(string resourceType, string resourceId) returns boolean|error {
-        return utils:resourceExists(self.jdbcClient, resourceType, resourceId);
-    }
-
-    // Find all references where this resource is the SOURCE
-    private isolated function findSourceReferences(string resourceType, string resourceId) returns int[]|error {
-
-        jdbc:Client? jdbcConn = self.jdbcClient;
-        if jdbcConn is () {
-            return error("JDBC client not initialized");
+    public isolated function persistDelete(string resourceType, string resourceId) returns boolean|error {
+        log:printInfo(string `Starting delete operation for ${resourceType}/${resourceId}`);
+        boolean exists = check utils:resourceExists(self.jdbcClient, resourceType, resourceId);
+        if !exists {
+            log:printWarn(string `Delete attempted on non-existent resource: ${resourceType}/${resourceId}`);
+            return error(string `${resourceType}/${resourceId} not found`);
         }
 
-        string sqlQuery = string `SELECT "ID" FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = '${utils:escapeSql(resourceType)}' AND "SOURCE_RESOURCE_ID" = '${utils:escapeSql(resourceId)}'`;
-        sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
+        record {|anydata...;|} snapshot = check self.fetchResourceForHistory(resourceType, resourceId);
 
-        stream<record {|int ID;|}, sql:Error?> resultStream = jdbcConn->query(query);
+        int versionId = check int:fromString(snapshot.get("VERSION_ID").toString());
+        log:printDebug(string `Saving version ${versionId} of ${resourceType}/${resourceId} to history before deletion`);
+        check self.historyHandler.saveToHistory(resourceType, resourceId, snapshot, "DELETE");
 
-        record {|int ID;|}[] results = check from var result in resultStream
-            select result;
+        utils:TransactionContext refCtx = utils:newTransactionContext();
+        refCtx.mainResourceId = resourceId;
+        check utils:deleteReferencesBySource(self.jdbcClient, resourceType, resourceId, refCtx);
 
-        int[] referenceIds = from var ref in results
-            select ref.ID;
+        jdbc:Client? jdbcConn = self.jdbcClient;
+        if jdbcConn is jdbc:Client {
+            error? deleteSearchResult = utils:deleteSearchParametersForResource(jdbcConn, resourceType, resourceId);
+            if deleteSearchResult is error {
+                log:printWarn(string `Failed to delete search parameters for ${resourceType}/${resourceId}: ${deleteSearchResult.message()} (continuing)`);
+            }
+        }
 
-        return referenceIds;
+        if resourceType == "SearchParameter" {
+            error? syncResult = utils:removeSearchParameterById(self.jdbcClient, resourceId);
+            if syncResult is error {
+                log:printWarn(string `Failed to remove SearchParameter/${resourceId} from expressions: ${syncResult.message()} (continuing)`);
+            } else {
+                log:printInfo(string `Successfully removed SearchParameter/${resourceId} from expressions table`);
+            }
+        }
+
+        check utils:deleteResource(self.jdbcClient, resourceType, resourceId);
+
+        check utils:deleteFromResourceTable(self.jdbcClient, resourceType, resourceId);
+
+        error? friResult = utils:markFhirResourceIndexDeleted(self.jdbcClient, resourceType, resourceId);
+        if friResult is error {
+            log:printWarn(string `Failed to mark FHIR_RESOURCE_INDEX deleted for ${resourceType}/${resourceId}: ${friResult.message()} (non-fatal)`);
+        }
+
+        log:printInfo(string `Successfully deleted ${resourceType}/${resourceId}`);
+        return true;
     }
 
-    // Add backup methods to DeleteHandler
-    private isolated function backupResource(string resourceType, string resourceId) returns record {|anydata...;|}|error {
+    // Read the row (with all columns) so we can write it to RESOURCE_HISTORY.
+    private isolated function fetchResourceForHistory(string resourceType, string resourceId) returns record {|anydata...;|}|error {
 
         jdbc:Client? jdbcConn = self.jdbcClient;
         if jdbcConn is () {
@@ -182,27 +110,9 @@ public class DeleteHandler {
             select result;
 
         if results.length() == 0 {
-            return error(string `${resourceType}/${resourceId} not found for backup`);
+            return error(string `${resourceType}/${resourceId} not found for history snapshot`);
         }
 
         return results[0];
-    }
-
-    private isolated function backupReferences(string resourceType, string resourceId) returns record {|anydata...;|}[]|error {
-
-        jdbc:Client? jdbcConn = self.jdbcClient;
-        if jdbcConn is () {
-            return error("JDBC client not initialized");
-        }
-
-        string sqlQuery = string `SELECT * FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = '${utils:escapeSql(resourceType)}' AND "SOURCE_RESOURCE_ID" = '${utils:escapeSql(resourceId)}'`;
-        sql:ParameterizedQuery query = new utils:RawSQLQuery(sqlQuery);
-
-        stream<record {|anydata...;|}, sql:Error?> resultStream = jdbcConn->query(query);
-
-        record {|anydata...;|}[] results = check from var ref in resultStream
-            select ref;
-
-        return results;
     }
 }
