@@ -33,6 +33,7 @@ public class CreateHandler {
     }
 
     public isolated function saveResourceWithTransaction(string resourceType, json resourceJson) returns json|error {
+        log:printInfo(string `Creating ${resourceType} resource`); 
         json result;
         transaction {
             result = check self.persistResource(resourceType, resourceJson);
@@ -104,7 +105,7 @@ public class CreateHandler {
             return refResult;
         }
 
-        log:printDebug(string `Successfully created ${resourceType}/${resourceId} with ${references.length()} reference(s)`);
+        log:printInfo(string `Successfully created ${resourceType}/${resourceId} with ${references.length()} reference(s)`);
         return resourceWithId;
     }
 

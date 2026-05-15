@@ -32,6 +32,7 @@ public class BundleHandler {
     }
 
     public isolated function processBundle(json bundleJson) returns json|error {
+        log:printInfo("Processing FHIR bundle request"); 
         if !(bundleJson is map<json>) {
             return error("Bundle payload must be a JSON object");
         }
@@ -47,6 +48,9 @@ public class BundleHandler {
         }
 
         json entriesJson = bundleMap["entry"];
+        if entriesJson !is () && !(entriesJson is json[]) {  
+            return error("Bundle.entry must be an array");  
+        }
         json[] entries = entriesJson is json[] ? <json[]>entriesJson : [];
 
         map<string> placeholderMap = check self.assignIdsForPosts(entries);
@@ -54,6 +58,7 @@ public class BundleHandler {
 
         json[] responseEntries = [];
         if bundleType == "transaction" {
+            log:printInfo(string `Processing bundle as transaction with ${entries.length()} entries`);
             transaction {
                 foreach json entry in resolvedEntries {
                     json responseEntry = check self.processEntry(entry);

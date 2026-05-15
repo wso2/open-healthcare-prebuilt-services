@@ -317,7 +317,7 @@ public class ReadMapper {
 
             // Handle other unsupported FHIR control parameters that start with _
             if paramName.startsWith("_") && paramName != "_lastUpdated" && paramName != "_id" {
-                return error(string `Unsupported search parameter: ${paramName}. Only common resource parameters of _id, _lastUpdated, _profile, _include, _revinclude, and _total are currently supported.`);
+                return error(string `Unsupported search parameter: ${paramName}. Only common resource parameters of _id, _lastUpdated, _profile, _include, _revinclude, _total, _count, _summary, and _elements are currently supported.`);
             }
 
             string operator = "=";
@@ -524,7 +524,9 @@ public class ReadMapper {
             // Filtered estimates would need EXPLAIN parsing — defer.
             sql:ParameterizedQuery cQuery = `SELECT reltuples::BIGINT AS "COUNT" FROM pg_class WHERE relname = ${tableName}`;
             record {|int COUNT;|}? estResult = check jdbcClient->queryRow(cQuery);
-            if estResult != () {
+            // reltuples is -1 for never-analyzed tables and 0 for truncated tables;
+            // only surface a meaningful estimate.
+            if estResult != () && estResult.COUNT >= 0 {
                 totalCount = estResult.COUNT;
             }
         }
@@ -1267,6 +1269,7 @@ public class ReadMapper {
         if targetIds.length() == 0 {
             return [];
         }
+        log:printDebug(string `Batch reading ${targetIds.length()} resources of type: ${targetType}`);
         string tableName = utils:getTableName(targetType);
         string primaryKey = utils:getPrimaryKeyColumn(targetType);
 

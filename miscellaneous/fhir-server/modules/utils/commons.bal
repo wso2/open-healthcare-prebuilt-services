@@ -178,6 +178,7 @@ public isolated function upsertFhirResourceIndex(jdbc:Client? jdbcClient, string
         return;
     }
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
+    log:printDebug(string `Upserting FHIR resource index for ${resourceType}/${resourceId} version ${versionId}`);
     time:Civil now = time:utcToCivil(time:utcNow());
     sql:ParameterizedQuery upsertQuery = `INSERT INTO "FHIR_RESOURCE_INDEX"
             ("RESOURCE_TYPE", "RESOURCE_ID", "VERSION_ID", "LAST_UPDATED", "DELETED")
@@ -199,6 +200,7 @@ public isolated function markFhirResourceIndexDeleted(jdbc:Client? jdbcClient, s
         return;
     }
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
+    log:printDebug(string `Marking FHIR resource ${resourceType}/${resourceId} as deleted in index`);
     time:Civil now = time:utcToCivil(time:utcNow());
     sql:ParameterizedQuery updateQuery = `UPDATE "FHIR_RESOURCE_INDEX"
             SET "DELETED" = TRUE, "LAST_UPDATED" = ${now}

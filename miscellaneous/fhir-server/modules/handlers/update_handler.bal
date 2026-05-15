@@ -33,6 +33,7 @@ public class UpdateHandler {
     }
 
     public isolated function updateResourceWithTransaction(string resourceType, string resourceId, json resourceJson) returns string|error {
+        log:printInfo(string `Starting update transaction for ${resourceType}/${resourceId}`);
         string result;
         transaction {
             result = check self.persistUpdate(resourceType, resourceId, resourceJson);
@@ -46,6 +47,7 @@ public class UpdateHandler {
 
     // Public entry point for PATCH.
     public isolated function patchResourceWithTransaction(string resourceType, string resourceId, json patchJson) returns json|error {
+        log:printInfo(string `Starting patch transaction for ${resourceType}/${resourceId}`);
         json result;
         transaction {
             result = check self.persistPatch(resourceType, resourceId, patchJson);
@@ -140,6 +142,15 @@ public class UpdateHandler {
         if friResult is error {
             log:printWarn(string `Failed to upsert FHIR_RESOURCE_INDEX for ${resourceType}/${resourceId}: ${friResult.message()} (non-fatal)`);
         }
+
+        if resourceType == "SearchParameter" {
+            check utils:syncSearchParameterToExpressions(self.jdbcClient, mergedResource);
+            log:printInfo(string `Successfully synced patched SearchParameter/${resourceId} to expressions table`);
+        }
+
+        check self.historyHandler.saveToHistory(resourceType, resourceId, updateModel, "PATCH");
+
+        check utils:updateSearchParametersForResource(jdbcConn, resourceType, resourceId, mergedResource);
 
         error? refResult = utils:saveReferences(self.jdbcClient, references, resourceType, resourceId, refCtx);
         if refResult is error {

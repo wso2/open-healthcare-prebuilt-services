@@ -25,6 +25,7 @@ public class DeleteHandler {
     private final jdbc:Client? jdbcClient;
 
     public isolated function init(jdbc:Client? jdbcClient = ()) {
+        log:printDebug("Initializing DeleteHandler");
         self.jdbcClient = jdbcClient;
         self.historyHandler = new HistoryHandler(jdbcClient);
     }
@@ -42,6 +43,7 @@ public class DeleteHandler {
     }
 
     public isolated function persistDelete(string resourceType, string resourceId) returns boolean|error {
+        log:printInfo(string `Starting delete operation for ${resourceType}/${resourceId}`);
         boolean exists = check utils:resourceExists(self.jdbcClient, resourceType, resourceId);
         if !exists {
             log:printWarn(string `Delete attempted on non-existent resource: ${resourceType}/${resourceId}`);
@@ -77,10 +79,7 @@ public class DeleteHandler {
 
         check utils:deleteResource(self.jdbcClient, resourceType, resourceId);
 
-        error? rtResult = utils:deleteFromResourceTable(self.jdbcClient, resourceType, resourceId);
-        if rtResult is error {
-            log:printWarn(string `Failed to remove ${resourceType}/${resourceId} from RESOURCE_TABLE: ${rtResult.message()} (non-fatal)`);
-        }
+        check utils:deleteFromResourceTable(self.jdbcClient, resourceType, resourceId);
 
         error? friResult = utils:markFhirResourceIndexDeleted(self.jdbcClient, resourceType, resourceId);
         if friResult is error {
