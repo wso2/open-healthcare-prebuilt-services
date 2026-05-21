@@ -223,27 +223,21 @@ public isolated class TerminologySource {
     }
 
     public isolated function searchCodeSystem(map<r4:RequestSearchParameter[]> params, int? offset, int? count) returns r4:CodeSystem[]|r4:FHIRError {
-        sql:ParameterizedQuery whereClause = ``;
-        boolean isFirst = true;
+        sql:ParameterizedQuery whereClause = `1=1`;
 
         foreach var [paramName, paramList] in params.entries() {
             if terminology:CODESYSTEMS_SEARCH_PARAMS.hasKey(paramName) {
                 foreach var param in paramList {
                     sql:ParameterizedQuery fragment = sql:queryConcat(escapeToQuery(paramName == "system" ? "url" : paramName), ` = ${param.value}`);
                     if fragment.strings.length() > 0 {
-                        if isFirst {
-                            whereClause = fragment;
-                            isFirst = false;
-                        } else {
-                            whereClause = sql:queryConcat(whereClause, ` AND `, fragment);
-                        }
+                        whereClause = sql:queryConcat(whereClause, ` AND `, fragment);
                     }
                 }
             }
         }
 
         if offset is int && count is int {
-            whereClause = sql:queryConcat(whereClause, getLimitClause(count, offset));
+            whereClause = sql:queryConcat(whereClause, ` `, getLimitClause(count, offset));
         }
 
         stream<store_h2:CodeSystem, persist:Error?> codeSystemStream = sClient->/codesystems(store_h2:CodeSystem, whereClause);
@@ -272,27 +266,21 @@ public isolated class TerminologySource {
     }
 
     public isolated function searchValueSet(map<r4:RequestSearchParameter[]> params, int? offset, int? count) returns r4:ValueSet[]|r4:FHIRError {
-        sql:ParameterizedQuery whereClause = ``;
-        boolean isFirst = true;
+        sql:ParameterizedQuery whereClause = `1=1`;
 
         foreach var [paramName, paramList] in params.entries() {
             if terminology:CODESYSTEMS_SEARCH_PARAMS.hasKey(paramName) {
                 foreach var param in paramList {
                     sql:ParameterizedQuery fragment = sql:queryConcat(escapeToQuery(paramName == "system" ? "url" : paramName), ` = ${param.value}`);
                     if fragment.strings.length() > 0 {
-                        if isFirst {
-                            whereClause = fragment;
-                            isFirst = false;
-                        } else {
-                            whereClause = sql:queryConcat(whereClause, ` AND `, fragment);
-                        }
+                        whereClause = sql:queryConcat(whereClause, ` AND `, fragment);
                     }
                 }
             }
         }
 
         if offset is int && count is int {
-            whereClause = sql:queryConcat(whereClause, getLimitClause(count, offset));
+            whereClause = sql:queryConcat(whereClause, ` `, getLimitClause(count, offset));
         }
 
         stream<store_h2:ValueSet, persist:Error?> valueSetStream = sClient->/valuesets(store_h2:ValueSet, whereClause);
