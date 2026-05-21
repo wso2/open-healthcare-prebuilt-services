@@ -1,7 +1,8 @@
+[wso2.terminology_service]
 db_type = "h2"
 
-[terminology_service.store_h2]
+[wso2.terminology_service.store_h2]
+url = ""
 user = ""
 password = ""
-url = ""
 
