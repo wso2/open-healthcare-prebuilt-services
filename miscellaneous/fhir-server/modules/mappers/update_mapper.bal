@@ -52,17 +52,23 @@ public class UpdateMapper {
         meta["lastUpdated"] = lastUpdatedIso;
         resMap["meta"] = meta;
 
-        // First get current version to derive next
+        // Lock the row and read current version atomically. The caller wraps
+        // this in a transaction; FOR UPDATE blocks concurrent writers so two
+        // updates cannot both observe the same version_id and produce a lost
+        // update.
         type VerRow record {| int version_id; |};
         sql:ParameterizedQuery verQ;
         if isPostgres {
-            verQ = `SELECT version_id FROM resources WHERE fhir_id = ${resourceId} AND resource_type = ${resourceType}`;
+            verQ = `SELECT version_id FROM resources WHERE fhir_id = ${resourceId} AND resource_type = ${resourceType} AND is_deleted = false FOR UPDATE`;
         } else {
-            verQ = `SELECT "version_id" FROM "resources" WHERE "fhir_id" = ${resourceId} AND "resource_type" = ${resourceType}`;
+            verQ = `SELECT "version_id" FROM "resources" WHERE "fhir_id" = ${resourceId} AND "resource_type" = ${resourceType} AND "is_deleted" = false FOR UPDATE`;
         }
-        VerRow|error verRow = jdbcClient->queryRow(verQ);
-        if verRow is error {
+        VerRow|sql:Error verRow = jdbcClient->queryRow(verQ);
+        if verRow is sql:NoRowsError {
             return error(string `Resource not found: ${resourceType}/${resourceId}`);
+        }
+        if verRow is sql:Error {
+            return verRow;
         }
         newVersion = verRow.version_id + 1;
         meta["versionId"] = newVersion.toString();
@@ -103,13 +109,16 @@ isolated function readCurrentJson(jdbc:Client jc, string resourceType, string re
     type JsonRow record {| string resource_json; |};
     sql:ParameterizedQuery q;
     if isPostgres {
-        q = `SELECT CAST(resource_json AS TEXT) AS resource_json FROM resources WHERE fhir_id = ${resourceId} AND resource_type = ${resourceType}`;
+        q = `SELECT CAST(resource_json AS TEXT) AS resource_json FROM resources WHERE fhir_id = ${resourceId} AND resource_type = ${resourceType} AND is_deleted = FALSE FOR UPDATE`;
     } else {
-        q = `SELECT "resource_json" FROM "resources" WHERE "fhir_id" = ${resourceId} AND "resource_type" = ${resourceType}`;
+        q = `SELECT "resource_json" FROM "resources" WHERE "fhir_id" = ${resourceId} AND "resource_type" = ${resourceType} AND "is_deleted" = FALSE FOR UPDATE`;
     }
-    JsonRow|error row = jc->queryRow(q);
-    if row is error {
+    JsonRow|sql:Error row = jc->queryRow(q);
+    if row is sql:NoRowsError {
         return error(string `${resourceType}/${resourceId} not found`);
+    }
+    if row is sql:Error {
+        return row;
     }
     return row.resource_json;
 }

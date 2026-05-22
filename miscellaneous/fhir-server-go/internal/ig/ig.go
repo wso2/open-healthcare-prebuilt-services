@@ -154,9 +154,7 @@ func LoadPackage(
 				baseRes, sp.Code, sp.Type, sp.Expression, source,
 			)
 			if err != nil {
-				slog.Warn("failed to insert IG search param",
-					"param", sp.Code, "resource", baseRes, "err", err)
-				continue
+				return nil, fmt.Errorf("insert search_param_definitions (%s/%s): %w", baseRes, sp.Code, err)
 			}
 			if tag.RowsAffected() > 0 {
 				result.SearchParams++
@@ -185,7 +183,7 @@ func LoadPackage(
 			ON CONFLICT (profile_url) DO NOTHING`,
 			name, profile.URL, profile.BaseType,
 		); err != nil {
-			continue
+			return nil, fmt.Errorf("insert ig_profiles (%s): %w", profile.URL, err)
 		}
 		result.Profiles++
 	}

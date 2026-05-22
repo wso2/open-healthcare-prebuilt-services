@@ -121,7 +121,7 @@ public class DBHandler {
     // ─── Search param definitions population ──────────────────────────────────
 
     private function populateSearchParamDefsIfEmpty(jdbc:Client jdbcClient) returns error? {
-        int count = check jdbcClient->queryRow(`SELECT COUNT(*) AS count FROM search_param_definitions`);
+        int count = check jdbcClient->queryRow(`SELECT COUNT(*) AS count FROM "search_param_definitions"`);
         if count > 0 {
             log:printInfo(string `search_param_definitions: ${count} rows already present.`);
             return;

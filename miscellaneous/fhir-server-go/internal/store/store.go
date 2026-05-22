@@ -557,20 +557,32 @@ func (s *Store) DeleteSearchParameter(ctx context.Context, resourceID string) er
 		return nil
 	}
 
+	// Collect base resource types from the payload so we only delete custom
+	// definitions whose base matches — a SearchParameter on Patient must not
+	// remove a same-code custom definition on Observation.
+	var bases []string
+	if baseArr, ok := body["base"].([]any); ok {
+		for _, b := range baseArr {
+			if rt, ok := b.(string); ok && rt != "" {
+				bases = append(bases, rt)
+			}
+		}
+	}
+	if len(bases) == 0 {
+		return nil
+	}
+
 	if _, err := s.pool.Exec(ctx,
-		`DELETE FROM search_param_definitions WHERE param_name = $1 AND is_custom = TRUE`, code,
+		`DELETE FROM search_param_definitions WHERE param_name = $1 AND is_custom = TRUE AND resource_type = ANY($2)`,
+		code, bases,
 	); err != nil {
 		return err
 	}
 
 	// Update the in-memory registry only after the DB delete commits so the
 	// two stores never diverge in the direction of "registry missing, DB has it."
-	if baseArr, ok := body["base"].([]any); ok {
-		for _, b := range baseArr {
-			if rt, ok := b.(string); ok {
-				s.registry.Remove(rt, code)
-			}
-		}
+	for _, rt := range bases {
+		s.registry.Remove(rt, code)
 	}
 	slog.Info("removed custom search parameter", "code", code)
 	return nil

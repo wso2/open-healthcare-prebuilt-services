@@ -232,10 +232,19 @@ func expandDateString(s string) (low, high time.Time, err error) {
 	s = strings.TrimSpace(s)
 	switch len(s) {
 	case 4: // YYYY
-		low = time.Date(mustInt(s[0:4]), 1, 1, 0, 0, 0, 0, time.UTC)
-		high = time.Date(mustInt(s[0:4]), 12, 31, 23, 59, 59, 0, time.UTC)
+		y, e := strconv.Atoi(s[0:4])
+		if e != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid year %q: %w", s, e)
+		}
+		low = time.Date(y, 1, 1, 0, 0, 0, 0, time.UTC)
+		high = time.Date(y, 12, 31, 23, 59, 59, 0, time.UTC)
 	case 7: // YYYY-MM
-		y, m := mustInt(s[0:4]), time.Month(mustInt(s[5:7]))
+		y, e1 := strconv.Atoi(s[0:4])
+		mi, e2 := strconv.Atoi(s[5:7])
+		if e1 != nil || e2 != nil || mi < 1 || mi > 12 {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid year-month %q", s)
+		}
+		m := time.Month(mi)
 		low = time.Date(y, m, 1, 0, 0, 0, 0, time.UTC)
 		high = time.Date(y, m+1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Second)
 	case 10: // YYYY-MM-DD
@@ -256,11 +265,6 @@ func expandDateString(s string) (low, high time.Time, err error) {
 		return time.Time{}, time.Time{}, fmt.Errorf("cannot parse date %q", s)
 	}
 	return
-}
-
-func mustInt(s string) int {
-	n, _ := strconv.Atoi(s)
-	return n
 }
 
 // ─── sp_number ────────────────────────────────────────────────────────────────
@@ -370,11 +374,18 @@ func indexReference(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals 
 	return nil
 }
 
-// parseRefString splits "Patient/123" into ("Patient", "123").
+// parseRefString splits "Patient/123" into ("Patient", "123"). Versioned
+// references like "Patient/123/_history/2" have the history suffix stripped
+// before splitting so the parser doesn't treat "_history" as the id segment.
 func parseRefString(ref string) (resourceType, id string) {
-	// Strip base URL if present
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", ""
+	}
+	if i := strings.Index(ref, "/_history/"); i >= 0 {
+		ref = ref[:i]
+	}
 	if idx := strings.LastIndex(ref, "/"); idx >= 0 {
-		// Check if there's a resource type before the ID
 		pre := ref[:idx]
 		if slashIdx := strings.LastIndex(pre, "/"); slashIdx >= 0 {
 			resourceType = pre[slashIdx+1:]
@@ -382,10 +393,6 @@ func parseRefString(ref string) (resourceType, id string) {
 			resourceType = pre
 		}
 		id = ref[idx+1:]
-		// Strip version (_history/N)
-		if histIdx := strings.Index(id, "/_history/"); histIdx >= 0 {
-			id = id[:histIdx]
-		}
 		return
 	}
 	return "", ref

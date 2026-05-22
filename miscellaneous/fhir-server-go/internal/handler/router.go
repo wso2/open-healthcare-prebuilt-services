@@ -22,7 +22,7 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, baseURL string, igReady *atomic.I
 		w.WriteHeader(http.StatusOK)
 	})
 	r.Get("/health/ready", func(w http.ResponseWriter, _ *http.Request) {
-		if igReady.Load() == 1 {
+		if igReady != nil && igReady.Load() == 1 {
 			w.WriteHeader(http.StatusOK)
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)

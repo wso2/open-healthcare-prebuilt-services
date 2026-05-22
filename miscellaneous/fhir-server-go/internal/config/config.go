@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -26,7 +28,14 @@ func Load() (*Config, error) {
 		user := getenv("DB_USER", "fhir")
 		pass := getenv("DB_PASSWORD", "fhir")
 		name := getenv("DB_NAME", "fhirdb")
-		dbURL = fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, pass, host, port, name)
+		u := &url.URL{
+			Scheme:   "postgres",
+			User:     url.UserPassword(user, pass),
+			Host:     net.JoinHostPort(host, port),
+			Path:     "/" + name,
+			RawQuery: "sslmode=disable",
+		}
+		dbURL = u.String()
 	}
 
 	serverPort := 9090

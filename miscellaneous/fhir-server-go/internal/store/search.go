@@ -45,7 +45,9 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 		if len(values) == 0 {
 			continue
 		}
-		b.applyParam(rawKey, values[0])
+		for _, v := range values {
+			b.applyParam(rawKey, v)
+		}
 	}
 
 	total, err := b.count(ctx, s.pool)

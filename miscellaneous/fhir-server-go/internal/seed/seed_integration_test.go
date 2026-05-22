@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/seed"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/testutil"
 )
 
@@ -31,13 +32,19 @@ func TestSeedSearchParams_Idempotent(t *testing.T) {
 	ctx := context.Background()
 
 	var countBefore int
-	pool.QueryRow(ctx, `SELECT COUNT(*) FROM search_param_definitions`).Scan(&countBefore)
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM search_param_definitions`).Scan(&countBefore); err != nil {
+		t.Fatalf("count before: %v", err)
+	}
 
-	// Re-run seed — ON CONFLICT DO NOTHING should prevent duplicate inserts
-	// We access this via testutil.MustSeededDB which already ran seed once.
-	// Just verify count is stable.
+	// Re-run seed — ON CONFLICT DO NOTHING should prevent duplicate inserts.
+	if err := seed.SeedSearchParams(ctx, pool); err != nil {
+		t.Fatalf("re-seed: %v", err)
+	}
+
 	var countAfter int
-	pool.QueryRow(ctx, `SELECT COUNT(*) FROM search_param_definitions`).Scan(&countAfter)
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM search_param_definitions`).Scan(&countAfter); err != nil {
+		t.Fatalf("count after: %v", err)
+	}
 
 	if countAfter != countBefore {
 		t.Errorf("seed not idempotent: before=%d, after=%d", countBefore, countAfter)

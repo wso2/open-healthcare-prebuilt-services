@@ -75,7 +75,13 @@ func (r *Registry) Load(ctx context.Context, pool *pgxpool.Pool) error {
 func (r *Registry) ForResource(resourceType string) []Definition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.byRes[resourceType]
+	defs := r.byRes[resourceType]
+	if len(defs) == 0 {
+		return nil
+	}
+	out := make([]Definition, len(defs))
+	copy(out, defs)
+	return out
 }
 
 func (r *Registry) Lookup(resourceType, paramName string) (Definition, bool) {

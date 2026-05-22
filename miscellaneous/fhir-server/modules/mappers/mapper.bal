@@ -41,6 +41,8 @@ public class FHIRMapper {
     }
 
     public isolated function extractSearchParameters(jdbc:Client jdbcClient, string resourceType, json resourceJson) returns map<json>|error {
+        // Reset accumulated references so getReferences() does not leak across calls.
+        self.references = [];
         ResourceMappingConfig|error? config = check self.loadResourceConfig(jdbcClient, resourceType);
         map<json> extractedParams = {};
         if config is ResourceMappingConfig {

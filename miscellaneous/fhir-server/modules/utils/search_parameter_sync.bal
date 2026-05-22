@@ -10,14 +10,20 @@ public isolated function syncSearchParameterToExpressions(jdbc:Client? jdbcClien
     string paramType  = check searchParamJson.'type;
     string expression = check searchParamJson.expression;
     json   baseArray  = check searchParamJson.base;
-    json[] baseResources = <json[]>baseArray;
+    if !(baseArray is json[]) {
+        return error("SearchParameter.base must be an array");
+    }
+    json[] baseResources = baseArray;
 
     log:printInfo(string `Syncing SearchParameter '${code}' to search_param_definitions for ${baseResources.length()} resource type(s)`);
 
     boolean isPostgres = dbType.toLowerAscii().trim() == "postgresql" || dbType.toLowerAscii().trim() == "postgres";
 
     foreach json baseResource in baseResources {
-        string resourceName = baseResource.toString();
+        if !(baseResource is string) {
+            return error("SearchParameter.base entries must be strings");
+        }
+        string resourceName = baseResource;
 
         if isPostgres {
             _ = check validatedClient->execute(`
@@ -77,9 +83,13 @@ public isolated function removeSearchParameterById(jdbc:Client? jdbcClient, stri
     }
 
     JsonRow|sql:Error row = validatedClient->queryRow(readQuery);
-    if row is sql:Error {
+    if row is sql:NoRowsError {
         log:printWarn(string `SearchParameter with ID '${resourceId}' not found, skipping expression cleanup`);
         return;
+    }
+    if row is sql:Error {
+        log:printError(string `Failed to read SearchParameter '${resourceId}' for cleanup: ${row.message()}`);
+        return row;
     }
 
     json searchParamJson = check row.resource_json.fromJsonString();

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +16,33 @@ import (
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/ig"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
 )
+
+// pageQuery returns an encoded query string that preserves all of `params`
+// (search filters, _since, _include, …) but overrides _page and _count with
+// the supplied values. Keys are sorted so generated links are stable.
+func pageQuery(params map[string][]string, page, pageSize int) string {
+	vals := url.Values{}
+	for k, vs := range params {
+		if k == "_page" || k == "_count" {
+			continue
+		}
+		for _, v := range vs {
+			vals.Add(k, v)
+		}
+	}
+	vals.Set("_page", strconv.Itoa(page))
+	vals.Set("_count", strconv.Itoa(pageSize))
+	keys := make([]string, 0, len(vals))
+	for k := range vals {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make(url.Values, len(keys))
+	for _, k := range keys {
+		out[k] = vals[k]
+	}
+	return out.Encode()
+}
 
 // ─── FHIR content type ────────────────────────────────────────────────────────
 
@@ -210,21 +239,22 @@ func (h *fhirHandler) buildBundle(rt string, result store.SearchResult, params m
 		lastPage = 1
 	}
 
+	base := fmt.Sprintf("%s/%s", h.baseURL, rt)
 	links := []any{
-		map[string]any{"relation": "self", "url": fmt.Sprintf("%s/%s?_page=%d&_count=%d", h.baseURL, rt, page, pageSize)},
-		map[string]any{"relation": "first", "url": fmt.Sprintf("%s/%s?_page=1&_count=%d", h.baseURL, rt, pageSize)},
-		map[string]any{"relation": "last", "url": fmt.Sprintf("%s/%s?_page=%d&_count=%d", h.baseURL, rt, lastPage, pageSize)},
+		map[string]any{"relation": "self", "url": base + "?" + pageQuery(params, page, pageSize)},
+		map[string]any{"relation": "first", "url": base + "?" + pageQuery(params, 1, pageSize)},
+		map[string]any{"relation": "last", "url": base + "?" + pageQuery(params, lastPage, pageSize)},
 	}
 	if page*pageSize < result.Total {
 		links = append(links, map[string]any{
 			"relation": "next",
-			"url":      fmt.Sprintf("%s/%s?_page=%d&_count=%d", h.baseURL, rt, page+1, pageSize),
+			"url":      base + "?" + pageQuery(params, page+1, pageSize),
 		})
 	}
 	if page > 1 {
 		links = append(links, map[string]any{
 			"relation": "previous",
-			"url":      fmt.Sprintf("%s/%s?_page=%d&_count=%d", h.baseURL, rt, page-1, pageSize),
+			"url":      base + "?" + pageQuery(params, page-1, pageSize),
 		})
 	}
 
@@ -244,6 +274,15 @@ func (h *fhirHandler) everything(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	since := r.URL.Query().Get("_since")
 	typeFilter := r.URL.Query()["_type"]
+
+	var sinceTime time.Time
+	sinceValid := false
+	if since != "" {
+		if t, err := time.Parse(time.RFC3339, since); err == nil {
+			sinceTime = t
+			sinceValid = true
+		}
+	}
 
 	// Read the anchor resource
 	anchor, err := h.store.Read(r.Context(), rt, id)
@@ -281,9 +320,11 @@ func (h *fhirHandler) everything(w http.ResponseWriter, r *http.Request) {
 		if seen[key] {
 			continue
 		}
-		if since != "" {
-			if lu := lastUpdatedStr(res); lu != "" && lu <= since {
-				continue
+		if sinceValid {
+			if lu := lastUpdatedStr(res); lu != "" {
+				if luTime, err := time.Parse(time.RFC3339, lu); err == nil && !luTime.After(sinceTime) {
+					continue
+				}
 			}
 		}
 		if len(typeFilter) > 0 && !containsStr(typeFilter, inclRT) {
@@ -365,6 +406,12 @@ func (h *fhirHandler) update(w http.ResponseWriter, r *http.Request) {
 	body, err := readBody(r)
 	if err != nil {
 		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
+		return
+	}
+
+	if bodyRT, ok := body["resourceType"].(string); ok && bodyRT != "" && bodyRT != rt {
+		operationOutcome(w, http.StatusUnprocessableEntity, "error", "invalid",
+			fmt.Sprintf("body resourceType %q does not match URL resource type %q", bodyRT, rt))
 		return
 	}
 
@@ -523,21 +570,22 @@ func (h *fhirHandler) typeHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	base := fmt.Sprintf("%s/%s/_history", h.baseURL, rt)
+	params := map[string][]string(q)
 	links := []any{
-		map[string]any{"relation": "self", "url": fmt.Sprintf("%s?_page=%d&_count=%d", base, page, pageSize)},
-		map[string]any{"relation": "first", "url": fmt.Sprintf("%s?_page=1&_count=%d", base, pageSize)},
-		map[string]any{"relation": "last", "url": fmt.Sprintf("%s?_page=%d&_count=%d", base, lastPage, pageSize)},
+		map[string]any{"relation": "self", "url": base + "?" + pageQuery(params, page, pageSize)},
+		map[string]any{"relation": "first", "url": base + "?" + pageQuery(params, 1, pageSize)},
+		map[string]any{"relation": "last", "url": base + "?" + pageQuery(params, lastPage, pageSize)},
 	}
 	if page*pageSize < result.Total {
 		links = append(links, map[string]any{
 			"relation": "next",
-			"url":      fmt.Sprintf("%s?_page=%d&_count=%d", base, page+1, pageSize),
+			"url":      base + "?" + pageQuery(params, page+1, pageSize),
 		})
 	}
 	if page > 1 {
 		links = append(links, map[string]any{
 			"relation": "previous",
-			"url":      fmt.Sprintf("%s?_page=%d&_count=%d", base, page-1, pageSize),
+			"url":      base + "?" + pageQuery(params, page-1, pageSize),
 		})
 	}
 

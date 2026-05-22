@@ -371,11 +371,19 @@ public isolated function expandDateRange(string dateStr) returns [string, string
         return [string `${s}-01-01T00:00:00Z`, string `${s}-12-31T23:59:59Z`, "YEAR"];
     }
     if len == 7 {
-        // YYYY-MM → full month
-        int year = checkpanic int:fromString(s.substring(0, 4));
-        int month = checkpanic int:fromString(s.substring(5, 7));
+        // YYYY-MM → full month. Bail out to a point value for malformed input
+        // rather than panic.
+        int|error yearResult = int:fromString(s.substring(0, 4));
+        int|error monthResult = int:fromString(s.substring(5, 7));
+        if yearResult is error || monthResult is error {
+            return [s, s, "SECOND"];
+        }
+        int year = yearResult;
+        int month = monthResult;
+        if month < 1 || month > 12 {
+            return [s, s, "SECOND"];
+        }
         int lastDay = daysInMonth(year, month);
-        string mm = month < 10 ? string `0${month}` : month.toString();
         string dd = lastDay < 10 ? string `0${lastDay}` : lastDay.toString();
         return [string `${s}-01T00:00:00Z`, string `${s.substring(0,7)}-${dd}T23:59:59Z`, "MONTH"];
     }
@@ -388,6 +396,9 @@ public isolated function expandDateRange(string dateStr) returns [string, string
 }
 
 isolated function daysInMonth(int year, int month) returns int {
+    if month < 1 || month > 12 {
+        return 31;
+    }
     int[] days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     if month == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0) {
         return 29;
@@ -490,7 +501,10 @@ isolated function splitReference(string paramName, string refStr, string? displa
     string? targetId   = parts.length() >= 2 ? parts[1] : ();
     int? targetVersion = ();
     if parts.length() >= 4 && parts[2] == "_history" {
-        targetVersion = int:fromString(parts[3]) is int ? checkpanic int:fromString(parts[3]) : ();
+        int|error parsed = int:fromString(parts[3]);
+        if parsed is int {
+            targetVersion = parsed;
+        }
     }
     return {
         paramName,

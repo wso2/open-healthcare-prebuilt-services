@@ -270,19 +270,17 @@ func flatten(v any) []any {
 	return []any{v}
 }
 
-// filterByType implements ofType(TypeName) — keeps elements whose
-// "resourceType" or implied JSON type matches typeName.
+// filterByType implements ofType(TypeName). For map inputs we only return
+// objects whose "resourceType" matches typeName. FHIR polymorphic field
+// resolution (e.g. value[x].ofType(Quantity)) is handled at path traversal,
+// not here — so map inputs without a matching resourceType are not a match.
 func filterByType(input any, typeName string) []any {
 	switch v := input.(type) {
 	case map[string]any:
 		if rt, ok := v["resourceType"].(string); ok && rt == typeName {
 			return []any{v}
 		}
-		// FHIR polymorphic fields: value[x] — the map key ends with the type name
-		// This is handled at the path traversal level when ofType() follows a
-		// polymorphic parent like Observation.value.ofType(Quantity).
-		// Here we just return the object if it looks like the right type.
-		return []any{v}
+		return nil
 	case []any:
 		var results []any
 		for _, item := range v {
@@ -293,8 +291,13 @@ func filterByType(input any, typeName string) []any {
 	return nil
 }
 
-// filterWhere implements where(key='val') filtering.
+// filterWhere implements where(key='val') filtering. parseWhere returns a
+// where node with an empty key when the clause is unsupported; in that case
+// we pass the input through rather than dropping all matches.
 func filterWhere(input any, key, val, op string) []any {
+	if key == "" {
+		return flatten(input)
+	}
 	switch v := input.(type) {
 	case map[string]any:
 		fieldVal, ok := v[key]

@@ -51,13 +51,16 @@ isolated function readCurrentJson(jdbc:Client jc, string resourceType, string re
     type JsonRow record {| string resource_json; |};
     sql:ParameterizedQuery q;
     if isPostgres {
-        q = `SELECT CAST(resource_json AS TEXT) AS resource_json FROM resources WHERE fhir_id = ${resourceId} AND resource_type = ${resourceType}`;
+        q = `SELECT CAST(resource_json AS TEXT) AS resource_json FROM resources WHERE fhir_id = ${resourceId} AND resource_type = ${resourceType} FOR UPDATE`;
     } else {
-        q = `SELECT "resource_json" FROM "resources" WHERE "fhir_id" = ${resourceId} AND "resource_type" = ${resourceType}`;
+        q = `SELECT "resource_json" FROM "resources" WHERE "fhir_id" = ${resourceId} AND "resource_type" = ${resourceType} FOR UPDATE`;
     }
-    JsonRow|error row = jc->queryRow(q);
-    if row is error {
+    JsonRow|sql:Error row = jc->queryRow(q);
+    if row is sql:NoRowsError {
         return error(string `${resourceType}/${resourceId} not found`);
+    }
+    if row is sql:Error {
+        return row;
     }
     return check row.resource_json.fromJsonString();
 }
@@ -67,13 +70,16 @@ isolated function readCurrentVersion(jdbc:Client jc, string resourceType, string
     type VerRow record {| int version_id; |};
     sql:ParameterizedQuery q;
     if isPostgres {
-        q = `SELECT version_id FROM resources WHERE fhir_id = ${resourceId} AND resource_type = ${resourceType}`;
+        q = `SELECT version_id FROM resources WHERE fhir_id = ${resourceId} AND resource_type = ${resourceType} FOR UPDATE`;
     } else {
-        q = `SELECT "version_id" FROM "resources" WHERE "fhir_id" = ${resourceId} AND "resource_type" = ${resourceType}`;
+        q = `SELECT "version_id" FROM "resources" WHERE "fhir_id" = ${resourceId} AND "resource_type" = ${resourceType} FOR UPDATE`;
     }
-    VerRow|error row = jc->queryRow(q);
-    if row is error {
+    VerRow|sql:Error row = jc->queryRow(q);
+    if row is sql:NoRowsError {
         return error(string `${resourceType}/${resourceId} not found`);
+    }
+    if row is sql:Error {
+        return row;
     }
     return row.version_id;
 }

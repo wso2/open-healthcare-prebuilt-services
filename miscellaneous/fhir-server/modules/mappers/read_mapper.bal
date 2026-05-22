@@ -216,16 +216,25 @@ public class ReadMapper {
             // OR: comma-separated values → multiple EXISTS conditions joined with OR
             string[] orValues = regexp:split(re `,`, values[0]);
             if orValues.length() > 1 {
-                baseQ = sql:queryConcat(baseQ, ` AND (`);
+                // Build the OR group separately so we can drop the entire AND
+                // when no branch produces a valid condition — flipping `first`
+                // before validating `orCond` would otherwise leak a leading
+                // " OR " into the SQL.
+                sql:ParameterizedQuery orGroup = ``;
                 boolean first = true;
                 foreach string orVal in orValues {
-                    if !first { baseQ = sql:queryConcat(baseQ, ` OR `); }
-                    first = false;
                     sql:ParameterizedQuery|error orCond = buildExistsCondition(paramName, paramType, modifier, [orVal], resourceType, isPostgres);
                     if orCond is error { continue; }
-                    baseQ = sql:queryConcat(baseQ, `EXISTS (`, orCond, `)`);
+                    if first {
+                        orGroup = sql:queryConcat(`EXISTS (`, orCond, `)`);
+                        first = false;
+                    } else {
+                        orGroup = sql:queryConcat(orGroup, ` OR EXISTS (`, orCond, `)`);
+                    }
                 }
-                baseQ = sql:queryConcat(baseQ, `)`);
+                if !first {
+                    baseQ = sql:queryConcat(baseQ, ` AND (`, orGroup, `)`);
+                }
             } else {
                 sql:ParameterizedQuery|error cond = buildExistsCondition(paramName, paramType, modifier, values, resourceType, isPostgres);
                 if cond is sql:ParameterizedQuery {
@@ -503,8 +512,8 @@ isolated function buildDateExists(
         string slFmt = utils:formatTimestampForDb(searchLow);
         string shFmt = utils:formatTimestampForDb(searchHigh);
         inner = match prefix {
-            "gt" => `SELECT 1 FROM "sp_date" s WHERE s."resource_id" = r."fhir_id" AND s."resource_type" = ${resourceType} AND s."param_name" = ${paramName} AND s."value_low" > ${slFmt}`
-            "lt" => `SELECT 1 FROM "sp_date" s WHERE s."resource_id" = r."fhir_id" AND s."resource_type" = ${resourceType} AND s."param_name" = ${paramName} AND s."value_high" < ${shFmt}`
+            "gt" => `SELECT 1 FROM "sp_date" s WHERE s."resource_id" = r."fhir_id" AND s."resource_type" = ${resourceType} AND s."param_name" = ${paramName} AND s."value_low" > ${shFmt}`
+            "lt" => `SELECT 1 FROM "sp_date" s WHERE s."resource_id" = r."fhir_id" AND s."resource_type" = ${resourceType} AND s."param_name" = ${paramName} AND s."value_high" < ${slFmt}`
             "ge" => `SELECT 1 FROM "sp_date" s WHERE s."resource_id" = r."fhir_id" AND s."resource_type" = ${resourceType} AND s."param_name" = ${paramName} AND s."value_high" >= ${slFmt}`
             "le" => `SELECT 1 FROM "sp_date" s WHERE s."resource_id" = r."fhir_id" AND s."resource_type" = ${resourceType} AND s."param_name" = ${paramName} AND s."value_low" <= ${shFmt}`
             _    => `SELECT 1 FROM "sp_date" s WHERE s."resource_id" = r."fhir_id" AND s."resource_type" = ${resourceType} AND s."param_name" = ${paramName} AND s."value_low" <= ${shFmt} AND s."value_high" >= ${slFmt}`
@@ -682,9 +691,12 @@ isolated function getResourceCount(
     } else {
         q = `SELECT COUNT(*) AS cnt FROM "resources" r WHERE r."resource_type" = ${resourceType} AND r."is_deleted" = FALSE`;
     }
-    // Reuse same WHERE logic (simplified — no pagination)
+    // Reuse same WHERE logic (simplified — no pagination). Keep underscore
+    // params aligned with searchResources so total matches the page contents.
+    final string[] countableUnderscore = ["_id", "_lastUpdated", "_profile", "_tag", "_security", "_text", "_content"];
     foreach var [rawKey, values] in queryParams.entries() {
-        if values.length() == 0 || rawKey.startsWith("_") { continue; }
+        if values.length() == 0 { continue; }
+        if rawKey.startsWith("_") && countableUnderscore.indexOf(rawKey) is () { continue; }
         string paramName = rawKey;
         string modifier  = "";
         int? colonIdx = rawKey.indexOf(":");
@@ -700,7 +712,9 @@ isolated function getResourceCount(
         }
     }
     CountRow|sql:Error row = jc->queryRow(q);
-    if row is sql:Error { return 0; }
+    if row is sql:Error {
+        return row;
+    }
     return row.cnt;
 }
 

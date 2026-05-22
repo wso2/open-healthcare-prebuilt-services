@@ -52,7 +52,7 @@ public class UpdateHandler {
                 check utils:syncSearchParameterToExpressions(self.jdbcClient, mergedResource);
             }
 
-            check self.historyHandler.saveToHistory(resourceType, resourceId, newVersion, "PUT", mergedResource);
+            check self.historyHandler.saveToHistory(resourceType, resourceId, newVersion, "PATCH", mergedResource);
 
             check commit;
         } on fail error e {

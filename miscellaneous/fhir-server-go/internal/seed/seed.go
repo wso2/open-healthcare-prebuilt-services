@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,7 +34,7 @@ func SeedSearchParams(ctx context.Context, pool *pgxpool.Pool) error {
 // SeedFromFile seeds from an external CSV path (useful for testing or
 // overriding the embedded dataset).
 func SeedFromFile(ctx context.Context, pool *pgxpool.Pool, path string) error {
-	f, err := csvFS.Open(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
 	}

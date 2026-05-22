@@ -34,12 +34,9 @@ services:
       db:
         condition: service_healthy
     restart: on-failure
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/health/ready || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 5s
+    # Health is exposed at GET /health/ready. The container image is distroless and
+    # has no shell or wget, so probe externally (e.g. k8s readinessProbe httpGet)
+    # or from the host with: curl -fsS http://localhost:9090/health/ready
 
 volumes:
   pgdata:
