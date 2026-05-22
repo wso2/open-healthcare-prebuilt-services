@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"sync/atomic"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -9,13 +10,25 @@ import (
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
 )
 
-func NewRouter(s *store.Store, pool *pgxpool.Pool, baseURL string) http.Handler {
+func NewRouter(s *store.Store, pool *pgxpool.Pool, baseURL string, igReady *atomic.Int32) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
 
-	h := &fhirHandler{store: s, pool: pool, baseURL: baseURL}
+	h := &fhirHandler{store: s, pool: pool, baseURL: baseURL, igReady: igReady}
+
+	// Health probes
+	r.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	r.Get("/health/ready", func(w http.ResponseWriter, _ *http.Request) {
+		if igReady.Load() == 1 {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	})
 
 	r.Route("/fhir/r4", func(r chi.Router) {
 		// Capability statement
@@ -46,4 +59,5 @@ type fhirHandler struct {
 	store   *store.Store
 	pool    *pgxpool.Pool
 	baseURL string
+	igReady *atomic.Int32
 }

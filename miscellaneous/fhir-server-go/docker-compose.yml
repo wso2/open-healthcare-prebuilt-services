@@ -26,10 +26,21 @@ services:
       SERVER_PORT: "9090"
       BASE_URL: http://localhost:9090/fhir/r4
       LOG_LEVEL: info
+      # IG_PACKAGES: hl7.fhir.us.core@6.1.0,hl7.fhir.us.carin-bb@2.0.0
+      IG_CACHE_DIR: /data/fhir-ig-cache
+    volumes:
+      - igcache:/data/fhir-ig-cache
     depends_on:
       db:
         condition: service_healthy
     restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
 
 volumes:
   pgdata:
+  igcache:

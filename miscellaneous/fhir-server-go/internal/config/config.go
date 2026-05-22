@@ -15,6 +15,7 @@ type Config struct {
 	IGPackages    []string // e.g. ["hl7.fhir.us.core@6.1.0", "hl7.fhir.us.carin-bb@2.0.0"]
 	IGRegistryURL string   // default: https://packages.fhir.org
 	IGForceReload bool     // re-load IGs even if already recorded in ig_packages
+	IGCacheDir    string   // local .tgz cache dir (default: .fhir-ig-cache)
 }
 
 func Load() (*Config, error) {
@@ -55,6 +56,7 @@ func Load() (*Config, error) {
 		IGPackages:    igPackages,
 		IGRegistryURL: getenv("IG_REGISTRY_URL", "https://packages.fhir.org"),
 		IGForceReload: os.Getenv("IG_FORCE_RELOAD") == "true",
+		IGCacheDir:    getenv("IG_CACHE_DIR", ".fhir-ig-cache"),
 	}, nil
 }
 

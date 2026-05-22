@@ -18,6 +18,13 @@
 // The UNIQUE(resource_type, param_name) constraint means an IG param that
 // shares a name with a base FHIR R4 param for the same resource type is
 // silently skipped (base spec takes precedence).
+//
+// # Caching
+//
+// When LoadOptions.CacheDir is set, downloaded .tgz files are written to
+// CacheDir/name-version.tgz. On subsequent calls the cached file is used
+// instead of re-downloading, which makes container restarts fast even
+// before the ig_packages DB check fires.
 package ig
 
 import (
@@ -31,6 +38,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -42,19 +50,20 @@ const defaultRegistryURL = "https://packages.fhir.org"
 
 // PackageResult summarises what was loaded from a single package.
 type PackageResult struct {
-	Name              string
-	Version           string
-	FHIRVersion       string
-	SearchParams      int // new rows inserted
-	Profiles          int // profiles registered
-	AlreadyLoaded     bool
+	Name          string
+	Version       string
+	FHIRVersion   string
+	SearchParams  int // new rows inserted
+	Profiles      int // profiles registered
+	AlreadyLoaded bool
 }
 
 // LoadOptions controls loading behaviour.
 type LoadOptions struct {
-	RegistryURL string // default: https://packages.fhir.org
-	ForceReload bool   // re-load even if already in ig_packages
-	HTTPTimeout time.Duration
+	RegistryURL string        // default: https://packages.fhir.org
+	ForceReload bool          // re-load even if already in ig_packages
+	HTTPTimeout time.Duration // default: 60s
+	CacheDir    string        // local .tgz cache dir; empty = no cache
 }
 
 // LoadPackage downloads (or reads) a FHIR IG package, extracts its
@@ -91,7 +100,7 @@ func LoadPackage(
 
 	slog.Info("loading IG package", "package", source)
 
-	// Fetch package bytes
+	// Fetch package bytes (cache-aware)
 	tgzData, err := fetchPackage(spec, name, version, opts)
 	if err != nil {
 		return nil, fmt.Errorf("fetch %s: %w", source, err)
@@ -242,17 +251,51 @@ func parseSpec(spec string) (name, version string) {
 // ─── Package fetching ─────────────────────────────────────────────────────────
 
 func fetchPackage(spec, name, version string, opts LoadOptions) ([]byte, error) {
-	// Local file
+	// Local file — no caching needed
 	if strings.HasPrefix(spec, "/") || strings.HasPrefix(spec, "./") || strings.HasSuffix(spec, ".tgz") {
 		return os.ReadFile(spec)
 	}
-	// Explicit URL
-	if strings.HasPrefix(spec, "http://") || strings.HasPrefix(spec, "https://") {
-		return httpGet(spec, opts.HTTPTimeout)
+
+	// Determine cache path (only for registry + explicit URL downloads)
+	cachePath := ""
+	if opts.CacheDir != "" && name != "" && version != "" {
+		if err := os.MkdirAll(opts.CacheDir, 0o755); err == nil {
+			safe := strings.ReplaceAll(name, "/", "_")
+			cachePath = filepath.Join(opts.CacheDir, safe+"-"+version+".tgz")
+		}
 	}
-	// Registry lookup: https://packages.fhir.org/{name}/{version}
-	url := fmt.Sprintf("%s/%s/%s", strings.TrimRight(opts.RegistryURL, "/"), name, version)
-	return httpGet(url, opts.HTTPTimeout)
+
+	// Serve from cache if available
+	if cachePath != "" {
+		if data, err := os.ReadFile(cachePath); err == nil {
+			slog.Debug("serving IG from cache", "path", cachePath)
+			return data, nil
+		}
+	}
+
+	// Download
+	var url string
+	if strings.HasPrefix(spec, "http://") || strings.HasPrefix(spec, "https://") {
+		url = spec
+	} else {
+		url = fmt.Sprintf("%s/%s/%s", strings.TrimRight(opts.RegistryURL, "/"), name, version)
+	}
+
+	data, err := httpGet(url, opts.HTTPTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	// Write to cache (best-effort)
+	if cachePath != "" {
+		if werr := os.WriteFile(cachePath, data, 0o644); werr != nil {
+			slog.Warn("failed to write IG cache", "path", cachePath, "err", werr)
+		} else {
+			slog.Debug("cached IG package", "path", cachePath)
+		}
+	}
+
+	return data, nil
 }
 
 func httpGet(url string, timeout time.Duration) ([]byte, error) {
@@ -291,9 +334,9 @@ type fhirSearchParam struct {
 
 type fhirProfile struct {
 	URL        string `json:"url"`
-	Kind       string `json:"kind"`        // "resource", "complex-type", etc.
-	Derivation string `json:"derivation"`  // "constraint" = a profile
-	BaseType   string `json:"type"`        // e.g. "Patient"
+	Kind       string `json:"kind"`       // "resource", "complex-type", etc.
+	Derivation string `json:"derivation"` // "constraint" = a profile
+	BaseType   string `json:"type"`       // e.g. "Patient"
 }
 
 func parsePackage(data []byte) (*fhirPackage, error) {

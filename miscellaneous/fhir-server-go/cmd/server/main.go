@@ -7,8 +7,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/config"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/db"
@@ -54,33 +57,22 @@ func run() error {
 		slog.Warn("search param seed failed (non-fatal)", "err", err)
 	}
 
-	// Load IGs before populating the registry so IG search params are included
-	igOpts := ig.LoadOptions{
-		RegistryURL: cfg.IGRegistryURL,
-		ForceReload: cfg.IGForceReload,
-	}
-	for _, spec := range cfg.IGPackages {
-		result, err := ig.LoadPackage(ctx, pool, nil, spec, igOpts)
-		if err != nil {
-			slog.Warn("IG package load failed (non-fatal)", "package", spec, "err", err)
-		} else if !result.AlreadyLoaded {
-			slog.Info("IG package loaded",
-				"package", spec,
-				"searchParams", result.SearchParams,
-				"profiles", result.Profiles,
-			)
-		}
-	}
-
-	// Search param registry — loads base + IG params from DB
+	// Search param registry — loads base + already-recorded IG params from DB
 	registry := searchparam.NewRegistry()
 	if err := registry.Load(ctx, pool); err != nil {
 		return fmt.Errorf("load search params: %w", err)
 	}
 
-	// Store + HTTP
+	// Store + HTTP (server starts immediately; IGs load in background)
 	s := store.New(pool, registry)
-	router := handler.NewRouter(s, pool, cfg.BaseURL)
+
+	// igReady is set to 1 once all IGs finish loading.
+	var igReady atomic.Int32
+	if len(cfg.IGPackages) == 0 {
+		igReady.Store(1)
+	}
+
+	router := handler.NewRouter(s, pool, cfg.BaseURL, &igReady)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
@@ -90,7 +82,7 @@ func run() error {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Graceful shutdown
+	// Start listening before IGs are loaded so liveness probes pass immediately
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -101,6 +93,44 @@ func run() error {
 			cancel()
 		}
 	}()
+
+	// Load IGs in the background — parallel downloads, one DB tx per package
+	if len(cfg.IGPackages) > 0 {
+		go func() {
+			igOpts := ig.LoadOptions{
+				RegistryURL: cfg.IGRegistryURL,
+				ForceReload: cfg.IGForceReload,
+				CacheDir:    cfg.IGCacheDir,
+			}
+
+			g, gctx := errgroup.WithContext(ctx)
+			for _, spec := range cfg.IGPackages {
+				spec := spec // capture
+				g.Go(func() error {
+					result, err := ig.LoadPackage(gctx, pool, registry, spec, igOpts)
+					if err != nil {
+						slog.Warn("IG package load failed (non-fatal)", "package", spec, "err", err)
+						return nil // non-fatal: don't block other packages
+					}
+					if !result.AlreadyLoaded {
+						slog.Info("IG package loaded",
+							"package", spec,
+							"searchParams", result.SearchParams,
+							"profiles", result.Profiles,
+						)
+					}
+					return nil
+				})
+			}
+
+			if err := g.Wait(); err != nil {
+				slog.Warn("IG loading encountered errors", "err", err)
+			}
+
+			igReady.Store(1)
+			slog.Info("all IG packages ready")
+		}()
+	}
 
 	select {
 	case <-quit:
