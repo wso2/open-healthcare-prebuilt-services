@@ -21,6 +21,7 @@ var csvFS embed.FS
 // search_param_definitions. Rows that already exist (by resource_type + param_name)
 // are silently skipped so custom parameters are never overwritten.
 func SeedSearchParams(ctx context.Context, pool *pgxpool.Pool) error {
+	slog.Info("starting to seed FHIR R4 search parameters")
 	f, err := csvFS.Open("fhir-r4-search-params.csv")
 	if err != nil {
 		return fmt.Errorf("open embedded csv: %w", err)

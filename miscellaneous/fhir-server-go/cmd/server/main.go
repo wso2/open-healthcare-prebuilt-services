@@ -48,6 +48,7 @@ func run() error {
 	defer pool.Close()
 	slog.Info("connected to database")
 
+	slog.Info("starting database migration")
 	if err := db.Migrate(ctx, pool); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}

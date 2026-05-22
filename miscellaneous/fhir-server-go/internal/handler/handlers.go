@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -333,6 +334,7 @@ func (h *fhirHandler) create(w http.ResponseWriter, r *http.Request) {
 
 	resource, err := h.store.Create(r.Context(), rt, body)
 	if err != nil {
+		slog.Error("create failed", "resourceType", rt, "err", err)
 		operationOutcome(w, http.StatusInternalServerError, "error", "exception", err.Error())
 		return
 	}

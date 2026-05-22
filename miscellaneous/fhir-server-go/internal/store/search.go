@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"strconv"
 	"strings"
@@ -49,6 +50,7 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 
 	total, err := b.count(ctx, s.pool)
 	if err != nil {
+		slog.Error("search count failed", "resourceType", sp.ResourceType, "err", err)
 		return SearchResult{}, err
 	}
 

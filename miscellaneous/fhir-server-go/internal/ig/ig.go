@@ -92,7 +92,9 @@ func LoadPackage(
 			`SELECT EXISTS(SELECT 1 FROM ig_packages WHERE package_name=$1 AND package_version=$2)`,
 			name, version,
 		).Scan(&exists)
-		if err == nil && exists {
+		if err != nil {
+			slog.Warn("IG package existence check failed, proceeding to load", "package", source, "err", err)
+		} else if exists {
 			slog.Info("IG package already loaded, skipping", "package", source)
 			return &PackageResult{Name: name, Version: version, AlreadyLoaded: true}, nil
 		}
