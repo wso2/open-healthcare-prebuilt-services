@@ -7,10 +7,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
 )
 
-func NewRouter(s *store.Store, pool *pgxpool.Pool, baseURL string, igReady *atomic.Int32) http.Handler {
+func NewRouter(s StoreAPI, pool *pgxpool.Pool, baseURL string, igReady *atomic.Int32) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
@@ -56,7 +55,7 @@ func NewRouter(s *store.Store, pool *pgxpool.Pool, baseURL string, igReady *atom
 }
 
 type fhirHandler struct {
-	store   *store.Store
+	store   StoreAPI
 	pool    *pgxpool.Pool
 	baseURL string
 	igReady *atomic.Int32

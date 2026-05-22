@@ -251,12 +251,25 @@ func parseSpec(spec string) (name, version string) {
 // ─── Package fetching ─────────────────────────────────────────────────────────
 
 func fetchPackage(spec, name, version string, opts LoadOptions) ([]byte, error) {
-	// Local file — no caching needed
+	// Explicit HTTP/HTTPS URL — must be checked before the .tgz suffix check
+	// because a URL like "https://host/pkg.tgz" ends with .tgz.
+	if strings.HasPrefix(spec, "http://") || strings.HasPrefix(spec, "https://") {
+		return fetchURL(spec, name, version, opts)
+	}
+
+	// Local file — no caching needed (already on disk)
 	if strings.HasPrefix(spec, "/") || strings.HasPrefix(spec, "./") || strings.HasSuffix(spec, ".tgz") {
 		return os.ReadFile(spec)
 	}
 
-	// Determine cache path (only for registry + explicit URL downloads)
+	// Registry lookup: name@version → https://packages.fhir.org/{name}/{version}
+	registryURL := fmt.Sprintf("%s/%s/%s", strings.TrimRight(opts.RegistryURL, "/"), name, version)
+	return fetchURL(registryURL, name, version, opts)
+}
+
+// fetchURL downloads from a URL, using the disk cache if configured.
+func fetchURL(url, name, version string, opts LoadOptions) ([]byte, error) {
+	// Determine cache path
 	cachePath := ""
 	if opts.CacheDir != "" && name != "" && version != "" {
 		if err := os.MkdirAll(opts.CacheDir, 0o755); err == nil {
@@ -271,14 +284,6 @@ func fetchPackage(spec, name, version string, opts LoadOptions) ([]byte, error) 
 			slog.Debug("serving IG from cache", "path", cachePath)
 			return data, nil
 		}
-	}
-
-	// Download
-	var url string
-	if strings.HasPrefix(spec, "http://") || strings.HasPrefix(spec, "https://") {
-		url = spec
-	} else {
-		url = fmt.Sprintf("%s/%s/%s", strings.TrimRight(opts.RegistryURL, "/"), name, version)
 	}
 
 	data, err := httpGet(url, opts.HTTPTimeout)

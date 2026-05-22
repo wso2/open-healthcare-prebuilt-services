@@ -343,8 +343,12 @@ func (h *fhirHandler) typeHistory(w http.ResponseWriter, r *http.Request) {
 // ─── Metadata ─────────────────────────────────────────────────────────────────
 
 func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
-	packages, _ := ig.LoadedPackages(r.Context(), h.pool)
-	profiles, _ := ig.SupportedProfiles(r.Context(), h.pool)
+	var packages []ig.PackageResult
+	var profiles map[string][]string
+	if h.pool != nil {
+		packages, _ = ig.LoadedPackages(r.Context(), h.pool)
+		profiles, _ = ig.SupportedProfiles(r.Context(), h.pool)
+	}
 
 	// Build implementationGuide list
 	igURLs := make([]string, 0, len(packages))

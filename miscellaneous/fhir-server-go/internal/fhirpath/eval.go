@@ -17,19 +17,28 @@ import (
 
 // Evaluate evaluates a FHIRPath expression against a FHIR resource (as
 // map[string]any decoded from JSON) and returns all matched leaf values.
+//
+// Union alternatives (|) are evaluated independently and their results merged.
+// Within each alternative the nodes form a chain: output of one node is the
+// input to the next (FHIRPath implicit iteration semantics).
 func Evaluate(expr string, resource map[string]any) ([]any, error) {
 	expr = strings.TrimSpace(expr)
-	nodes, err := parse(expr)
+	chains, err := parse(expr)
 	if err != nil {
 		return nil, err
 	}
 	var results []any
-	for _, n := range nodes {
-		vals, err := evalNode(n, []any{resource})
-		if err != nil {
-			return nil, err
+	for _, chain := range chains {
+		// Start each chain with the resource as the single input.
+		current := []any{resource}
+		for _, n := range chain {
+			next, err := evalNode(n, current)
+			if err != nil {
+				return nil, err
+			}
+			current = next
 		}
-		results = append(results, vals...)
+		results = append(results, current...)
 	}
 	return results, nil
 }
@@ -58,16 +67,17 @@ type node struct {
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
 
-// parse splits a union expression and builds a list of path chains.
-func parse(expr string) ([]node, error) {
+// parse splits a union expression and returns one node-chain per alternative.
+// Each chain is evaluated sequentially; results across chains are unioned.
+func parse(expr string) ([][]node, error) {
 	parts := splitUnion(expr)
-	var chains []node
+	var chains [][]node
 	for _, p := range parts {
 		chain, err := parseChain(strings.TrimSpace(p))
 		if err != nil {
 			return nil, err
 		}
-		chains = append(chains, chain...)
+		chains = append(chains, chain)
 	}
 	return chains, nil
 }
@@ -173,8 +183,9 @@ func parseToken(tok string) (node, error) {
 }
 
 func parseWhere(inner string) (node, error) {
-	// Supports: key = 'value'  or  key = "value"
-	for _, sep := range []string{"=", "!="} {
+	// Supports: key = 'value'  or  key != 'value'
+	// "!=" must be checked before "=" to avoid matching the "=" inside "!="
+	for _, sep := range []string{"!=", "="} {
 		idx := strings.Index(inner, sep)
 		if idx < 0 {
 			continue
@@ -359,7 +370,13 @@ func expandPolymorphic(expr string) string {
 			pre = pre[:lastDot]
 		}
 
-		concreteField := field + typeName
+		// FHIR camelCase: valueQuantity, onsetDateTime — capitalize the type name's first letter.
+		var concreteField string
+		if len(typeName) > 0 {
+			concreteField = field + strings.ToUpper(typeName[:1]) + typeName[1:]
+		} else {
+			concreteField = field
+		}
 		if pre == "" {
 			expr = concreteField + expr[idx+end+1:]
 		} else {
