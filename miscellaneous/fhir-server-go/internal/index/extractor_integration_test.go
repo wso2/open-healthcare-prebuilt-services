@@ -4,6 +4,7 @@ package index_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,6 +20,24 @@ func setup(t *testing.T) (*index.Extractor, *pgxpool.Pool) {
 	return index.New(reg), pool
 }
 
+// insertResource inserts a row into resources so sp_* FK constraints are satisfied.
+func insertResource(t *testing.T, pool *pgxpool.Pool, resourceType, resourceID string, resource map[string]any) {
+	t.Helper()
+	raw, err := json.Marshal(resource)
+	if err != nil {
+		t.Fatalf("marshal resource: %v", err)
+	}
+	_, err = pool.Exec(context.Background(),
+		`INSERT INTO resources (fhir_id, resource_type, resource_json)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (fhir_id, resource_type) DO NOTHING`,
+		resourceID, resourceType, raw,
+	)
+	if err != nil {
+		t.Fatalf("insert resource: %v", err)
+	}
+}
+
 func countRows(t *testing.T, pool *pgxpool.Pool, table, resourceID string) int {
 	t.Helper()
 	var n int
@@ -31,10 +50,9 @@ func countRows(t *testing.T, pool *pgxpool.Pool, table, resourceID string) int {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 func TestExtractor_IndexStringParam(t *testing.T) {
-	ext, pool := setup(t)
+	_, pool := setup(t)
 	ctx := context.Background()
 
-	// Ensure the param is in the registry (it comes from seed, but be explicit)
 	reg := testutil.MustRegistry(t, pool)
 	reg.Upsert(searchparam.Definition{
 		ResourceType: "Patient", ParamName: "family",
@@ -46,6 +64,7 @@ func TestExtractor_IndexStringParam(t *testing.T) {
 		"resourceType": "Patient",
 		"name":         []any{map[string]any{"family": "TestFamily"}},
 	}
+	insertResource(t, pool, "Patient", "test-str-1", resource)
 
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -75,6 +94,7 @@ func TestExtractor_IndexTokenParam_FromGender(t *testing.T) {
 		"resourceType": "Patient",
 		"gender":       "female",
 	}
+	insertResource(t, pool, "Patient", "test-gender-1", resource)
 
 	tx, _ := pool.Begin(ctx)
 	defer tx.Rollback(ctx)
@@ -101,6 +121,7 @@ func TestExtractor_IndexDateParam(t *testing.T) {
 		"resourceType": "Patient",
 		"birthDate":    "1990-06-15",
 	}
+	insertResource(t, pool, "Patient", "test-bd-1", resource)
 
 	tx, _ := pool.Begin(ctx)
 	defer tx.Rollback(ctx)
@@ -131,6 +152,7 @@ func TestExtractor_IndexReferenceParam(t *testing.T) {
 			"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8310-5"}},
 		},
 	}
+	insertResource(t, pool, "Observation", "test-ref-obs-1", resource)
 
 	tx, _ := pool.Begin(ctx)
 	defer tx.Rollback(ctx)
@@ -167,6 +189,7 @@ func TestExtractor_IndexTokenParam_CodeableConcept(t *testing.T) {
 		},
 		"subject": map[string]any{"reference": "Patient/p1"},
 	}
+	insertResource(t, pool, "Observation", "test-obs-code-1", resource)
 
 	tx, _ := pool.Begin(ctx)
 	defer tx.Rollback(ctx)
@@ -176,9 +199,12 @@ func TestExtractor_IndexTokenParam_CodeableConcept(t *testing.T) {
 	}
 	tx.Commit(ctx)
 
+	// In the FHIR R4 seed, the `code` param for Observation has an empty FHIRPath;
+	// `combo-code` carries the FHIRPath Observation.code with a trailing space.
+	// Use combo-code to verify CodeableConcept extraction.
 	var code string
 	pool.QueryRow(ctx,
-		`SELECT code FROM sp_token WHERE resource_id='test-obs-code-1' AND param_name='code' AND system='http://loinc.org'`,
+		`SELECT code FROM sp_token WHERE resource_id='test-obs-code-1' AND param_name='combo-code' AND system='http://loinc.org'`,
 	).Scan(&code)
 	if code != "8310-5" {
 		t.Errorf("expected code=8310-5, got %q", code)
@@ -195,6 +221,7 @@ func TestExtractor_Delete_ClearsAllSpTables(t *testing.T) {
 		"birthDate":    "1985-03-20",
 	}
 	rid := "test-delete-rid-1"
+	insertResource(t, pool, "Patient", rid, resource)
 
 	tx, _ := pool.Begin(ctx)
 	ext.Index(ctx, tx, "Patient", rid, resource)

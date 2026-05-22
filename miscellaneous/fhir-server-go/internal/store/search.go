@@ -197,7 +197,11 @@ func (b *queryBuilder) buildExistsForValue(param, modifier, value string) (strin
 	case strings.Contains(value, "|"):
 		return b.buildTokenExists(param, modifier, value), true
 	default:
-		return b.buildStringExists(param, modifier, value), true
+		// Without registry type info, match against both sp_string and sp_token so
+		// plain-code token searches (e.g. gender=female) work alongside string params.
+		strQ := b.buildStringExists(param, modifier, value)
+		tokQ := b.buildTokenExists(param, modifier, value)
+		return strQ + " UNION ALL " + tokQ, true
 	}
 }
 
@@ -244,20 +248,27 @@ func (b *queryBuilder) buildDateExists(param, value string) string {
 	low, high := expandDateRange(dateStr)
 	rtP := b.next(b.rt)
 	pP := b.next(param)
-	lowP := b.next(low)
-	highP := b.next(high)
+	// Only bind the args actually referenced by each operator to avoid PG arg-count mismatch.
 	switch prefix {
 	case "gt":
+		highP := b.next(high)
 		return fmt.Sprintf("SELECT 1 FROM sp_date s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value_low > %s", rtP, pP, highP)
 	case "lt":
+		lowP := b.next(low)
 		return fmt.Sprintf("SELECT 1 FROM sp_date s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value_high < %s", rtP, pP, lowP)
 	case "ge":
+		lowP := b.next(low)
 		return fmt.Sprintf("SELECT 1 FROM sp_date s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value_high >= %s", rtP, pP, lowP)
 	case "le":
+		highP := b.next(high)
 		return fmt.Sprintf("SELECT 1 FROM sp_date s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value_low <= %s", rtP, pP, highP)
 	case "ne":
+		highP := b.next(high)
+		lowP := b.next(low)
 		return fmt.Sprintf("SELECT 1 FROM sp_date s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND NOT (s.value_low <= %s AND s.value_high >= %s)", rtP, pP, highP, lowP)
 	default: // eq
+		highP := b.next(high)
+		lowP := b.next(low)
 		return fmt.Sprintf("SELECT 1 FROM sp_date s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value_low <= %s AND s.value_high >= %s", rtP, pP, highP, lowP)
 	}
 }

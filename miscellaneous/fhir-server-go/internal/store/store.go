@@ -207,8 +207,10 @@ func (s *Store) Delete(ctx context.Context, resourceType, resourceID string) err
 		return err
 	}
 
+	// DELETE is a new version in FHIR — bump to avoid UNIQUE(fhir_id, resource_type, version_id) conflict.
+	deleteVersion := versionID + 1
 	now := time.Now().UTC()
-	if err := saveHistory(ctx, tx, resourceType, resourceID, versionID, "DELETE", raw, now); err != nil {
+	if err := saveHistory(ctx, tx, resourceType, resourceID, deleteVersion, "DELETE", raw, now); err != nil {
 		return err
 	}
 
@@ -217,9 +219,9 @@ func (s *Store) Delete(ctx context.Context, resourceType, resourceID string) err
 	}
 
 	if _, err := tx.Exec(ctx, `
-		UPDATE resources SET is_deleted = TRUE, last_updated = $1
-		WHERE fhir_id = $2 AND resource_type = $3`,
-		now, resourceID, resourceType,
+		UPDATE resources SET is_deleted = TRUE, version_id = $1, last_updated = $2
+		WHERE fhir_id = $3 AND resource_type = $4`,
+		deleteVersion, now, resourceID, resourceType,
 	); err != nil {
 		return err
 	}

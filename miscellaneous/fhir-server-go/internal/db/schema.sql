@@ -36,16 +36,16 @@ CREATE INDEX IF NOT EXISTS idx_res_search_text   ON resources USING GIN (search_
 
 CREATE TABLE IF NOT EXISTS resource_history (
     id            BIGSERIAL    PRIMARY KEY,
-    resource_id   VARCHAR(64)  NOT NULL,
+    fhir_id       VARCHAR(64)  NOT NULL,
     resource_type VARCHAR(100) NOT NULL,
     version_id    INT          NOT NULL,
     operation     VARCHAR(10)  NOT NULL,   -- CREATE | UPDATE | DELETE
     recorded_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     resource_json JSONB,
-    UNIQUE (resource_id, resource_type, version_id)
+    UNIQUE (fhir_id, resource_type, version_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_hist_resource ON resource_history (resource_type, resource_id, version_id DESC);
+CREATE INDEX IF NOT EXISTS idx_hist_resource ON resource_history (resource_type, fhir_id, version_id DESC);
 CREATE INDEX IF NOT EXISTS idx_hist_time     ON resource_history (recorded_at DESC);
 
 -- ─── String search index ─────────────────────────────────────────────────────
