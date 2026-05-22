@@ -492,18 +492,51 @@ func (s *Store) SyncSearchParameter(ctx context.Context, body map[string]any) er
 		return nil
 	}
 
+	// Build the new set of bases to keep.
+	newBases := make(map[string]struct{}, len(baseArr))
+	for _, b := range baseArr {
+		if rt, ok := b.(string); ok && rt != "" {
+			newBases[rt] = struct{}{}
+		}
+	}
+	if len(newBases) == 0 {
+		return nil
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	var defs []searchparam.Definition
-	for _, b := range baseArr {
-		resourceType, _ := b.(string)
-		if resourceType == "" {
-			continue
+	// Read previously persisted resource_types for this code so we can drop
+	// any that have been removed from base in this update. Without this,
+	// narrowing a SearchParameter (e.g. [Patient, Observation] → [Patient])
+	// would leave the Observation definition behind.
+	rows, err := tx.Query(ctx,
+		`SELECT resource_type FROM search_param_definitions
+		 WHERE param_name = $1 AND is_custom = TRUE FOR UPDATE`,
+		code,
+	)
+	if err != nil {
+		return fmt.Errorf("read existing search param bases for %s: %w", code, err)
+	}
+	var oldBases []string
+	for rows.Next() {
+		var rt string
+		if err := rows.Scan(&rt); err != nil {
+			rows.Close()
+			return err
 		}
+		oldBases = append(oldBases, rt)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	var defs []searchparam.Definition
+	for rt := range newBases {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO search_param_definitions (resource_type, param_name, param_type, fhirpath_expr, is_custom)
 			VALUES ($1, $2, $3, $4, TRUE)
@@ -511,18 +544,37 @@ func (s *Store) SyncSearchParameter(ctx context.Context, body map[string]any) er
 			DO UPDATE SET param_type = EXCLUDED.param_type,
 			              fhirpath_expr = EXCLUDED.fhirpath_expr
 			WHERE search_param_definitions.is_custom = TRUE`,
-			resourceType, code, paramType, expression,
+			rt, code, paramType, expression,
 		); err != nil {
-			return fmt.Errorf("upsert search param %s.%s: %w", resourceType, code, err)
+			return fmt.Errorf("upsert search param %s.%s: %w", rt, code, err)
 		}
 		defs = append(defs, searchparam.Definition{
-			ResourceType: resourceType,
+			ResourceType: rt,
 			ParamName:    code,
 			ParamType:    paramType,
 			FHIRPath:     expression,
 			IsCustom:     true,
 		})
 	}
+
+	// Remove definitions for resource_types that were previously persisted but
+	// are no longer in base.
+	var dropped []string
+	for _, rt := range oldBases {
+		if _, keep := newBases[rt]; !keep {
+			dropped = append(dropped, rt)
+		}
+	}
+	if len(dropped) > 0 {
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM search_param_definitions
+			 WHERE param_name = $1 AND is_custom = TRUE AND resource_type = ANY($2)`,
+			code, dropped,
+		); err != nil {
+			return fmt.Errorf("delete stale search param defs for %s: %w", code, err)
+		}
+	}
+
 	// Commit DB changes before updating the in-memory registry so that a
 	// failure or rollback never leaves the registry ahead of the database.
 	if err := tx.Commit(ctx); err != nil {
@@ -530,6 +582,9 @@ func (s *Store) SyncSearchParameter(ctx context.Context, body map[string]any) er
 	}
 	for _, def := range defs {
 		s.registry.Upsert(def)
+	}
+	for _, rt := range dropped {
+		s.registry.Remove(rt, code)
 	}
 	return nil
 }

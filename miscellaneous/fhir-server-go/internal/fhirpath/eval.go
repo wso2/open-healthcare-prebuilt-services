@@ -293,10 +293,11 @@ func filterByType(input any, typeName string) []any {
 
 // filterWhere implements where(key='val') filtering. parseWhere returns a
 // where node with an empty key when the clause is unsupported; in that case
-// we pass the input through rather than dropping all matches.
+// we drop all matches rather than passing input through, so unsupported
+// predicates do not silently broaden extraction.
 func filterWhere(input any, key, val, op string) []any {
 	if key == "" {
-		return flatten(input)
+		return nil
 	}
 	switch v := input.(type) {
 	case map[string]any:

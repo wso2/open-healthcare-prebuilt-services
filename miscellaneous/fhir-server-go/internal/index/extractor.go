@@ -239,6 +239,9 @@ func expandDateString(s string) (low, high time.Time, err error) {
 		low = time.Date(y, 1, 1, 0, 0, 0, 0, time.UTC)
 		high = time.Date(y, 12, 31, 23, 59, 59, 0, time.UTC)
 	case 7: // YYYY-MM
+		if s[4] != '-' {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid year-month %q", s)
+		}
 		y, e1 := strconv.Atoi(s[0:4])
 		mi, e2 := strconv.Atoi(s[5:7])
 		if e1 != nil || e2 != nil || mi < 1 || mi > 12 {

@@ -278,10 +278,13 @@ func (h *fhirHandler) everything(w http.ResponseWriter, r *http.Request) {
 	var sinceTime time.Time
 	sinceValid := false
 	if since != "" {
-		if t, err := time.Parse(time.RFC3339, since); err == nil {
-			sinceTime = t
-			sinceValid = true
+		t, err := time.Parse(time.RFC3339, since)
+		if err != nil {
+			operationOutcome(w, http.StatusBadRequest, "error", "invalid", "_since must be RFC3339")
+			return
 		}
+		sinceTime = t
+		sinceValid = true
 	}
 
 	// Read the anchor resource
