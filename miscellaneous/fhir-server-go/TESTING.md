@@ -4,16 +4,24 @@
 
 ```bash
 cd miscellaneous/fhir-server-go
-go test ./...         # run all tests
+
+# Unit tests (no external dependencies)
+go test ./...
 go test ./... -v      # verbose (shows each test name)
 go test ./... -race   # data race detector
+
+# Integration tests (requires Docker)
+go test -tags integration ./...
+go test -tags integration -v -timeout 300s ./...
 ```
 
-All 107 tests are **unit tests** — no database, no Docker, no network (ig cache-miss tests spin up an `httptest.Server` locally). They run in under 5 seconds on a laptop.
+All 107 **unit tests** have no database, no Docker, no network (IG cache-miss tests spin up an `httptest.Server` locally). They run in under 5 seconds on a laptop.
+
+**Integration tests** spin up a real PostgreSQL 16 container via [testcontainers-go](https://testcontainers.com/). Each test gets its own isolated database; containers are terminated automatically when the test finishes. Expect 30–90 seconds per package on first run (image pull) and 10–30 seconds on subsequent runs.
 
 ---
 
-## Coverage summary
+## Unit test coverage
 
 | Package | Tests | What is covered |
 |---|---|---|
@@ -27,17 +35,29 @@ All 107 tests are **unit tests** — no database, no Docker, no network (ig cach
 
 ---
 
-## Packages without tests (require a live DB)
+## Integration test coverage
 
-| Package | Why |
-|---|---|
-| `internal/db` | Schema migration — needs PostgreSQL |
-| `internal/index` | `Extractor.Index` / `Delete` insert into sp_* tables |
-| `internal/seed` | `SeedSearchParams` bulk-inserts CSV into DB |
-| `internal/store` (CRUD path) | `Create`, `Read`, `Update`, `Delete`, `Search`, `GetHistory` all need pgxpool |
-| `cmd/server` | Full integration — needs DB + HTTP server |
+Run with `go test -tags integration -timeout 300s <package>`. Requires Docker.
 
-These are best covered with `docker compose up db` and integration tests (or testcontainers). The pure-logic helpers inside `store` (25 functions) **are** tested via `internal/store/helpers_test.go`.
+| Package | Tests | What is covered |
+|---|---|---|
+| `internal/db` | 3 | `Migrate` creates all 12 expected tables; `search_param_definitions` has all required columns; migration is idempotent |
+| `internal/seed` | 4 | `SeedSearchParams` inserts ≥100 FHIR R4 base params; seeding is idempotent; 8 known params are present; all 5 param types exist |
+| `internal/store` | ~30 | Full CRUD lifecycle (create→read→update→patch→delete); version history; pagination; search by string/token/date params; `_id` search; deleted resources excluded; `FetchReferences` forward and reverse; `SearchParameter` sync and delete |
+| `internal/index` | 6 | `Extractor.Index` writes to `sp_string`, `sp_token`, `sp_date`, `sp_reference`; CodeableConcept token extraction; `Delete` clears all `sp_*` tables for a resource |
+| **Total** | **~43** | **Real PostgreSQL, no mocks** |
+
+### Shared test infrastructure
+
+Integration tests share a test helper in `internal/testutil/postgres.go` (build tag: `integration`):
+
+- **`MustDB(t)`** — starts a fresh `postgres:16-alpine` container, runs `db.Migrate`, returns a pool; container terminates on `t.Cleanup`.
+- **`MustSeededDB(t)`** — like `MustDB` but also runs `seed.SeedSearchParams`.
+- **`MustRegistry(t, pool)`** — loads a `searchparam.Registry` from the pool.
+
+Each test starts its own container for full isolation. If you need faster runs with a shared container, use `TestMain` + `sync.Once` — acceptable for local development.
+
+---
 
 ---
 
