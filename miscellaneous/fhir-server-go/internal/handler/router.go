@@ -5,16 +5,17 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
 )
 
-func NewRouter(s *store.Store, baseURL string) http.Handler {
+func NewRouter(s *store.Store, pool *pgxpool.Pool, baseURL string) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
 
-	h := &fhirHandler{store: s, baseURL: baseURL}
+	h := &fhirHandler{store: s, pool: pool, baseURL: baseURL}
 
 	r.Route("/fhir/r4", func(r chi.Router) {
 		// Capability statement
@@ -43,5 +44,6 @@ func NewRouter(s *store.Store, baseURL string) http.Handler {
 
 type fhirHandler struct {
 	store   *store.Store
+	pool    *pgxpool.Pool
 	baseURL string
 }

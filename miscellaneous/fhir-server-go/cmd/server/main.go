@@ -13,6 +13,7 @@ import (
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/config"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/db"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/handler"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/ig"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/searchparam"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/seed"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
@@ -53,7 +54,25 @@ func run() error {
 		slog.Warn("search param seed failed (non-fatal)", "err", err)
 	}
 
-	// Search param registry
+	// Load IGs before populating the registry so IG search params are included
+	igOpts := ig.LoadOptions{
+		RegistryURL: cfg.IGRegistryURL,
+		ForceReload: cfg.IGForceReload,
+	}
+	for _, spec := range cfg.IGPackages {
+		result, err := ig.LoadPackage(ctx, pool, nil, spec, igOpts)
+		if err != nil {
+			slog.Warn("IG package load failed (non-fatal)", "package", spec, "err", err)
+		} else if !result.AlreadyLoaded {
+			slog.Info("IG package loaded",
+				"package", spec,
+				"searchParams", result.SearchParams,
+				"profiles", result.Profiles,
+			)
+		}
+	}
+
+	// Search param registry — loads base + IG params from DB
 	registry := searchparam.NewRegistry()
 	if err := registry.Load(ctx, pool); err != nil {
 		return fmt.Errorf("load search params: %w", err)
@@ -61,7 +80,7 @@ func run() error {
 
 	// Store + HTTP
 	s := store.New(pool, registry)
-	router := handler.NewRouter(s, cfg.BaseURL)
+	router := handler.NewRouter(s, pool, cfg.BaseURL)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),

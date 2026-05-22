@@ -4,13 +4,17 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
-	DatabaseURL string
-	Port        int
-	BaseURL     string
-	LogLevel    string
+	DatabaseURL   string
+	Port          int
+	BaseURL       string
+	LogLevel      string
+	IGPackages    []string // e.g. ["hl7.fhir.us.core@6.1.0", "hl7.fhir.us.carin-bb@2.0.0"]
+	IGRegistryURL string   // default: https://packages.fhir.org
+	IGForceReload bool     // re-load IGs even if already recorded in ig_packages
 }
 
 func Load() (*Config, error) {
@@ -33,11 +37,24 @@ func Load() (*Config, error) {
 		serverPort = n
 	}
 
+	// IG_PACKAGES: comma-separated list, e.g. "hl7.fhir.us.core@6.1.0,hl7.fhir.us.carin-bb@2.0.0"
+	var igPackages []string
+	if raw := os.Getenv("IG_PACKAGES"); raw != "" {
+		for _, p := range strings.Split(raw, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				igPackages = append(igPackages, p)
+			}
+		}
+	}
+
 	return &Config{
-		DatabaseURL: dbURL,
-		Port:        serverPort,
-		BaseURL:     getenv("BASE_URL", fmt.Sprintf("http://localhost:%d/fhir/r4", serverPort)),
-		LogLevel:    getenv("LOG_LEVEL", "info"),
+		DatabaseURL:   dbURL,
+		Port:          serverPort,
+		BaseURL:       getenv("BASE_URL", fmt.Sprintf("http://localhost:%d/fhir/r4", serverPort)),
+		LogLevel:      getenv("LOG_LEVEL", "info"),
+		IGPackages:    igPackages,
+		IGRegistryURL: getenv("IG_REGISTRY_URL", "https://packages.fhir.org"),
+		IGForceReload: os.Getenv("IG_FORCE_RELOAD") == "true",
 	}, nil
 }
 

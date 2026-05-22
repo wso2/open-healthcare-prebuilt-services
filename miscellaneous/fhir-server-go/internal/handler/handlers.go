@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/ig"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
 )
 
@@ -342,17 +343,63 @@ func (h *fhirHandler) typeHistory(w http.ResponseWriter, r *http.Request) {
 // ─── Metadata ─────────────────────────────────────────────────────────────────
 
 func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"resourceType": "CapabilityStatement",
-		"status":       "active",
-		"kind":         "instance",
-		"fhirVersion":  "4.0.1",
-		"format":       []string{"application/fhir+json"},
+	packages, _ := ig.LoadedPackages(r.Context(), h.pool)
+	profiles, _ := ig.SupportedProfiles(r.Context(), h.pool)
+
+	// Build implementationGuide list
+	igURLs := make([]string, 0, len(packages))
+	for _, p := range packages {
+		igURLs = append(igURLs, fmt.Sprintf("http://hl7.org/fhir/ig/%s/%s", p.Name, p.Version))
+	}
+
+	// Build rest.resource list with supportedProfile entries
+	fhirResourceTypes := []string{
+		"Patient", "Practitioner", "Organization", "Observation", "Condition",
+		"Encounter", "MedicationRequest", "DiagnosticReport", "Procedure",
+		"AllergyIntolerance", "Immunization", "Coverage", "Claim", "ExplanationOfBenefit",
+	}
+	resources := make([]any, 0, len(fhirResourceTypes))
+	for _, rt := range fhirResourceTypes {
+		entry := map[string]any{
+			"type": rt,
+			"interaction": []any{
+				map[string]any{"code": "read"},
+				map[string]any{"code": "vread"},
+				map[string]any{"code": "update"},
+				map[string]any{"code": "patch"},
+				map[string]any{"code": "delete"},
+				map[string]any{"code": "create"},
+				map[string]any{"code": "search-type"},
+			},
+			"versioning":       "versioned",
+			"readHistory":      true,
+			"updateCreate":     false,
+			"conditionalCreate": false,
+		}
+		if profs, ok := profiles[rt]; ok && len(profs) > 0 {
+			entry["supportedProfile"] = profs
+		}
+		resources = append(resources, entry)
+	}
+
+	cs := map[string]any{
+		"resourceType":        "CapabilityStatement",
+		"status":              "active",
+		"kind":                "instance",
+		"fhirVersion":         "4.0.1",
+		"format":              []string{"application/fhir+json"},
+		"implementationGuide": igURLs,
 		"software": map[string]any{
 			"name":    "open-healthcare-fhir-server-go",
 			"version": "1.0.0",
 		},
-	})
+		"rest": []any{map[string]any{
+			"mode":      "server",
+			"resource":  resources,
+			"operation": []any{map[string]any{"name": "everything", "definition": "http://hl7.org/fhir/OperationDefinition/Patient-everything"}},
+		}},
+	}
+	writeJSON(w, http.StatusOK, cs)
 }
 
 // ─── Helpers for $everything ──────────────────────────────────────────────────

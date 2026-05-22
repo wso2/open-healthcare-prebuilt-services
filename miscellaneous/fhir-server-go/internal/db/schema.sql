@@ -210,7 +210,9 @@ CREATE INDEX IF NOT EXISTS idx_sp_coords ON sp_coords (resource_type, param_name
 
 -- ─── Search parameter definitions ────────────────────────────────────────────
 -- Replaces SEARCH_PARAM_RES_EXPRESSIONS.
--- Populated at startup from assets/r4-searchParam-Expression.csv.
+-- Populated at startup from embedded CSV (base FHIR R4) and IG packages.
+-- ig_source values: '' = base FHIR R4 spec, 'user' = SearchParameter resource,
+--                   'name@version' = from a specific IG package.
 
 CREATE TABLE IF NOT EXISTS search_param_definitions (
     id            SERIAL       PRIMARY KEY,
@@ -219,11 +221,37 @@ CREATE TABLE IF NOT EXISTS search_param_definitions (
     param_type    VARCHAR(32)  NOT NULL,
     fhirpath_expr TEXT         NOT NULL,
     is_custom     BOOLEAN      NOT NULL DEFAULT FALSE,
+    ig_source     TEXT         NOT NULL DEFAULT '',
     UNIQUE (resource_type, param_name)
 );
 
+-- Idempotent migration: add ig_source to existing deployments
+ALTER TABLE search_param_definitions ADD COLUMN IF NOT EXISTS ig_source TEXT NOT NULL DEFAULT '';
+
 CREATE INDEX IF NOT EXISTS idx_spd_resource ON search_param_definitions (resource_type);
 CREATE INDEX IF NOT EXISTS idx_spd_custom   ON search_param_definitions (resource_type) WHERE is_custom = TRUE;
+CREATE INDEX IF NOT EXISTS idx_spd_ig       ON search_param_definitions (ig_source) WHERE ig_source != '';
+
+-- ─── Implementation Guide tracking ───────────────────────────────────────────
+-- ig_packages: one row per loaded IG package; used to skip re-loading on restart.
+-- ig_profiles: profiles declared by each IG (for capability statement).
+
+CREATE TABLE IF NOT EXISTS ig_packages (
+    id              SERIAL      PRIMARY KEY,
+    package_name    TEXT        NOT NULL,
+    package_version TEXT        NOT NULL,
+    fhir_version    TEXT        NOT NULL DEFAULT '',
+    loaded_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (package_name, package_version)
+);
+
+CREATE TABLE IF NOT EXISTS ig_profiles (
+    id            SERIAL PRIMARY KEY,
+    package_name  TEXT   NOT NULL,
+    profile_url   TEXT   NOT NULL,
+    resource_type TEXT   NOT NULL DEFAULT '',
+    UNIQUE (profile_url)
+);
 
 -- ─── FHIR Terminology: closure tables ─────────────────────────────────────────
 -- Unchanged from previous schema version.

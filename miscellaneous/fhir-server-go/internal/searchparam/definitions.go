@@ -17,6 +17,7 @@ type Definition struct {
 	ParamType    string // string|token|date|number|quantity|uri|reference|composite|special
 	FHIRPath     string
 	IsCustom     bool
+	IGSource     string // '' = base FHIR R4, 'user' = user-defined, 'name@ver' = IG package
 }
 
 type Registry struct {
@@ -35,7 +36,7 @@ func NewRegistry() *Registry {
 // Load reads all definitions from the DB and replaces the current cache.
 func (r *Registry) Load(ctx context.Context, pool *pgxpool.Pool) error {
 	rows, err := pool.Query(ctx, `
-		SELECT resource_type, param_name, param_type, fhirpath_expr, is_custom
+		SELECT resource_type, param_name, param_type, fhirpath_expr, is_custom, ig_source
 		FROM search_param_definitions
 		ORDER BY resource_type, param_name
 	`)
@@ -50,7 +51,7 @@ func (r *Registry) Load(ctx context.Context, pool *pgxpool.Pool) error {
 
 	for rows.Next() {
 		var d Definition
-		if err := rows.Scan(&d.ResourceType, &d.ParamName, &d.ParamType, &d.FHIRPath, &d.IsCustom); err != nil {
+		if err := rows.Scan(&d.ResourceType, &d.ParamName, &d.ParamType, &d.FHIRPath, &d.IsCustom, &d.IGSource); err != nil {
 			return fmt.Errorf("scan definition row: %w", err)
 		}
 		byRes[d.ResourceType] = append(byRes[d.ResourceType], d)
