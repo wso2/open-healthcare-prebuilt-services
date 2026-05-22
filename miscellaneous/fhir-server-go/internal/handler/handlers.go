@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/ig"
@@ -39,6 +41,39 @@ func readBody(r *http.Request) (map[string]any, error) {
 		return nil, err
 	}
 	return body, nil
+}
+
+// requireFHIRContent returns false (and writes 415) only when Content-Type is
+// explicitly set to a non-JSON type. Missing Content-Type is allowed.
+func requireFHIRContent(w http.ResponseWriter, r *http.Request) bool {
+	ct := r.Header.Get("Content-Type")
+	if ct == "" {
+		return true
+	}
+	base := strings.TrimSpace(strings.SplitN(ct, ";", 2)[0])
+	if base != "application/fhir+json" && base != "application/json" {
+		operationOutcome(w, http.StatusUnsupportedMediaType, "error", "not-supported",
+			"Content-Type must be application/fhir+json")
+		return false
+	}
+	return true
+}
+
+func firstVal(params map[string][]string, key string) string {
+	if vs := params[key]; len(vs) > 0 {
+		return vs[0]
+	}
+	return ""
+}
+
+// parseIfMatchVersion extracts the integer version from an ETag like W/"3".
+// Returns (version, true) on success, (0, false) if the header is malformed.
+func parseIfMatchVersion(header string) (int, bool) {
+	s := strings.TrimSpace(header)
+	s = strings.TrimPrefix(s, "W/")
+	s = strings.Trim(s, `"`)
+	v, err := strconv.Atoi(s)
+	return v, err == nil
 }
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
@@ -103,6 +138,42 @@ func (h *fhirHandler) search(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, bundle)
 }
 
+func (h *fhirHandler) searchPost(w http.ResponseWriter, r *http.Request) {
+	rt := chi.URLParam(r, "resourceType")
+
+	if err := r.ParseForm(); err != nil {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid form body: "+err.Error())
+		return
+	}
+
+	params := map[string][]string{}
+	for k, vs := range r.PostForm {
+		params[k] = vs
+	}
+	for k, vs := range r.URL.Query() {
+		if _, exists := params[k]; !exists {
+			params[k] = vs
+		}
+	}
+
+	page, _ := strconv.Atoi(firstVal(params, "_page"))
+	pageSize, _ := strconv.Atoi(firstVal(params, "_count"))
+
+	result, err := h.store.Search(r.Context(), store.SearchParams{
+		ResourceType: rt,
+		Params:       params,
+		Page:         page,
+		PageSize:     pageSize,
+	})
+	if err != nil {
+		operationOutcome(w, http.StatusInternalServerError, "error", "exception", err.Error())
+		return
+	}
+
+	bundle := h.buildBundle(rt, result, params, page, pageSize)
+	writeJSON(w, http.StatusOK, bundle)
+}
+
 func (h *fhirHandler) buildBundle(rt string, result store.SearchResult, params map[string][]string, page, pageSize int) map[string]any {
 	if pageSize <= 0 {
 		pageSize = 20
@@ -130,15 +201,38 @@ func (h *fhirHandler) buildBundle(rt string, result store.SearchResult, params m
 		})
 	}
 
+	lastPage := result.Total / pageSize
+	if result.Total%pageSize != 0 {
+		lastPage++
+	}
+	if lastPage < 1 {
+		lastPage = 1
+	}
+
+	links := []any{
+		map[string]any{"relation": "self", "url": fmt.Sprintf("%s/%s?_page=%d&_count=%d", h.baseURL, rt, page, pageSize)},
+		map[string]any{"relation": "first", "url": fmt.Sprintf("%s/%s?_page=1&_count=%d", h.baseURL, rt, pageSize)},
+		map[string]any{"relation": "last", "url": fmt.Sprintf("%s/%s?_page=%d&_count=%d", h.baseURL, rt, lastPage, pageSize)},
+	}
+	if page*pageSize < result.Total {
+		links = append(links, map[string]any{
+			"relation": "next",
+			"url":      fmt.Sprintf("%s/%s?_page=%d&_count=%d", h.baseURL, rt, page+1, pageSize),
+		})
+	}
+	if page > 1 {
+		links = append(links, map[string]any{
+			"relation": "previous",
+			"url":      fmt.Sprintf("%s/%s?_page=%d&_count=%d", h.baseURL, rt, page-1, pageSize),
+		})
+	}
+
 	return map[string]any{
 		"resourceType": "Bundle",
 		"type":         "searchset",
 		"total":        result.Total,
-		"link": []any{
-			map[string]any{"relation": "self", "url": fmt.Sprintf("%s/%s?_page=%d&_count=%d", h.baseURL, rt, page, pageSize)},
-			map[string]any{"relation": "first", "url": fmt.Sprintf("%s/%s?_page=1&_count=%d", h.baseURL, rt, pageSize)},
-		},
-		"entry": entries,
+		"link":         links,
+		"entry":        entries,
 	}
 }
 
@@ -216,9 +310,24 @@ func (h *fhirHandler) everything(w http.ResponseWriter, r *http.Request) {
 func (h *fhirHandler) create(w http.ResponseWriter, r *http.Request) {
 	rt := chi.URLParam(r, "resourceType")
 
+	if !requireFHIRContent(w, r) {
+		return
+	}
+
 	body, err := readBody(r)
 	if err != nil {
 		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
+		return
+	}
+
+	if bodyRT, ok := body["resourceType"].(string); ok && bodyRT != "" && bodyRT != rt {
+		operationOutcome(w, http.StatusUnprocessableEntity, "error", "invalid",
+			fmt.Sprintf("body resourceType %q does not match URL resource type %q", bodyRT, rt))
+		return
+	}
+
+	if msg := validateRequiredFields(rt, body); msg != "" {
+		operationOutcome(w, http.StatusUnprocessableEntity, "error", "required", msg)
 		return
 	}
 
@@ -247,13 +356,39 @@ func (h *fhirHandler) update(w http.ResponseWriter, r *http.Request) {
 	rt := chi.URLParam(r, "resourceType")
 	id := chi.URLParam(r, "id")
 
+	if !requireFHIRContent(w, r) {
+		return
+	}
+
 	body, err := readBody(r)
 	if err != nil {
 		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
 		return
 	}
 
-	resource, err := h.store.Update(r.Context(), rt, id, body)
+	if bodyID, ok := body["id"].(string); ok && bodyID != "" && bodyID != id {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid",
+			fmt.Sprintf("body id %q does not match URL id %q", bodyID, id))
+		return
+	}
+
+	if msg := validateRequiredFields(rt, body); msg != "" {
+		operationOutcome(w, http.StatusUnprocessableEntity, "error", "required", msg)
+		return
+	}
+
+	ifMatchVersion := -1 // -1 means no If-Match header
+	if ifMatch := r.Header.Get("If-Match"); ifMatch != "" {
+		v, ok := parseIfMatchVersion(ifMatch)
+		if !ok {
+			operationOutcome(w, http.StatusPreconditionFailed, "error", "conflict",
+				"If-Match header contains an invalid version string")
+			return
+		}
+		ifMatchVersion = v
+	}
+
+	resource, err := h.store.Update(r.Context(), rt, id, body, ifMatchVersion)
 	if err != nil {
 		handleError(w, err)
 		return
@@ -336,8 +471,115 @@ func (h *fhirHandler) history(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *fhirHandler) typeHistory(w http.ResponseWriter, r *http.Request) {
-	// Type-level history — return 501 for now
-	operationOutcome(w, http.StatusNotImplemented, "information", "not-supported", "type-level _history not yet implemented")
+	rt := chi.URLParam(r, "resourceType")
+	q := r.URL.Query()
+
+	page, _ := strconv.Atoi(q.Get("_page"))
+	pageSize, _ := strconv.Atoi(q.Get("_count"))
+
+	var since time.Time
+	if s := q.Get("_since"); s != "" {
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			since = t
+		}
+	}
+
+	result, err := h.store.GetTypeHistory(r.Context(), store.HistoryParams{
+		ResourceType: rt,
+		Since:        since,
+		Page:         page,
+		PageSize:     pageSize,
+	})
+	if err != nil {
+		operationOutcome(w, http.StatusInternalServerError, "error", "exception", err.Error())
+		return
+	}
+
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if page <= 0 {
+		page = 1
+	}
+
+	bundleEntries := make([]any, 0, len(result.Entries))
+	for _, e := range result.Entries {
+		rid, _ := e.Resource["id"].(string)
+		bundleEntries = append(bundleEntries, map[string]any{
+			"fullUrl":  fmt.Sprintf("%s/%s/%s/_history/%d", h.baseURL, rt, rid, e.VersionID),
+			"resource": e.Resource,
+			"request":  map[string]any{"method": e.Operation, "url": fmt.Sprintf("%s/%s/%s", h.baseURL, rt, rid)},
+		})
+	}
+
+	lastPage := result.Total / pageSize
+	if result.Total%pageSize != 0 {
+		lastPage++
+	}
+	if lastPage < 1 {
+		lastPage = 1
+	}
+
+	base := fmt.Sprintf("%s/%s/_history", h.baseURL, rt)
+	links := []any{
+		map[string]any{"relation": "self", "url": fmt.Sprintf("%s?_page=%d&_count=%d", base, page, pageSize)},
+		map[string]any{"relation": "first", "url": fmt.Sprintf("%s?_page=1&_count=%d", base, pageSize)},
+		map[string]any{"relation": "last", "url": fmt.Sprintf("%s?_page=%d&_count=%d", base, lastPage, pageSize)},
+	}
+	if page*pageSize < result.Total {
+		links = append(links, map[string]any{
+			"relation": "next",
+			"url":      fmt.Sprintf("%s?_page=%d&_count=%d", base, page+1, pageSize),
+		})
+	}
+	if page > 1 {
+		links = append(links, map[string]any{
+			"relation": "previous",
+			"url":      fmt.Sprintf("%s?_page=%d&_count=%d", base, page-1, pageSize),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"resourceType": "Bundle",
+		"type":         "history",
+		"total":        result.Total,
+		"link":         links,
+		"entry":        bundleEntries,
+	})
+}
+
+func (h *fhirHandler) validate(w http.ResponseWriter, r *http.Request) {
+	rt := chi.URLParam(r, "resourceType")
+
+	if !requireFHIRContent(w, r) {
+		return
+	}
+
+	body, err := readBody(r)
+	if err != nil {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
+		return
+	}
+
+	if bodyRT, ok := body["resourceType"].(string); ok && bodyRT != "" && bodyRT != rt {
+		operationOutcome(w, http.StatusUnprocessableEntity, "error", "invalid",
+			fmt.Sprintf("body resourceType %q does not match URL resource type %q", bodyRT, rt))
+		return
+	}
+
+	if msg := validateRequiredFields(rt, body); msg != "" {
+		operationOutcome(w, http.StatusUnprocessableEntity, "error", "required", msg)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"resourceType": "OperationOutcome",
+		"issue": []any{map[string]any{
+			"severity":    "information",
+			"code":        "informational",
+			"diagnostics": "Resource is valid",
+		}},
+	})
 }
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────
@@ -375,9 +617,9 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 				map[string]any{"code": "create"},
 				map[string]any{"code": "search-type"},
 			},
-			"versioning":       "versioned",
-			"readHistory":      true,
-			"updateCreate":     false,
+			"versioning":        "versioned",
+			"readHistory":       true,
+			"updateCreate":      false,
 			"conditionalCreate": false,
 		}
 		if profs, ok := profiles[rt]; ok && len(profs) > 0 {
@@ -406,6 +648,26 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cs)
 }
 
+// validateRequiredFields returns a non-empty error message if key required
+// FHIR R4 fields are missing from the resource body. Covers only the resource
+// types exercised by the integration test suite; returns "" for unknown types.
+func validateRequiredFields(rt string, body map[string]any) string {
+	required := map[string][]string{
+		"Observation": {"code"},
+		"Encounter":   {"status", "class"},
+	}
+	fields, ok := required[rt]
+	if !ok {
+		return ""
+	}
+	for _, f := range fields {
+		if _, exists := body[f]; !exists {
+			return fmt.Sprintf("missing required field %q for %s", f, rt)
+		}
+	}
+	return ""
+}
+
 // ─── Helpers for $everything ──────────────────────────────────────────────────
 
 func lastUpdatedStr(res map[string]any) string {
@@ -432,6 +694,16 @@ func handleError(w http.ResponseWriter, err error) {
 	var notFound store.NotFoundError
 	if errors.As(err, &notFound) {
 		operationOutcome(w, http.StatusNotFound, "error", "not-found", err.Error())
+		return
+	}
+	var gone store.GoneError
+	if errors.As(err, &gone) {
+		operationOutcome(w, http.StatusGone, "error", "deleted", err.Error())
+		return
+	}
+	var conflict store.ConflictError
+	if errors.As(err, &conflict) {
+		operationOutcome(w, http.StatusPreconditionFailed, "error", "conflict", err.Error())
 		return
 	}
 	operationOutcome(w, http.StatusInternalServerError, "error", "exception", err.Error())

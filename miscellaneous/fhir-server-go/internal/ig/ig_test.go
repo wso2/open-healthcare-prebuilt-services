@@ -357,9 +357,9 @@ func buildTestTgz(t *testing.T, files map[string][]byte) []byte {
 	tw := tar.NewWriter(gw)
 	for name, content := range files {
 		hdr := &tar.Header{
-			Name:    name,
-			Mode:    0o644,
-			Size:    int64(len(content)),
+			Name:     name,
+			Mode:     0o644,
+			Size:     int64(len(content)),
 			Typeflag: tar.TypeReg,
 		}
 		if err := tw.WriteHeader(hdr); err != nil {

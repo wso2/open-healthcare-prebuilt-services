@@ -107,10 +107,10 @@ func (s *Store) resolveIncludes(ctx context.Context, entries []map[string]any, r
 // ─── Query builder ────────────────────────────────────────────────────────────
 
 type queryBuilder struct {
-	rt     string
-	where  strings.Builder
-	args   []any
-	argN   int
+	rt    string
+	where strings.Builder
+	args  []any
+	argN  int
 }
 
 func (b *queryBuilder) next(v any) string {
@@ -277,37 +277,44 @@ func (b *queryBuilder) buildNumberExists(param, value string) string {
 	prefix, numStr := extractComparatorPrefix(value)
 	f, _ := strconv.ParseFloat(numStr, 64)
 	eps := math.Abs(f) * 1e-7
+	if eps == 0 {
+		eps = 1e-7
+	}
 	rtP := b.next(b.rt)
 	pP := b.next(param)
-	vP := b.next(f)
-	lowP := b.next(f - eps)
-	highP := b.next(f + eps)
-	_ = lowP
 	switch prefix {
 	case "gt":
+		vP := b.next(f)
 		return fmt.Sprintf("SELECT 1 FROM sp_number s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value_high > %s", rtP, pP, vP)
 	case "lt":
+		vP := b.next(f)
 		return fmt.Sprintf("SELECT 1 FROM sp_number s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value_low < %s", rtP, pP, vP)
-	default:
-		return fmt.Sprintf("SELECT 1 FROM sp_number s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value_low <= %s AND s.value_high >= %s", rtP, pP, highP, vP)
+	default: // eq
+		highP := b.next(f + eps)
+		lowP := b.next(f - eps)
+		return fmt.Sprintf("SELECT 1 FROM sp_number s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value_low <= %s AND s.value_high >= %s", rtP, pP, highP, lowP)
 	}
 }
 
 func (b *queryBuilder) applyLastUpdated(value string) {
 	prefix, dateStr := extractComparatorPrefix(value)
 	low, high := expandDateRange(dateStr)
-	lowP := b.next(low)
-	highP := b.next(high)
 	switch prefix {
 	case "gt":
+		highP := b.next(high)
 		b.and(fmt.Sprintf("r.last_updated > %s", highP))
 	case "lt":
+		lowP := b.next(low)
 		b.and(fmt.Sprintf("r.last_updated < %s", lowP))
 	case "ge":
+		lowP := b.next(low)
 		b.and(fmt.Sprintf("r.last_updated >= %s", lowP))
 	case "le":
+		highP := b.next(high)
 		b.and(fmt.Sprintf("r.last_updated <= %s", highP))
 	default:
+		lowP := b.next(low)
+		highP := b.next(high)
 		b.and(fmt.Sprintf("r.last_updated >= %s AND r.last_updated <= %s", lowP, highP))
 	}
 }

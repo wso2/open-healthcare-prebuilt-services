@@ -84,18 +84,22 @@ func (s *Store) Read(ctx context.Context, resourceType, resourceID string) (map[
 	var raw []byte
 	var versionID int
 	var lastUpdated time.Time
+	var isDeleted bool
 
 	err := s.pool.QueryRow(ctx, `
-		SELECT resource_json, version_id, last_updated
+		SELECT resource_json, version_id, last_updated, is_deleted
 		FROM resources
-		WHERE fhir_id = $1 AND resource_type = $2 AND is_deleted = FALSE`,
+		WHERE fhir_id = $1 AND resource_type = $2`,
 		resourceID, resourceType,
-	).Scan(&raw, &versionID, &lastUpdated)
+	).Scan(&raw, &versionID, &lastUpdated, &isDeleted)
 	if err != nil {
 		if isNoRows(err) {
 			return nil, NotFoundError{resourceType, resourceID}
 		}
 		return nil, err
+	}
+	if isDeleted {
+		return nil, GoneError{resourceType, resourceID}
 	}
 
 	return unmarshalWithMeta(raw, versionID, lastUpdated)
@@ -103,7 +107,10 @@ func (s *Store) Read(ctx context.Context, resourceType, resourceID string) (map[
 
 // ─── Update (PUT) ─────────────────────────────────────────────────────────────
 
-func (s *Store) Update(ctx context.Context, resourceType, resourceID string, body map[string]any) (map[string]any, error) {
+// Update replaces a resource. ifMatchVersion = -1 means no version check;
+// any value >= 0 is compared to the current version_id and a ConflictError
+// (412) is returned if they differ.
+func (s *Store) Update(ctx context.Context, resourceType, resourceID string, body map[string]any, ifMatchVersion int) (map[string]any, error) {
 	body["id"] = resourceID
 	body["resourceType"] = resourceType
 
@@ -113,9 +120,12 @@ func (s *Store) Update(ctx context.Context, resourceType, resourceID string, bod
 	}
 	defer tx.Rollback(ctx)
 
-	newVersion, lastUpdated, err := bumpVersion(ctx, tx, resourceType, resourceID)
+	newVersion, currentVersion, lastUpdated, err := bumpVersion(ctx, tx, resourceType, resourceID)
 	if err != nil {
 		return nil, err
+	}
+	if ifMatchVersion >= 0 && currentVersion != ifMatchVersion {
+		return nil, ConflictError{fmt.Sprintf("version conflict: current=%d, if-match=%d", currentVersion, ifMatchVersion)}
 	}
 
 	body = setMeta(body, newVersion, lastUpdated)
@@ -152,13 +162,72 @@ func (s *Store) Update(ctx context.Context, resourceType, resourceID string, bod
 
 // ─── Patch (JSON Merge Patch) ─────────────────────────────────────────────────
 
+// Patch applies a JSON Merge Patch (RFC 7396) atomically. The read and write
+// happen inside a single transaction with a FOR UPDATE lock so concurrent
+// PATCHes to the same resource cannot produce a lost update.
 func (s *Store) Patch(ctx context.Context, resourceType, resourceID string, patch map[string]any) (map[string]any, error) {
-	existing, err := s.Read(ctx, resourceType, resourceID)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var raw []byte
+	var versionID int
+	var lastUpdated time.Time
+	var isDeleted bool
+	if err := tx.QueryRow(ctx, `
+		SELECT resource_json, version_id, last_updated, is_deleted
+		FROM resources WHERE fhir_id = $1 AND resource_type = $2 FOR UPDATE`,
+		resourceID, resourceType,
+	).Scan(&raw, &versionID, &lastUpdated, &isDeleted); err != nil {
+		if isNoRows(err) {
+			return nil, NotFoundError{resourceType, resourceID}
+		}
+		return nil, err
+	}
+	if isDeleted {
+		return nil, GoneError{resourceType, resourceID}
+	}
+
+	existing, err := unmarshalWithMeta(raw, versionID, lastUpdated)
 	if err != nil {
 		return nil, err
 	}
 	merged := mergePatch(existing, patch)
-	return s.Update(ctx, resourceType, resourceID, merged)
+	merged["id"] = resourceID
+	merged["resourceType"] = resourceType
+
+	newVersion := versionID + 1
+	now := time.Now().UTC()
+	merged = setMeta(merged, newVersion, now)
+	mergedRaw, err := json.Marshal(merged)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE resources SET version_id = $1, last_updated = $2, resource_json = $3, is_deleted = FALSE
+		WHERE fhir_id = $4 AND resource_type = $5`,
+		newVersion, now, mergedRaw, resourceID, resourceType,
+	); err != nil {
+		return nil, err
+	}
+	if err := index.Delete(ctx, tx, resourceType, resourceID); err != nil {
+		return nil, err
+	}
+	if err := s.extractor.Index(ctx, tx, resourceType, resourceID, merged); err != nil {
+		return nil, err
+	}
+	if err := saveHistory(ctx, tx, resourceType, resourceID, newVersion, "PUT", mergedRaw, now); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	slog.Info("patched resource", "type", resourceType, "id", resourceID, "version", newVersion)
+	return merged, nil
 }
 
 // mergePatch applies a JSON Merge Patch (RFC 7396).
@@ -192,19 +261,25 @@ func (s *Store) Delete(ctx context.Context, resourceType, resourceID string) err
 	}
 	defer tx.Rollback(ctx)
 
-	// Read for history snapshot
+	// Lock the row first to prevent a concurrent Update from bumping the version
+	// between our read and our soft-delete write, which would produce a UNIQUE
+	// constraint violation on resource_history(fhir_id, resource_type, version_id).
 	var raw []byte
 	var versionID int
 	var lastUpdated time.Time
+	var isDeleted bool
 	if err := tx.QueryRow(ctx, `
-		SELECT resource_json, version_id, last_updated
-		FROM resources WHERE fhir_id = $1 AND resource_type = $2`,
+		SELECT resource_json, version_id, last_updated, is_deleted
+		FROM resources WHERE fhir_id = $1 AND resource_type = $2 FOR UPDATE`,
 		resourceID, resourceType,
-	).Scan(&raw, &versionID, &lastUpdated); err != nil {
+	).Scan(&raw, &versionID, &lastUpdated, &isDeleted); err != nil {
 		if isNoRows(err) {
 			return NotFoundError{resourceType, resourceID}
 		}
 		return err
+	}
+	if isDeleted {
+		return nil // idempotent: already deleted
 	}
 
 	// DELETE is a new version in FHIR — bump to avoid UNIQUE(fhir_id, resource_type, version_id) conflict.
@@ -257,6 +332,68 @@ func (s *Store) GetHistory(ctx context.Context, resourceType, resourceID string)
 	return scanHistoryRows(rows)
 }
 
+// HistoryParams controls pagination and filtering for type-level history.
+type HistoryParams struct {
+	ResourceType string
+	Since        time.Time // zero ⇒ no lower bound
+	Page         int       // 1-based; 0 treated as 1
+	PageSize     int       // 0 treated as 20
+}
+
+// HistoryResult is the paged result of a type-level history query.
+type HistoryResult struct {
+	Total   int
+	Entries []HistoryEntry
+}
+
+func (s *Store) GetTypeHistory(ctx context.Context, p HistoryParams) (HistoryResult, error) {
+	if p.PageSize <= 0 {
+		p.PageSize = 20
+	}
+	if p.Page <= 0 {
+		p.Page = 1
+	}
+	offset := (p.Page - 1) * p.PageSize
+
+	var (
+		total  int
+		countQ string
+		fetchQ string
+		args   []any
+	)
+
+	if p.Since.IsZero() {
+		countQ = `SELECT COUNT(*) FROM resource_history WHERE resource_type = $1`
+		fetchQ = `SELECT version_id, operation, resource_json, recorded_at
+		           FROM resource_history WHERE resource_type = $1
+		           ORDER BY recorded_at DESC LIMIT $2 OFFSET $3`
+		args = []any{p.ResourceType}
+	} else {
+		countQ = `SELECT COUNT(*) FROM resource_history WHERE resource_type = $1 AND recorded_at > $2`
+		fetchQ = `SELECT version_id, operation, resource_json, recorded_at
+		           FROM resource_history WHERE resource_type = $1 AND recorded_at > $2
+		           ORDER BY recorded_at DESC LIMIT $3 OFFSET $4`
+		args = []any{p.ResourceType, p.Since}
+	}
+
+	if err := s.pool.QueryRow(ctx, countQ, args...).Scan(&total); err != nil {
+		return HistoryResult{}, err
+	}
+
+	fetchArgs := append(args, p.PageSize, offset)
+	rows, err := s.pool.Query(ctx, fetchQ, fetchArgs...)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	defer rows.Close()
+
+	entries, err := scanHistoryRows(rows)
+	if err != nil {
+		return HistoryResult{}, err
+	}
+	return HistoryResult{Total: total, Entries: entries}, nil
+}
+
 func (s *Store) GetVersion(ctx context.Context, resourceType, resourceID string, versionID int) (map[string]any, error) {
 	var raw []byte
 	var recordedAt time.Time
@@ -285,8 +422,7 @@ func saveHistory(ctx context.Context, tx pgx.Tx, resourceType, resourceID string
 	return err
 }
 
-func bumpVersion(ctx context.Context, tx pgx.Tx, resourceType, resourceID string) (newVersion int, lastUpdated time.Time, err error) {
-	var currentVersion int
+func bumpVersion(ctx context.Context, tx pgx.Tx, resourceType, resourceID string) (newVersion, currentVersion int, lastUpdated time.Time, err error) {
 	if err = tx.QueryRow(ctx, `
 		SELECT version_id FROM resources WHERE fhir_id = $1 AND resource_type = $2 FOR UPDATE`,
 		resourceID, resourceType,
@@ -362,6 +498,7 @@ func (s *Store) SyncSearchParameter(ctx context.Context, body map[string]any) er
 	}
 	defer tx.Rollback(ctx)
 
+	var defs []searchparam.Definition
 	for _, b := range baseArr {
 		resourceType, _ := b.(string)
 		if resourceType == "" {
@@ -378,7 +515,7 @@ func (s *Store) SyncSearchParameter(ctx context.Context, body map[string]any) er
 		); err != nil {
 			return fmt.Errorf("upsert search param %s.%s: %w", resourceType, code, err)
 		}
-		s.registry.Upsert(searchparam.Definition{
+		defs = append(defs, searchparam.Definition{
 			ResourceType: resourceType,
 			ParamName:    code,
 			ParamType:    paramType,
@@ -386,7 +523,15 @@ func (s *Store) SyncSearchParameter(ctx context.Context, body map[string]any) er
 			IsCustom:     true,
 		})
 	}
-	return tx.Commit(ctx)
+	// Commit DB changes before updating the in-memory registry so that a
+	// failure or rollback never leaves the registry ahead of the database.
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	for _, def := range defs {
+		s.registry.Upsert(def)
+	}
+	return nil
 }
 
 // DeleteSearchParameter removes a custom SearchParameter by resource ID.
@@ -418,7 +563,8 @@ func (s *Store) DeleteSearchParameter(ctx context.Context, resourceID string) er
 		return err
 	}
 
-	// Remove from all resource types in registry
+	// Update the in-memory registry only after the DB delete commits so the
+	// two stores never diverge in the direction of "registry missing, DB has it."
 	if baseArr, ok := body["base"].([]any); ok {
 		for _, b := range baseArr {
 			if rt, ok := b.(string); ok {
@@ -438,4 +584,23 @@ type NotFoundError struct {
 
 func (e NotFoundError) Error() string {
 	return fmt.Sprintf("%s/%s not found", e.ResourceType, e.ResourceID)
+}
+
+// GoneError is returned when a resource existed but has been deleted.
+type GoneError struct {
+	ResourceType string
+	ResourceID   string
+}
+
+func (e GoneError) Error() string {
+	return fmt.Sprintf("%s/%s has been deleted", e.ResourceType, e.ResourceID)
+}
+
+// ConflictError is returned when an If-Match version check fails.
+type ConflictError struct {
+	Message string
+}
+
+func (e ConflictError) Error() string {
+	return e.Message
 }

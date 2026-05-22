@@ -16,17 +16,18 @@ import (
 // ─── Mock store ───────────────────────────────────────────────────────────────
 
 type mockStore struct {
-	readFn               func(ctx context.Context, rt, id string) (map[string]any, error)
-	getVersionFn         func(ctx context.Context, rt, id string, vid int) (map[string]any, error)
-	createFn             func(ctx context.Context, rt string, body map[string]any) (map[string]any, error)
-	updateFn             func(ctx context.Context, rt, id string, body map[string]any) (map[string]any, error)
-	patchFn              func(ctx context.Context, rt, id string, patch map[string]any) (map[string]any, error)
-	deleteFn             func(ctx context.Context, rt, id string) error
-	getHistoryFn         func(ctx context.Context, rt, id string) ([]store.HistoryEntry, error)
-	searchFn             func(ctx context.Context, sp store.SearchParams) (store.SearchResult, error)
-	fetchReferencesFn    func(ctx context.Context, rt, id string, reverse bool) ([]map[string]any, error)
-	syncSearchParamFn    func(ctx context.Context, body map[string]any) error
-	deleteSearchParamFn  func(ctx context.Context, id string) error
+	readFn              func(ctx context.Context, rt, id string) (map[string]any, error)
+	getVersionFn        func(ctx context.Context, rt, id string, vid int) (map[string]any, error)
+	createFn            func(ctx context.Context, rt string, body map[string]any) (map[string]any, error)
+	updateFn            func(ctx context.Context, rt, id string, body map[string]any, ifMatchVersion int) (map[string]any, error)
+	patchFn             func(ctx context.Context, rt, id string, patch map[string]any) (map[string]any, error)
+	deleteFn            func(ctx context.Context, rt, id string) error
+	getHistoryFn        func(ctx context.Context, rt, id string) ([]store.HistoryEntry, error)
+	getTypeHistoryFn    func(ctx context.Context, p store.HistoryParams) (store.HistoryResult, error)
+	searchFn            func(ctx context.Context, sp store.SearchParams) (store.SearchResult, error)
+	fetchReferencesFn   func(ctx context.Context, rt, id string, reverse bool) ([]map[string]any, error)
+	syncSearchParamFn   func(ctx context.Context, body map[string]any) error
+	deleteSearchParamFn func(ctx context.Context, id string) error
 }
 
 func (m *mockStore) Read(ctx context.Context, rt, id string) (map[string]any, error) {
@@ -38,8 +39,8 @@ func (m *mockStore) GetVersion(ctx context.Context, rt, id string, vid int) (map
 func (m *mockStore) Create(ctx context.Context, rt string, body map[string]any) (map[string]any, error) {
 	return m.createFn(ctx, rt, body)
 }
-func (m *mockStore) Update(ctx context.Context, rt, id string, body map[string]any) (map[string]any, error) {
-	return m.updateFn(ctx, rt, id, body)
+func (m *mockStore) Update(ctx context.Context, rt, id string, body map[string]any, ifMatchVersion int) (map[string]any, error) {
+	return m.updateFn(ctx, rt, id, body, ifMatchVersion)
 }
 func (m *mockStore) Patch(ctx context.Context, rt, id string, patch map[string]any) (map[string]any, error) {
 	return m.patchFn(ctx, rt, id, patch)
@@ -49,6 +50,12 @@ func (m *mockStore) Delete(ctx context.Context, rt, id string) error {
 }
 func (m *mockStore) GetHistory(ctx context.Context, rt, id string) ([]store.HistoryEntry, error) {
 	return m.getHistoryFn(ctx, rt, id)
+}
+func (m *mockStore) GetTypeHistory(ctx context.Context, p store.HistoryParams) (store.HistoryResult, error) {
+	if m.getTypeHistoryFn != nil {
+		return m.getTypeHistoryFn(ctx, p)
+	}
+	return store.HistoryResult{}, nil
 }
 func (m *mockStore) Search(ctx context.Context, sp store.SearchParams) (store.SearchResult, error) {
 	return m.searchFn(ctx, sp)
@@ -236,7 +243,7 @@ func TestCreate_InvalidJSON(t *testing.T) {
 
 func TestUpdate_Success(t *testing.T) {
 	ms := &mockStore{}
-	ms.updateFn = func(_ context.Context, rt, id string, body map[string]any) (map[string]any, error) {
+	ms.updateFn = func(_ context.Context, rt, id string, body map[string]any, _ int) (map[string]any, error) {
 		body["meta"] = map[string]any{"versionId": "2"}
 		return body, nil
 	}
@@ -251,7 +258,7 @@ func TestUpdate_Success(t *testing.T) {
 
 func TestUpdate_NotFound(t *testing.T) {
 	ms := &mockStore{}
-	ms.updateFn = func(_ context.Context, rt, id string, _ map[string]any) (map[string]any, error) {
+	ms.updateFn = func(_ context.Context, rt, id string, _ map[string]any, _ int) (map[string]any, error) {
 		return nil, store.NotFoundError{ResourceType: rt, ResourceID: id}
 	}
 

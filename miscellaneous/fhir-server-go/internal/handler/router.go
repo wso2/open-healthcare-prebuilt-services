@@ -37,6 +37,8 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, baseURL string, igReady *atomic.I
 		r.Route("/{resourceType}", func(r chi.Router) {
 			r.Get("/", h.search)
 			r.Post("/", h.create)
+			r.Post("/_search", h.searchPost)
+			r.Post("/$validate", h.validate)
 			r.Get("/_history", h.typeHistory)
 
 			r.Route("/{id}", func(r chi.Router) {

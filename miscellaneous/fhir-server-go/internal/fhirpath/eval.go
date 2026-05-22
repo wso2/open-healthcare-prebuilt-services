@@ -48,21 +48,21 @@ func Evaluate(expr string, resource map[string]any) ([]any, error) {
 type nodeKind int
 
 const (
-	kindPath     nodeKind = iota // foo.bar.baz
-	kindOfType                   // .ofType(X)
-	kindWhere                    // .where(key='val')
-	kindExists                   // .exists()
-	kindExtension                // .extension('url')
+	kindPath      nodeKind = iota // foo.bar.baz
+	kindOfType                    // .ofType(X)
+	kindWhere                     // .where(key='val')
+	kindExists                    // .exists()
+	kindExtension                 // .extension('url')
 )
 
 type node struct {
-	kind      nodeKind
-	field     string // for kindPath
-	typeName  string // for kindOfType
-	whereKey  string // for kindWhere
-	whereVal  string // for kindWhere
-	extURL    string // for kindExtension
-	children  []node
+	kind     nodeKind
+	field    string // for kindPath
+	typeName string // for kindOfType
+	whereKey string // for kindWhere
+	whereVal string // for kindWhere
+	extURL   string // for kindExtension
+	children []node
 }
 
 // ─── Parser ───────────────────────────────────────────────────────────────────

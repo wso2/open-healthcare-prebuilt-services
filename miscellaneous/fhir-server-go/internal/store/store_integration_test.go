@@ -5,6 +5,8 @@ package store_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
@@ -134,7 +136,7 @@ func TestUpdate_BumpsVersion(t *testing.T) {
 		"resourceType": "Patient",
 		"id":           id,
 		"active":       false,
-	})
+	}, -1)
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -149,7 +151,7 @@ func TestUpdate_BumpsVersion(t *testing.T) {
 
 func TestUpdate_NotFound(t *testing.T) {
 	s := newStore(t)
-	_, err := s.Update(context.Background(), "Patient", "ghost-id", map[string]any{})
+	_, err := s.Update(context.Background(), "Patient", "ghost-id", map[string]any{}, 0)
 	var nfe store.NotFoundError
 	if !errors.As(err, &nfe) {
 		t.Fatalf("expected NotFoundError, got %T: %v", err, err)
@@ -218,11 +220,11 @@ func TestDelete_SoftDeletes(t *testing.T) {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	// Read should now return NotFound
+	// Read should now return GoneError (soft-deleted, not absent)
 	_, err := s.Read(ctx, "Patient", id)
-	var nfe store.NotFoundError
-	if !errors.As(err, &nfe) {
-		t.Fatalf("expected NotFoundError after delete, got %T: %v", err, err)
+	var ge store.GoneError
+	if !errors.As(err, &ge) {
+		t.Fatalf("expected GoneError after delete, got %T: %v", err, err)
 	}
 }
 
@@ -248,7 +250,7 @@ func TestGetHistory_RecordsOperations(t *testing.T) {
 
 	s.Update(ctx, "Patient", id, map[string]any{
 		"resourceType": "Patient", "id": id, "active": false,
-	})
+	}, -1)
 	s.Delete(ctx, "Patient", id)
 
 	entries, err := s.GetHistory(ctx, "Patient", id)
@@ -285,7 +287,7 @@ func TestGetVersion_ReturnsSpecificVersion(t *testing.T) {
 
 	s.Update(ctx, "Patient", id, map[string]any{
 		"resourceType": "Patient", "id": id, "active": false,
-	})
+	}, -1)
 
 	// Read version 1 — should have active=true
 	v1, err := s.GetVersion(ctx, "Patient", id, 1)
@@ -591,5 +593,139 @@ func TestDeleteSearchParameter_RemovesFromRegistry(t *testing.T) {
 	_, stillExists := reg.Lookup("Observation", "delete-me-param")
 	if stillExists {
 		t.Error("expected param to be removed from registry after delete")
+	}
+}
+
+// ─── Concurrency ──────────────────────────────────────────────────────────────
+
+// TestConcurrent_Updates fires N concurrent PUTs to the same resource and
+// verifies that all succeed (due to FOR UPDATE lock serialisation) and that
+// the final version equals N+1 (1 from Create + N updates).
+func TestConcurrent_Updates(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	const workers = 10
+
+	created, err := s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient",
+		"active":       true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	id := created["id"].(string)
+
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := range workers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = s.Update(ctx, "Patient", id, map[string]any{
+				"resourceType": "Patient",
+				"id":           id,
+				"active":       i%2 == 0,
+			}, -1)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("worker %d Update failed: %v", i, err)
+		}
+	}
+
+	final, err := s.Read(ctx, "Patient", id)
+	if err != nil {
+		t.Fatalf("Read after concurrent updates: %v", err)
+	}
+	meta := final["meta"].(map[string]any)
+	if meta["versionId"] != fmt.Sprintf("%d", workers+1) {
+		t.Errorf("expected versionId=%d after %d concurrent updates, got %v", workers+1, workers, meta["versionId"])
+	}
+}
+
+// TestConcurrent_Patches fires N concurrent PATCHes each setting a distinct
+// field and verifies no lost-update: every field must be present in the result.
+func TestConcurrent_Patches(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	const workers = 5
+
+	created, err := s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient",
+		"active":       true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	id := created["id"].(string)
+
+	// Each goroutine patches a unique top-level extension field.
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := range workers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = s.Patch(ctx, "Patient", id, map[string]any{
+				fmt.Sprintf("x-field-%d", i): fmt.Sprintf("value-%d", i),
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("worker %d Patch failed: %v", i, err)
+		}
+	}
+
+	final, err := s.Read(ctx, "Patient", id)
+	if err != nil {
+		t.Fatalf("Read after concurrent patches: %v", err)
+	}
+	// Every distinct field set by each goroutine must survive.
+	for i := range workers {
+		key := fmt.Sprintf("x-field-%d", i)
+		if final[key] != fmt.Sprintf("value-%d", i) {
+			t.Errorf("lost update: field %q missing or wrong in final resource", key)
+		}
+	}
+}
+
+// TestConcurrent_DeleteIdempotent verifies that calling Delete from multiple
+// goroutines simultaneously on the same resource does not produce errors;
+// exactly one goroutine performs the delete, the rest get a clean nil return
+// (idempotent 204 semantics).
+func TestConcurrent_DeleteIdempotent(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	const workers = 5
+
+	created, err := s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	id := created["id"].(string)
+
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := range workers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = s.Delete(ctx, "Patient", id)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("worker %d Delete returned unexpected error: %v", i, err)
+		}
 	}
 }

@@ -12,10 +12,11 @@ type StoreAPI interface {
 	Read(ctx context.Context, resourceType, resourceID string) (map[string]any, error)
 	GetVersion(ctx context.Context, resourceType, resourceID string, versionID int) (map[string]any, error)
 	Create(ctx context.Context, resourceType string, body map[string]any) (map[string]any, error)
-	Update(ctx context.Context, resourceType, resourceID string, body map[string]any) (map[string]any, error)
+	Update(ctx context.Context, resourceType, resourceID string, body map[string]any, ifMatchVersion int) (map[string]any, error)
 	Patch(ctx context.Context, resourceType, resourceID string, patch map[string]any) (map[string]any, error)
 	Delete(ctx context.Context, resourceType, resourceID string) error
 	GetHistory(ctx context.Context, resourceType, resourceID string) ([]store.HistoryEntry, error)
+	GetTypeHistory(ctx context.Context, p store.HistoryParams) (store.HistoryResult, error)
 	Search(ctx context.Context, sp store.SearchParams) (store.SearchResult, error)
 	FetchReferences(ctx context.Context, resourceType, resourceID string, reverse bool) ([]map[string]any, error)
 	SyncSearchParameter(ctx context.Context, body map[string]any) error

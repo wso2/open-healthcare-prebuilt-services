@@ -4,8 +4,8 @@ package seed
 
 import (
 	"context"
-	"encoding/csv"
 	"embed"
+	"encoding/csv"
 	"fmt"
 	"io"
 	"log/slog"
