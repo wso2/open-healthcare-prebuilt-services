@@ -1,0 +1,12 @@
+schemaVersion: 1.1
+endpoints:
+    - name: ccda-to-fhirr4-service
+      displayName: CCDA to FHIR R4 Service
+      service:
+        basePath: /
+        port: 9090
+      type: REST
+      networkVisibilities:
+        - Project
+        - Public
+      schemaFilePath: oas/service_openapi.yaml

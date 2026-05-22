@@ -1,0 +1,20 @@
+{
+    "code": "example-code",
+    "display": "Example Code",
+    "property": [
+        {
+            "code": "example-property-code",
+            "valueString": "example-property-value"
+        }
+    ],
+    "designation": [
+        {
+            "language": "en",
+            "value": "Example Designation",
+            "use": {
+                "system": "http://example.org",
+                "code": "example-use-code"
+            }
+        }
+    ]
+}

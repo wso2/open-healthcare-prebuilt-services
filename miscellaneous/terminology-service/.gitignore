@@ -1,0 +1,14 @@
+target
+generated
+Config.toml
+temp_files
+CLAUDE.md
+.vscode
+.claude
+*.db
+
+!test.zip
+!codesystem.zip
+!valueset.zip
+!loinc.zip
+!terminologyDB.mv.db

@@ -1,0 +1,44 @@
+{
+    "resourceType": "ValueSet",
+    "id": "example-valueset-include-concepts",
+    "url": "http://example.org/fhir/ValueSet/example-include-concepts",
+    "version": "1.0.0",
+    "name": "ExampleIncludeConcepts",
+    "title": "Example ValueSet with Include Concepts",
+    "status": "active",
+    "date": "2025-04-09",
+    "publisher": "Example Publisher",
+    "contact": [
+        {
+            "name": "Example Team",
+            "telecom": [
+                {
+                    "system": "email",
+                    "value": "support@example.org"
+                }
+            ]
+        }
+    ],
+    "description": "A ValueSet that includes specific concepts from the same CodeSystem using compose.include.",
+    "compose": {
+        "include": [
+            {
+                "system": "http://hl7.org/fhir/account-status",
+                "concept": [
+                    {
+                        "code": "active",
+                        "display": "Active"
+                    },
+                    {
+                        "code": "inactive",
+                        "display": "Inactive"
+                    },
+                    {
+                        "code": "entered-in-error",
+                        "display": "Entered in Error"
+                    }
+                ]
+            }
+        ]
+    }
+}

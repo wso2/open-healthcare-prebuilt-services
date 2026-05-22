@@ -1,0 +1,26 @@
+## server related configurables
+[configFHIRServer]
+version = "1.2.0"
+name = "WSO2 Open Healthcare FHIR"
+title = "FHIR Server"
+status = "active"
+experimental = true
+# The date field below will be populated with server current time if not specified from the config.
+# date = "2022-11-24"
+kind = "instance"
+fhirVersion = "4.0.1"
+format = ["json", "ttl"]
+patchFormat = ["application/json-patch+json"]
+implementationUrl = "<FHIR_BASE_URL>"
+implementationDescription = "WSO2 Open Healthcare FHIR"
+
+## server security related configurables
+[configRest]
+mode = "server"
+resourceFilePath = "resources/fhir_resources.json"
+interaction = ["search-system"]
+[configRest.security]
+cors = false
+# The discoveryEndpoint provided below is for a sample OIDC server. Please replace it with your own OIDC server's discovery endpoint.
+discoveryEndpoint = "https://api.asgardeo.io/t/bitfrost/oauth2/token/.well-known/openid-configuration"
+managementEndpoint = "https://api.asgardeo.io/t/<organization_name>/oauth2/manage"

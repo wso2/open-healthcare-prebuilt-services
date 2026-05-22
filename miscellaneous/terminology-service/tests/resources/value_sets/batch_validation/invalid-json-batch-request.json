@@ -1,0 +1,5 @@
+{
+  "resourceType": "Bundle",
+  "type": "batch",
+  "entry": "invalid-entry"
+}

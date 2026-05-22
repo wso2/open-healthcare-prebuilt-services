@@ -1,0 +1,46 @@
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "name": "name",
+            "valueString": "example-code"
+        },
+        {
+            "name": "display",
+            "valueString": "Example Code"
+        },
+        {
+            "name": "property",
+            "part": [
+                {
+                    "name": "code",
+                    "valueCode": "example-property-code"
+                },
+                {
+                    "name": "value",
+                    "valueString": "example-property-value"
+                }
+            ]
+        },
+        {
+            "name": "designation",
+            "part": [
+                {
+                    "name": "language",
+                    "valueCode": "en"
+                },
+                {
+                    "name": "value",
+                    "valueString": "Example Designation"
+                },
+                {
+                    "name": "use",
+                    "valueCoding": {
+                        "system": "http://example.org",
+                        "code": "example-use-code"
+                    }
+                }
+            ]
+        }
+    ]
+}

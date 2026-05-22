@@ -1,0 +1,9 @@
+{
+    "resourceType": "Parameters",
+    "parameter": [
+        {
+            "valueCode": "not-subsumed",
+            "name": "outcome"
+        }
+    ]
+}

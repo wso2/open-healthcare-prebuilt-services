@@ -1,0 +1,33 @@
+{
+    "resourceType": "Bundle",
+    "meta": {
+        "profile": [
+            "http://hl7.org/fhir/StructureDefinition/Bundle"
+        ]
+    },
+    "type": "searchset",
+    "total": 3,
+    "entry": [
+        {
+            "resource": {
+                "system": "http://hl7.org/fhir/resource-status",
+                "code": "active",
+                "display": "active"
+            }
+        },
+        {
+            "resource": {
+                "system": "http://hl7.org/fhir/account-status",
+                "code": "inactive",
+                "display": "Inactive"
+            }
+        },
+        {
+            "resource": {
+                "system": "http://hl7.org/fhir/resource-status",
+                "code": "inactive",
+                "display": "inactive"
+            }
+        }
+    ]
+}

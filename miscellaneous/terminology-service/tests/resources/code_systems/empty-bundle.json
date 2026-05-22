@@ -1,0 +1,12 @@
+{
+    "resourceType": "Bundle",
+    "meta": {
+        "lastUpdated": "2025-03-17T04:34:19.412137400Z",
+        "profile": [
+            "http://hl7.org/fhir/StructureDefinition/Bundle"
+        ]
+    },
+    "type": "searchset",
+    "total": 0,
+    "entry": []
+}

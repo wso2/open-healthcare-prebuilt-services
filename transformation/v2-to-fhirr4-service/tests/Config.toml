@@ -1,0 +1,6 @@
+[customMapper]
+baseUrl = "http://localhost:9091/v2tofhir"
+
+[customMapper.segmentMappings]
+NK1 = "/segment/nk1"
+PID = "/segment/pid"

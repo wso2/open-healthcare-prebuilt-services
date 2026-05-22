@@ -1,0 +1,47 @@
+{
+  "resourceType": "Bundle",
+  "meta": {
+    "profile": ["http://hl7.org/fhir/StructureDefinition/Bundle"]
+  },
+  "type": "batch-response",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "result",
+            "valueBoolean": true
+          },
+          {
+            "name": "display",
+            "valueString": "Inactive"
+          },
+          {
+            "name": "definition",
+            "valueString": "This account is inactive and should not be used to track financial information."
+          }
+        ]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "result",
+            "valueBoolean": true
+          },
+          {
+            "name": "display",
+            "valueString": "Active"
+          },
+          {
+            "name": "definition",
+            "valueString": "This account is active and may be used."
+          }
+        ]
+      }
+    }
+  ]
+}

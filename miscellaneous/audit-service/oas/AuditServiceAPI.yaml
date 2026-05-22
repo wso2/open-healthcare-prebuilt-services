@@ -1,0 +1,151 @@
+openapi: 3.0.0
+info:
+  title: Audit Service API
+  description: This API allows posting audit events.
+  version: 1.0.0
+servers:
+  - url: http://localhost:9093
+paths:
+  /audits:
+    post:
+      summary: Post an audit event
+      operationId: postAuditEvent
+      requestBody:
+        description: The audit event data
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InternalAuditEvent'
+      responses:
+        '202':
+          description: Accepted
+        '500':
+          description: Internal Server Error
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEvent'
+components:
+  schemas:
+    InternalAuditEvent:
+      type: object
+      properties:
+        typeCode:
+          type: string
+          description: Type code of the event.
+        subTypeCode:
+          type: string
+          description: Subtype code of the event.
+        actionCode:
+          type: string
+          description: Action code of the event.
+        outcomeCode:
+          type: string
+          description: Outcome code of the event.
+        recordedTime:
+          type: string
+          format: date-time
+          description: Time the event was recorded.
+        agentType:
+          type: string
+          description: Type of agent involved.
+        agentName:
+          type: string
+          description: Name of the agent.
+        agentIsRequestor:
+          type: boolean
+          description: Indicates if the agent is the requestor.
+        entityType:
+          type: string
+          description: Type of entity.
+        entityRole:
+          type: string
+          description: Role of the entity.
+        entityWhatReference:
+          type: string
+          description: Reference of the entity.
+        sourceObserverName:
+          type: string
+          description: Observer's name.
+        sourceObserverType:
+          type: string
+          description: Type of observer.
+    AuditEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the audit event.
+        type:
+          $ref: '#/components/schemas/Coding'
+        subtype:
+          type: array
+          items:
+            $ref: '#/components/schemas/Coding'
+        action:
+          type: string
+          description: Action code for the audit event.
+        outcome:
+          type: string
+          description: Outcome code of the audit event.
+        recorded:
+          type: string
+          format: date-time
+          description: Recorded time of the audit event.
+        agent:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEventAgent'
+        entity:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEventEntity'
+        source:
+          type: object
+          properties:
+            observer:
+              type: object
+              properties:
+                display:
+                  type: string
+            type:
+              type: array
+              items:
+                $ref: '#/components/schemas/Coding'
+    Coding:
+      type: object
+      properties:
+        system:
+          type: string
+        code:
+          type: string
+        display:
+          type: string
+    AuditEventAgent:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/Coding'
+        who:
+          type: object
+          properties:
+            display:
+              type: string
+        requestor:
+          type: boolean
+    AuditEventEntity:
+      type: object
+      properties:
+        type:
+          $ref: '#/components/schemas/Coding'
+        role:
+          $ref: '#/components/schemas/Coding'
+        what:
+          type: object
+          properties:
+            reference:
+              type: string

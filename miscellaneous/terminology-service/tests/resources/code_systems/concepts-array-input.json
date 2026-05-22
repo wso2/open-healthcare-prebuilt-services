@@ -1,0 +1,12 @@
+[
+    {
+        "code": "example-code-1",
+        "display": "Example Code 1",
+        "definition": "This is an example code 1."
+    },
+    {
+        "code": "example-code-2",
+        "display": "Example Code 2",
+        "definition": "This is an example code 2."
+    }
+]

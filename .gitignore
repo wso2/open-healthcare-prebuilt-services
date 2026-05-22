@@ -25,3 +25,20 @@ hs_err_pid*
 # Ballerina
 target/
 Config.toml
+Cloud.toml
+
+# Database files
+*.db
+
+# IDE specific configuration files
+.idea/
+.vscode/
+
+# Mac configuration file
+.DS_Store
+
+# Ignore database files
+/db/.*
+
+# Ignore export files
+miscellaneous/fhir-server/data/exports/*

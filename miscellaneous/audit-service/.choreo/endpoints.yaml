@@ -1,0 +1,11 @@
+# +required Version of the endpoint configuration YAML
+version: 0.1
+
+# +required List of endpoints to create
+endpoints:
+- name: Audit Service API
+  port: 9093
+  type: REST
+  networkVisibility: Public
+  context: /
+  schemaFilePath: oas/AuditServiceAPI.yaml  

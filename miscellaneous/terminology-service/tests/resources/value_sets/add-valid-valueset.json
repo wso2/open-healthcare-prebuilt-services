@@ -1,0 +1,31 @@
+{
+    "resourceType": "ValueSet",
+    "id": "cdcrec-all",
+    "url": "http://example.org/fhir/ValueSet/cdcrec-all",
+    "version": "1.0.0",
+    "name": "CDCRECAll",
+    "title": "CDC Race and Ethnicity - All Codes",
+    "status": "active",
+    "date": "2025-04-09",
+    "publisher": "Example Publisher",
+    "contact": [
+      {
+        "name": "Example Team",
+        "telecom": [
+          {
+            "system": "email",
+            "value": "support@example.org"
+          }
+        ]
+      }
+    ],
+    "description": "A ValueSet that includes all codes from the CDC Race and Ethnicity CodeSystem (urn:oid:2.16.840.1.113883.6.238).",
+    "compose": {
+      "include": [
+        {
+          "system": "urn:oid:2.16.840.1.113883.6.238"
+        }
+      ]
+    }
+  }
+  
