@@ -14,6 +14,7 @@ import (
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/db"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/handler"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/searchparam"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/seed"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
 )
 
@@ -45,6 +46,11 @@ func run() error {
 
 	if err := db.Migrate(ctx, pool); err != nil {
 		return fmt.Errorf("migrate: %w", err)
+	}
+
+	// Seed standard FHIR R4 search parameters (idempotent — ON CONFLICT DO NOTHING)
+	if err := seed.SeedSearchParams(ctx, pool); err != nil {
+		slog.Warn("search param seed failed (non-fatal)", "err", err)
 	}
 
 	// Search param registry

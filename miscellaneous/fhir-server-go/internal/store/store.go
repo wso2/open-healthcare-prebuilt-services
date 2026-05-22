@@ -19,12 +19,14 @@ import (
 type Store struct {
 	pool      *pgxpool.Pool
 	extractor *index.Extractor
+	registry  *searchparam.Registry
 }
 
 func New(pool *pgxpool.Pool, registry *searchparam.Registry) *Store {
 	return &Store{
 		pool:      pool,
 		extractor: index.New(registry),
+		registry:  registry,
 	}
 }
 
@@ -337,6 +339,93 @@ func scanHistoryRows(rows pgx.Rows) ([]HistoryEntry, error) {
 
 func isNoRows(err error) bool {
 	return err == pgx.ErrNoRows || strings.Contains(err.Error(), "no rows")
+}
+
+// ─── SearchParameter sync ─────────────────────────────────────────────────────
+
+// SyncSearchParameter persists a custom SearchParameter into search_param_definitions
+// and updates the in-memory registry. Called after Create/Update of SearchParameter.
+func (s *Store) SyncSearchParameter(ctx context.Context, body map[string]any) error {
+	code, _ := body["code"].(string)
+	paramType, _ := body["type"].(string)
+	expression, _ := body["expression"].(string)
+	baseArr, _ := body["base"].([]any)
+	if code == "" || len(baseArr) == 0 {
+		return nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	for _, b := range baseArr {
+		resourceType, _ := b.(string)
+		if resourceType == "" {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO search_param_definitions (resource_type, param_name, param_type, fhirpath_expr, is_custom)
+			VALUES ($1, $2, $3, $4, TRUE)
+			ON CONFLICT (resource_type, param_name)
+			DO UPDATE SET param_type = EXCLUDED.param_type,
+			              fhirpath_expr = EXCLUDED.fhirpath_expr
+			WHERE search_param_definitions.is_custom = TRUE`,
+			resourceType, code, paramType, expression,
+		); err != nil {
+			return fmt.Errorf("upsert search param %s.%s: %w", resourceType, code, err)
+		}
+		s.registry.Upsert(searchparam.Definition{
+			ResourceType: resourceType,
+			ParamName:    code,
+			ParamType:    paramType,
+			FHIRPath:     expression,
+			IsCustom:     true,
+		})
+	}
+	return tx.Commit(ctx)
+}
+
+// DeleteSearchParameter removes a custom SearchParameter by resource ID.
+func (s *Store) DeleteSearchParameter(ctx context.Context, resourceID string) error {
+	var raw []byte
+	err := s.pool.QueryRow(ctx,
+		`SELECT resource_json FROM resources WHERE fhir_id = $1 AND resource_type = 'SearchParameter'`,
+		resourceID,
+	).Scan(&raw)
+	if err != nil {
+		if isNoRows(err) {
+			return nil // nothing to clean up
+		}
+		return err
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return err
+	}
+	code, _ := body["code"].(string)
+	if code == "" {
+		return nil
+	}
+
+	if _, err := s.pool.Exec(ctx,
+		`DELETE FROM search_param_definitions WHERE param_name = $1 AND is_custom = TRUE`, code,
+	); err != nil {
+		return err
+	}
+
+	// Remove from all resource types in registry
+	if baseArr, ok := body["base"].([]any); ok {
+		for _, b := range baseArr {
+			if rt, ok := b.(string); ok {
+				s.registry.Remove(rt, code)
+			}
+		}
+	}
+	slog.Info("removed custom search parameter", "code", code)
+	return nil
 }
 
 // NotFoundError is returned when a resource does not exist.

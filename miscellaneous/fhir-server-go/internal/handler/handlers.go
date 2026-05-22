@@ -110,13 +110,22 @@ func (h *fhirHandler) buildBundle(rt string, result store.SearchResult, params m
 		page = 1
 	}
 
-	entries := make([]any, 0, len(result.Entries))
+	entries := make([]any, 0, len(result.Entries)+len(result.Included))
 	for _, res := range result.Entries {
 		id, _ := res["id"].(string)
 		entries = append(entries, map[string]any{
 			"fullUrl":  fmt.Sprintf("%s/%s/%s", h.baseURL, rt, id),
 			"resource": res,
 			"search":   map[string]any{"mode": "match"},
+		})
+	}
+	for _, res := range result.Included {
+		inclRT, _ := res["resourceType"].(string)
+		id, _ := res["id"].(string)
+		entries = append(entries, map[string]any{
+			"fullUrl":  fmt.Sprintf("%s/%s/%s", h.baseURL, inclRT, id),
+			"resource": res,
+			"search":   map[string]any{"mode": "include"},
 		})
 	}
 
@@ -130,6 +139,75 @@ func (h *fhirHandler) buildBundle(rt string, result store.SearchResult, params m
 		},
 		"entry": entries,
 	}
+}
+
+// ─── $everything ──────────────────────────────────────────────────────────────
+
+func (h *fhirHandler) everything(w http.ResponseWriter, r *http.Request) {
+	rt := chi.URLParam(r, "resourceType")
+	id := chi.URLParam(r, "id")
+	since := r.URL.Query().Get("_since")
+	typeFilter := r.URL.Query()["_type"]
+
+	// Read the anchor resource
+	anchor, err := h.store.Read(r.Context(), rt, id)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+
+	entries := []any{map[string]any{
+		"fullUrl":  fmt.Sprintf("%s/%s/%s", h.baseURL, rt, id),
+		"resource": anchor,
+		"search":   map[string]any{"mode": "match"},
+	}}
+
+	// Forward references (resources this resource points to)
+	forward, err := h.store.FetchReferences(r.Context(), rt, id, false)
+	if err != nil {
+		operationOutcome(w, http.StatusInternalServerError, "error", "exception", err.Error())
+		return
+	}
+
+	// Reverse references (resources that point to this resource)
+	reverse, err := h.store.FetchReferences(r.Context(), rt, id, true)
+	if err != nil {
+		operationOutcome(w, http.StatusInternalServerError, "error", "exception", err.Error())
+		return
+	}
+
+	seen := map[string]bool{rt + "/" + id: true}
+	for _, res := range append(forward, reverse...) {
+		inclRT, _ := res["resourceType"].(string)
+		inclID, _ := res["id"].(string)
+		key := inclRT + "/" + inclID
+
+		if seen[key] {
+			continue
+		}
+		if since != "" {
+			if lu := lastUpdatedStr(res); lu != "" && lu <= since {
+				continue
+			}
+		}
+		if len(typeFilter) > 0 && !containsStr(typeFilter, inclRT) {
+			continue
+		}
+
+		seen[key] = true
+		entries = append(entries, map[string]any{
+			"fullUrl":  fmt.Sprintf("%s/%s/%s", h.baseURL, inclRT, inclID),
+			"resource": res,
+			"search":   map[string]any{"mode": "include"},
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"resourceType": "Bundle",
+		"type":         "searchset",
+		"total":        len(entries),
+		"entry":        entries,
+	})
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────
@@ -147,6 +225,13 @@ func (h *fhirHandler) create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		operationOutcome(w, http.StatusInternalServerError, "error", "exception", err.Error())
 		return
+	}
+
+	if rt == "SearchParameter" {
+		if err := h.store.SyncSearchParameter(r.Context(), resource); err != nil {
+			// Non-fatal — log and continue
+			_ = err
+		}
 	}
 
 	id, _ := resource["id"].(string)
@@ -172,6 +257,11 @@ func (h *fhirHandler) update(w http.ResponseWriter, r *http.Request) {
 		handleError(w, err)
 		return
 	}
+
+	if rt == "SearchParameter" {
+		_ = h.store.SyncSearchParameter(r.Context(), resource)
+	}
+
 	w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(resource)))
 	writeJSON(w, http.StatusOK, resource)
 }
@@ -202,6 +292,10 @@ func (h *fhirHandler) patch(w http.ResponseWriter, r *http.Request) {
 func (h *fhirHandler) delete(w http.ResponseWriter, r *http.Request) {
 	rt := chi.URLParam(r, "resourceType")
 	id := chi.URLParam(r, "id")
+
+	if rt == "SearchParameter" {
+		_ = h.store.DeleteSearchParameter(r.Context(), id)
+	}
 
 	if err := h.store.Delete(r.Context(), rt, id); err != nil {
 		handleError(w, err)
@@ -259,6 +353,26 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 			"version": "1.0.0",
 		},
 	})
+}
+
+// ─── Helpers for $everything ──────────────────────────────────────────────────
+
+func lastUpdatedStr(res map[string]any) string {
+	if meta, ok := res["meta"].(map[string]any); ok {
+		if lu, ok := meta["lastUpdated"].(string); ok {
+			return lu
+		}
+	}
+	return ""
+}
+
+func containsStr(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 // ─── Error handling ───────────────────────────────────────────────────────────

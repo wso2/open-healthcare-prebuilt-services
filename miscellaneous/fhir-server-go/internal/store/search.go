@@ -21,11 +21,13 @@ type SearchParams struct {
 }
 
 type SearchResult struct {
-	Total   int
-	Entries []map[string]any
+	Total    int
+	Entries  []map[string]any
+	Included []map[string]any // _include / _revinclude results
 }
 
-// Search executes a FHIR search against the resources + sp_* tables.
+// Search executes a FHIR search against the resources + sp_* tables,
+// and resolves _include / _revinclude parameters.
 func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, error) {
 	if sp.PageSize <= 0 {
 		sp.PageSize = 20
@@ -55,7 +57,51 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 		return SearchResult{}, err
 	}
 
-	return SearchResult{Total: total, Entries: entries}, nil
+	result := SearchResult{Total: total, Entries: entries}
+
+	// _include / _revinclude
+	if incl := sp.Params["_include"]; len(incl) > 0 {
+		included, err := s.resolveIncludes(ctx, entries, sp.ResourceType, false)
+		if err != nil {
+			return result, err
+		}
+		result.Included = append(result.Included, included...)
+	}
+	if rIncl := sp.Params["_revinclude"]; len(rIncl) > 0 {
+		included, err := s.resolveIncludes(ctx, entries, sp.ResourceType, true)
+		if err != nil {
+			return result, err
+		}
+		result.Included = append(result.Included, included...)
+	}
+
+	return result, nil
+}
+
+// resolveIncludes fetches include/revinclude resources for a set of matched entries.
+func (s *Store) resolveIncludes(ctx context.Context, entries []map[string]any, resourceType string, reverse bool) ([]map[string]any, error) {
+	seen := make(map[string]bool)
+	var results []map[string]any
+
+	for _, entry := range entries {
+		id, _ := entry["id"].(string)
+		if id == "" {
+			continue
+		}
+		refs, err := s.FetchReferences(ctx, resourceType, id, reverse)
+		if err != nil {
+			continue
+		}
+		for _, ref := range refs {
+			refID, _ := ref["id"].(string)
+			key := ref["resourceType"].(string) + "/" + refID
+			if !seen[key] {
+				seen[key] = true
+				results = append(results, ref)
+			}
+		}
+	}
+	return results, nil
 }
 
 // ─── Query builder ────────────────────────────────────────────────────────────

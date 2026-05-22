@@ -33,6 +33,7 @@ func NewRouter(s *store.Store, baseURL string) http.Handler {
 				r.Delete("/", h.delete)
 				r.Get("/_history", h.history)
 				r.Get("/_history/{vid}", h.vread)
+				r.Get("/$everything", h.everything)
 			})
 		})
 	})
