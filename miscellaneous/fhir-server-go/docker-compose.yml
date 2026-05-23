@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: fhirdb
+      POSTGRES_USER: fhir
+      POSTGRES_PASSWORD: fhir
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fhir -d fhirdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "9090:9090"
+    environment:
+      DATABASE_URL: postgres://fhir:fhir@db:5432/fhirdb?sslmode=disable
+      SERVER_PORT: "9090"
+      BASE_URL: http://localhost:9090/fhir/r4
+      LOG_LEVEL: info
+      # IG_PACKAGES: hl7.fhir.us.core@6.1.0,hl7.fhir.us.carin-bb@2.0.0
+      IG_CACHE_DIR: /data/fhir-ig-cache
+    volumes:
+      - igcache:/data/fhir-ig-cache
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+    # Health is exposed at GET /health/ready. The container image is distroless and
+    # has no shell or wget, so probe externally (e.g. k8s readinessProbe httpGet)
+    # or from the host with: curl -fsS http://localhost:9090/health/ready
+
+volumes:
+  pgdata:
+  igcache:

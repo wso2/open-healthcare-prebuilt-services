@@ -1,4 +1,4 @@
-name: CI
+name: CI (Go)
 
 on:
   pull_request:
@@ -11,21 +11,21 @@ env:
   EHR_PATTERN: ehr-connectivity/*/*
   MISC_PATTERN: miscellaneous/*/*
   TRANSFORMATION_PATTERN: transformation/*/*
-  BALLERINA_VERSION: 2201.12.10
+  GO_VERSION: '1.25'
 
 jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
-      project-matrix: ${{ steps.unique-project-paths.outputs.BALLERINA_PROJECT_PATHS }}
+      project-matrix: ${{ steps.unique-project-paths.outputs.GO_PROJECT_PATHS }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Extract Unique Ballerina Project Paths from Changed Files
+      - name: Extract Unique Go Project Paths from Changed Files
         id: unique-project-paths
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -44,108 +44,92 @@ jobs:
                 }
               }
             }' -F owner='wso2' -F repo='open-healthcare-prebuilt-services' -F pr=${{ github.event.pull_request.number }} --paginate --jq '.data.repository.pullRequest.files.nodes.[].path')
-          echo "Changed Files: "
+          echo "Changed Files:"
           echo "${CHANGED_FILES}"
 
           # Convert CHANGED_FILES to an array
           readarray -t CHANGED_FILES_ARRAY <<<"${CHANGED_FILES}"
-          
-          # Remove duplicates from the CHANGED_FILES_ARRAY
+
+          # Collect unique 2-level paths that contain a go.mod (Go module roots)
           declare -A UNIQUE_PATHS_MAP
           for file in "${CHANGED_FILES_ARRAY[@]}"; do
+            EXTRACTED_PATH=""
             if [[ $file == $CONFORMANCE_PATTERN ]] || [[ $file == $EHR_PATTERN ]] || [[ $file == $MISC_PATTERN ]] || [[ $file == $TRANSFORMATION_PATTERN ]]; then
-              # Condition for 2 level projects
               EXTRACTED_PATH=$(echo "$file" | cut -d '/' -f 1-2)
-              # Only include Ballerina projects; non-Ballerina projects
-              # (e.g. Go) are built by their own workflow.
-              if [[ ! -f "$EXTRACTED_PATH/Ballerina.toml" ]]; then
-                EXTRACTED_PATH=""
-              else
-                echo "${EXTRACTED_PATH}"
+              if [[ -f "$EXTRACTED_PATH/go.mod" ]]; then
+                UNIQUE_PATHS_MAP[$EXTRACTED_PATH]=1
               fi
             fi
-
-            if [[ $EXTRACTED_PATH ]]; then
-              UNIQUE_PATHS_MAP[$EXTRACTED_PATH]=1
-            fi
           done
-          
-          # Print the unique ballerina project paths
-          echo "Extracted Unique Ballerina Project Paths: "
+
+          # Print the unique Go project paths
+          echo "Extracted Unique Go Project Paths:"
           for EXTRACTED_PATH in "${!UNIQUE_PATHS_MAP[@]}"; do
             echo "$EXTRACTED_PATH"
           done
 
           # Create the JSON array with elements enclosed in double quotes
           UNIQUE_PATHS_JSON=$(for key in "${!UNIQUE_PATHS_MAP[@]}"; do echo "\"$key\""; done | jq -s -c .)
-          echo "UNIQUE_PATHS_JSON: "
+          echo "UNIQUE_PATHS_JSON:"
           echo "${UNIQUE_PATHS_JSON}"
-          echo "BALLERINA_PROJECT_PATHS=${UNIQUE_PATHS_JSON}" >> $GITHUB_OUTPUT
+          echo "GO_PROJECT_PATHS=${UNIQUE_PATHS_JSON}" >> $GITHUB_OUTPUT
 
   build:
     needs: [ setup ]
     runs-on: ubuntu-latest
-    env:
-      JAVA_OPTS: -Xmx4G
-    if: ${{ needs.setup.outputs.project-matrix != '[]' }}
+    if: ${{ needs.setup.outputs.project-matrix != '[]' && needs.setup.outputs.project-matrix != '' }}
     strategy:
       matrix:
         path: ${{ fromJson(needs.setup.outputs.project-matrix) }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set Up Ballerina
-        uses: ballerina-platform/setup-ballerina@v1.1.0
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          version: $BALLERINA_VERSION
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: '${{ matrix.path }}/go.sum'
 
-      - name: Ballerina Build
+      - name: Go Build
         run: |
           pushd "${{ matrix.path }}"
-          bal pack
+          go build ./...
+          popd
+
+      - name: Go Vet
+        run: |
+          pushd "${{ matrix.path }}"
+          go vet ./...
           popd
 
   test:
     needs: [ setup ]
     runs-on: ubuntu-latest
-    env:
-      JAVA_OPTS: -Xmx4G
-    if: ${{ needs.setup.outputs.project-matrix != '[]' }}
+    if: ${{ needs.setup.outputs.project-matrix != '[]' && needs.setup.outputs.project-matrix != '' }}
     strategy:
       matrix:
         path: ${{ fromJson(needs.setup.outputs.project-matrix) }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Set Up Ballerina
-        uses: ballerina-platform/setup-ballerina@v1.1.0
-        with:
-          version: $BALLERINA_VERSION
+        uses: actions/checkout@v4
 
-      - name: Ballerina Test
-        if: ${{ ! contains(matrix.path, 'miscellaneous/bulk-export-client-service') }}
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: '${{ matrix.path }}/go.sum'
+
+      - name: Go Test (unit, race)
         run: |
           pushd "${{ matrix.path }}"
-          bal test --code-coverage
+          go test -race -timeout=300s ./...
           popd
 
-      - name: Read Ballerina Test Results
-        id: test_results
+      - name: Go Test (integration, race)
         run: |
-          if [ -f "./${{ matrix.path }}/target/report/test_results.json" ]; then
-            content=`cat ./${{ matrix.path }}/target/report/test_results.json`                
-            content="${content//'%'/'%25'}"
-            content="${content//$'\n'/'%0A'}"
-            content="${content//$'\r'/'%0D'}"
-
-            echo "Covered Code Lines : $(echo "$content" | jq -r '.coveredLines')"
-            echo "Total Code Lines : $(echo "$content" | jq -r '.missedLines') + $(echo "$content" | jq -r '.coveredLines')"
-            echo "Code Coverage Percentage : $(echo "$content" | jq -r '.coveragePercentage')"
-          else
-            # echo "TEST_RESULTS_JSON=" >> $GITHUB_OUTPUT
-            echo "No test results file found."
-          fi
+          pushd "${{ matrix.path }}"
+          go test -tags=integration -race -timeout=600s ./...
+          popd
