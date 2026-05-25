@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -30,12 +31,24 @@ func main() {
 }
 
 func run() error {
-	cfg, err := config.Load()
+	var configPath string
+	flag.StringVar(&configPath, "config", "", "Path to YAML config file (overrides FHIR_SERVER_CONFIG env var)")
+	flag.StringVar(&configPath, "c", "", "Path to YAML config file (shorthand for -config)")
+	flag.Parse()
+	if configPath == "" {
+		configPath = os.Getenv("FHIR_SERVER_CONFIG")
+	}
+
+	cfg, err := config.LoadFromPath(configPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
 	setupLogging(cfg.LogLevel)
+
+	if configPath != "" {
+		slog.Info("loaded config file", "path", configPath)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

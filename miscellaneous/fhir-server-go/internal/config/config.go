@@ -1,14 +1,25 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
+// Config is the resolved server configuration consumed by the rest of the
+// application. Values are merged from (in order of precedence, highest first):
+//
+//  1. Environment variables
+//  2. The YAML configuration file (if one is specified)
+//  3. Built-in defaults
 type Config struct {
 	DatabaseURL   string
 	Port          int
@@ -20,58 +31,172 @@ type Config struct {
 	IGCacheDir    string   // local .tgz cache dir (default: .fhir-ig-cache)
 }
 
+// FileConfig is the on-disk YAML schema. Each field is optional — anything
+// not specified falls through to the env var, then to the built-in default.
+type FileConfig struct {
+	Server struct {
+		Port    int    `yaml:"port"`
+		BaseURL string `yaml:"baseUrl"`
+	} `yaml:"server"`
+
+	Logging struct {
+		Level string `yaml:"level"`
+	} `yaml:"logging"`
+
+	Database struct {
+		URL      string `yaml:"url"`
+		Host     string `yaml:"host"`
+		Port     string `yaml:"port"`
+		User     string `yaml:"user"`
+		Password string `yaml:"password"`
+		Name     string `yaml:"name"`
+	} `yaml:"database"`
+
+	IG struct {
+		Packages    []string `yaml:"packages"`
+		RegistryURL string   `yaml:"registryUrl"`
+		ForceReload *bool    `yaml:"forceReload"` // pointer so absence is distinguishable from `false`
+		CacheDir    string   `yaml:"cacheDir"`
+	} `yaml:"ig"`
+}
+
+// Load reads configuration using the env-var-based discovery path. The
+// optional config file location is taken from FHIR_SERVER_CONFIG.
+//
+// Callers that parse CLI flags should use LoadFromPath instead.
 func Load() (*Config, error) {
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		host := getenv("DB_HOST", "localhost")
-		port := getenv("DB_PORT", "5432")
-		user := getenv("DB_USER", "fhir")
-		pass := getenv("DB_PASSWORD", "fhir")
-		name := getenv("DB_NAME", "fhirdb")
-		u := &url.URL{
-			Scheme:   "postgres",
-			User:     url.UserPassword(user, pass),
-			Host:     net.JoinHostPort(host, port),
-			Path:     "/" + name,
-			RawQuery: "sslmode=disable",
-		}
-		dbURL = u.String()
-	}
+	return LoadFromPath(os.Getenv("FHIR_SERVER_CONFIG"))
+}
 
-	serverPort := 9090
-	if p := os.Getenv("SERVER_PORT"); p != "" {
-		n, err := strconv.Atoi(p)
+// LoadFromPath reads configuration, optionally seeded from a YAML file at the
+// given path. An empty path means "no config file" — only env vars + defaults
+// are applied. A non-empty path that cannot be read or parsed returns an
+// error; unknown YAML keys are also rejected so typos surface loudly.
+func LoadFromPath(path string) (*Config, error) {
+	var fc FileConfig
+	if path != "" {
+		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("invalid SERVER_PORT: %w", err)
+			return nil, fmt.Errorf("read config file %q: %w", path, err)
 		}
-		serverPort = n
+		dec := yaml.NewDecoder(bytes.NewReader(data))
+		dec.KnownFields(true)
+		if err := dec.Decode(&fc); err != nil && !errors.Is(err, io.EOF) {
+			// io.EOF means the file was empty / whitespace-only — that's fine,
+			// we just fall through to env vars + defaults.
+			return nil, fmt.Errorf("parse config file %q: %w", path, err)
+		}
+	}
+	return resolve(&fc)
+}
+
+// resolve materializes a Config from a (possibly empty) FileConfig, layering
+// env vars on top and falling back to defaults.
+func resolve(fc *FileConfig) (*Config, error) {
+	dbURL, err := resolveDatabaseURL(fc)
+	if err != nil {
+		return nil, err
 	}
 
-	// IG_PACKAGES: comma-separated list, e.g. "hl7.fhir.us.core@6.1.0,hl7.fhir.us.carin-bb@2.0.0"
-	var igPackages []string
-	if raw := os.Getenv("IG_PACKAGES"); raw != "" {
-		for _, p := range strings.Split(raw, ",") {
-			if p = strings.TrimSpace(p); p != "" {
-				igPackages = append(igPackages, p)
-			}
-		}
+	serverPort, err := resolveServerPort(fc)
+	if err != nil {
+		return nil, err
+	}
+
+	baseURL := pick(os.Getenv("BASE_URL"), fc.Server.BaseURL, fmt.Sprintf("http://localhost:%d/fhir/r4", serverPort))
+	logLevel := pick(os.Getenv("LOG_LEVEL"), fc.Logging.Level, "info")
+
+	igPackages := resolveIGPackages(fc)
+	igRegistry := pick(os.Getenv("IG_REGISTRY_URL"), fc.IG.RegistryURL, "https://packages.fhir.org")
+	igCacheDir := pick(os.Getenv("IG_CACHE_DIR"), fc.IG.CacheDir, ".fhir-ig-cache")
+
+	igForceReload := false
+	if fc.IG.ForceReload != nil {
+		igForceReload = *fc.IG.ForceReload
+	}
+	if v := os.Getenv("IG_FORCE_RELOAD"); v != "" {
+		igForceReload = strings.EqualFold(v, "true")
 	}
 
 	return &Config{
 		DatabaseURL:   dbURL,
 		Port:          serverPort,
-		BaseURL:       getenv("BASE_URL", fmt.Sprintf("http://localhost:%d/fhir/r4", serverPort)),
-		LogLevel:      getenv("LOG_LEVEL", "info"),
+		BaseURL:       baseURL,
+		LogLevel:      logLevel,
 		IGPackages:    igPackages,
-		IGRegistryURL: getenv("IG_REGISTRY_URL", "https://packages.fhir.org"),
-		IGForceReload: os.Getenv("IG_FORCE_RELOAD") == "true",
-		IGCacheDir:    getenv("IG_CACHE_DIR", ".fhir-ig-cache"),
+		IGRegistryURL: igRegistry,
+		IGForceReload: igForceReload,
+		IGCacheDir:    igCacheDir,
 	}, nil
 }
 
-func getenv(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+func resolveDatabaseURL(fc *FileConfig) (string, error) {
+	if v := os.Getenv("DATABASE_URL"); v != "" {
+		return v, nil
 	}
-	return def
+	if fc.Database.URL != "" {
+		return fc.Database.URL, nil
+	}
+	host := pick(os.Getenv("DB_HOST"), fc.Database.Host, "localhost")
+	port := pick(os.Getenv("DB_PORT"), fc.Database.Port, "5432")
+	user := pick(os.Getenv("DB_USER"), fc.Database.User, "fhir")
+	pass := pick(os.Getenv("DB_PASSWORD"), fc.Database.Password, "fhir")
+	name := pick(os.Getenv("DB_NAME"), fc.Database.Name, "fhirdb")
+	u := &url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(user, pass),
+		Host:     net.JoinHostPort(host, port),
+		Path:     "/" + name,
+		RawQuery: "sslmode=disable",
+	}
+	return u.String(), nil
+}
+
+func resolveServerPort(fc *FileConfig) (int, error) {
+	if v := os.Getenv("SERVER_PORT"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("invalid SERVER_PORT: %w", err)
+		}
+		return n, nil
+	}
+	if fc.Server.Port != 0 {
+		return fc.Server.Port, nil
+	}
+	return 9090, nil
+}
+
+func resolveIGPackages(fc *FileConfig) []string {
+	// IG_PACKAGES is comma-separated: "hl7.fhir.us.core@6.1.0,hl7.fhir.us.carin-bb@2.0.0".
+	// A non-empty value fully replaces the file's list. Empty / unset → fall back to file.
+	if raw := os.Getenv("IG_PACKAGES"); raw != "" {
+		var pkgs []string
+		for _, p := range strings.Split(raw, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				pkgs = append(pkgs, p)
+			}
+		}
+		return pkgs
+	}
+	if len(fc.IG.Packages) > 0 {
+		// Defensive copy + trim, so the resolved Config isn't aliased to FileConfig.
+		out := make([]string, 0, len(fc.IG.Packages))
+		for _, p := range fc.IG.Packages {
+			if p = strings.TrimSpace(p); p != "" {
+				out = append(out, p)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// pick returns the first non-empty value. Useful for env > file > default chains.
+func pick(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
