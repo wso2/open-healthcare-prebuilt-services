@@ -27,7 +27,7 @@ func newRealServer(t *testing.T) *httptest.Server {
 	s := store.New(pool, reg)
 	var ready atomic.Int32
 	ready.Store(1)
-	srv := httptest.NewServer(handler.NewRouter(s, pool, "http://test-server/fhir/r4", &ready))
+	srv := httptest.NewServer(handler.NewRouter(s, pool, reg, "http://test-server/fhir/r4", &ready))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -590,5 +590,51 @@ func TestIntegration_Everything(t *testing.T) {
 	}
 	if !foundOrg {
 		t.Errorf("Organization %q not found in $everything bundle", orgID)
+	}
+}
+
+// TestMetadata_ListsFullR4ResourceSet verifies that /metadata advertises the
+// full set of FHIR R4 resource types seeded into the search-param registry
+// (i.e. is derived dynamically rather than from a hardcoded subset).
+func TestMetadata_ListsFullR4ResourceSet(t *testing.T) {
+	srv := newRealServer(t)
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/metadata", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	cs := iJSON(t, resp)
+
+	rest, _ := cs["rest"].([]any)
+	if len(rest) == 0 {
+		t.Fatal("rest array empty")
+	}
+	rest0, _ := rest[0].(map[string]any)
+	resources, _ := rest0["resource"].([]any)
+
+	// The seeded R4 base spec covers ~125+ concrete resource types. The exact
+	// count may drift if the CSV is updated, so assert a generous floor instead
+	// of an exact match.
+	if len(resources) < 100 {
+		t.Errorf("want ≥100 resources in CapabilityStatement, got %d", len(resources))
+	}
+	t.Logf("CapabilityStatement advertises %d resource types", len(resources))
+
+	seen := make(map[string]bool, len(resources))
+	for _, r := range resources {
+		entry, _ := r.(map[string]any)
+		if rt, ok := entry["type"].(string); ok {
+			seen[rt] = true
+		}
+	}
+	for _, rt := range []string{"Patient", "Observation", "Encounter", "Condition", "Procedure", "Medication", "Bundle", "ValueSet"} {
+		if !seen[rt] {
+			t.Errorf("expected %q in CapabilityStatement, missing", rt)
+		}
+	}
+	// Abstract base types should be excluded.
+	for _, rt := range []string{"Resource", "DomainResource"} {
+		if seen[rt] {
+			t.Errorf("abstract type %q should not appear in CapabilityStatement", rt)
+		}
 	}
 }

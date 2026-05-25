@@ -7,15 +7,17 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/searchparam"
 )
 
-func NewRouter(s StoreAPI, pool *pgxpool.Pool, baseURL string, igReady *atomic.Int32) http.Handler {
+func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, baseURL string, igReady *atomic.Int32) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
 
-	h := &fhirHandler{store: s, pool: pool, baseURL: baseURL, igReady: igReady}
+	h := &fhirHandler{store: s, pool: pool, registry: registry, baseURL: baseURL, igReady: igReady}
 
 	// Health probes
 	r.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
@@ -57,8 +59,9 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, baseURL string, igReady *atomic.I
 }
 
 type fhirHandler struct {
-	store   StoreAPI
-	pool    *pgxpool.Pool
-	baseURL string
-	igReady *atomic.Int32
+	store    StoreAPI
+	pool     *pgxpool.Pool
+	registry *searchparam.Registry
+	baseURL  string
+	igReady  *atomic.Int32
 }

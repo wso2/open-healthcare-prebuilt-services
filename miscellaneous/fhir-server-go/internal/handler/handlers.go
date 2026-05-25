@@ -651,11 +651,13 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 		igURLs = append(igURLs, fmt.Sprintf("http://hl7.org/fhir/ig/%s/%s", p.Name, p.Version))
 	}
 
-	// Build rest.resource list with supportedProfile entries
-	fhirResourceTypes := []string{
-		"Patient", "Practitioner", "Organization", "Observation", "Condition",
-		"Encounter", "MedicationRequest", "DiagnosticReport", "Procedure",
-		"AllergyIntolerance", "Immunization", "Coverage", "Claim", "ExplanationOfBenefit",
+	// Build rest.resource list with supportedProfile entries.
+	// The list is derived from the loaded search-param registry so it always
+	// reflects the full FHIR R4 base spec plus any IG packages loaded at
+	// startup — no per-deployment hardcoding required.
+	var fhirResourceTypes []string
+	if h.registry != nil {
+		fhirResourceTypes = h.registry.ResourceTypes()
 	}
 	resources := make([]any, 0, len(fhirResourceTypes))
 	for _, rt := range fhirResourceTypes {

@@ -143,6 +143,84 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+func TestRegistry_ResourceTypes_SortedAndFilters(t *testing.T) {
+	r := searchparam.NewRegistry()
+	r.Upsert(def("Patient", "name", "string"))
+	r.Upsert(def("Observation", "code", "token"))
+	r.Upsert(def("Condition", "subject", "reference"))
+	r.Upsert(def("Resource", "_id", "token"))
+	r.Upsert(def("DomainResource", "_profile", "uri"))
+
+	got := r.ResourceTypes()
+	want := []string{"Condition", "Observation", "Patient"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d]=%q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// Remove() leaves the map key in place with a zero-length slice; ensure
+// ResourceTypes() does not advertise types that have had all their
+// definitions removed.
+func TestRegistry_ResourceTypes_ExcludesTypesWithNoDefinitions(t *testing.T) {
+	r := searchparam.NewRegistry()
+	r.Upsert(def("Patient", "name", "string"))
+	r.Upsert(def("Observation", "code", "token"))
+	r.Remove("Observation", "code") // last def for Observation
+
+	got := r.ResourceTypes()
+	for _, rt := range got {
+		if rt == "Observation" {
+			t.Fatalf("Observation should be excluded after its only param was removed; got %v", got)
+		}
+	}
+	if len(got) != 1 || got[0] != "Patient" {
+		t.Fatalf("want [Patient], got %v", got)
+	}
+}
+
+func BenchmarkRegistry_ResourceTypes(b *testing.B) {
+	r := searchparam.NewRegistry()
+	// Simulate the seeded R4 base spec (~133 concrete types).
+	for _, rt := range []string{
+		"Account", "ActivityDefinition", "AdverseEvent", "AllergyIntolerance", "Appointment",
+		"AppointmentResponse", "AuditEvent", "Basic", "BodyStructure", "Bundle",
+		"CapabilityStatement", "CarePlan", "CareTeam", "ChargeItem", "ChargeItemDefinition",
+		"Claim", "ClaimResponse", "ClinicalImpression", "CodeSystem", "Communication",
+		"CommunicationRequest", "CompartmentDefinition", "Composition", "ConceptMap", "Condition",
+		"Consent", "Contract", "Coverage", "CoverageEligibilityRequest", "CoverageEligibilityResponse",
+		"DetectedIssue", "Device", "DeviceDefinition", "DeviceMetric", "DeviceRequest",
+		"DeviceUseStatement", "DiagnosticReport", "DocumentManifest", "DocumentReference", "Encounter",
+		"Endpoint", "EnrollmentRequest", "EnrollmentResponse", "EpisodeOfCare", "EventDefinition",
+		"Evidence", "EvidenceVariable", "ExampleScenario", "ExplanationOfBenefit", "FamilyMemberHistory",
+		"Flag", "Goal", "GraphDefinition", "Group", "GuidanceResponse", "HealthcareService",
+		"ImagingStudy", "Immunization", "ImmunizationEvaluation", "ImmunizationRecommendation",
+		"ImplementationGuide", "InsurancePlan", "Invoice", "Library", "Linkage", "List", "Location",
+		"Measure", "MeasureReport", "Media", "Medication", "MedicationAdministration",
+		"MedicationDispense", "MedicationKnowledge", "MedicationRequest", "MedicationStatement",
+		"MessageDefinition", "MessageHeader", "MolecularSequence", "NamingSystem", "NutritionOrder",
+		"Observation", "OperationDefinition", "Organization", "OrganizationAffiliation", "Patient",
+		"PaymentNotice", "PaymentReconciliation", "Person", "PlanDefinition", "Practitioner",
+		"PractitionerRole", "Procedure", "Provenance", "Questionnaire", "QuestionnaireResponse",
+		"RelatedPerson", "RequestGroup", "ResearchDefinition", "ResearchElementDefinition",
+		"ResearchStudy", "ResearchSubject", "RiskAssessment", "Schedule", "SearchParameter",
+		"ServiceRequest", "Slot", "Specimen", "SpecimenDefinition", "StructureDefinition",
+		"StructureMap", "Subscription", "Substance", "SubstanceSpecification", "SupplyDelivery",
+		"SupplyRequest", "Task", "TerminologyCapabilities", "TestReport", "TestScript", "ValueSet",
+		"VerificationResult", "VisionPrescription", "Resource", "DomainResource",
+	} {
+		r.Upsert(def(rt, "code", "token"))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = r.ResourceTypes()
+	}
+}
+
 func TestRegistry_IGSource(t *testing.T) {
 	r := searchparam.NewRegistry()
 	r.Upsert(searchparam.Definition{

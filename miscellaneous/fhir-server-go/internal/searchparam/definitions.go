@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -81,6 +82,29 @@ func (r *Registry) ForResource(resourceType string) []Definition {
 	}
 	out := make([]Definition, len(defs))
 	copy(out, defs)
+	return out
+}
+
+// ResourceTypes returns the sorted set of concrete FHIR resource types known
+// to the registry. The abstract base types Resource and DomainResource are
+// excluded so callers (e.g. the CapabilityStatement builder) get the list of
+// types a client can actually POST/GET against. Types whose definitions have
+// all been removed via Remove() are also excluded — Remove leaves the map key
+// in place with a zero-length slice.
+func (r *Registry) ResourceTypes() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]string, 0, len(r.byRes))
+	for rt, defs := range r.byRes {
+		if len(defs) == 0 {
+			continue
+		}
+		if rt == "Resource" || rt == "DomainResource" {
+			continue
+		}
+		out = append(out, rt)
+	}
+	sort.Strings(out)
 	return out
 }
 
