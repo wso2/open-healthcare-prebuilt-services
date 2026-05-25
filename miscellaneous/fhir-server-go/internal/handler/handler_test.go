@@ -81,7 +81,7 @@ func (m *mockStore) DeleteSearchParameter(ctx context.Context, id string) error 
 func newRouter(s handler.StoreAPI) http.Handler {
 	var ready atomic.Int32
 	ready.Store(1)
-	return handler.NewRouter(s, nil, "http://localhost:9090/fhir/r4", &ready)
+	return handler.NewRouter(s, nil, nil, "http://localhost:9090/fhir/r4", &ready)
 }
 
 func do(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {
@@ -133,7 +133,7 @@ func TestHealth_Ready_WhenReady(t *testing.T) {
 func TestHealth_Ready_WhenNotReady(t *testing.T) {
 	var ready atomic.Int32
 	// ready == 0 means not ready
-	h := handler.NewRouter(&mockStore{}, nil, "http://localhost/fhir/r4", &ready)
+	h := handler.NewRouter(&mockStore{}, nil, nil, "http://localhost/fhir/r4", &ready)
 	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
