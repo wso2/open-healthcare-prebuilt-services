@@ -163,6 +163,26 @@ func TestRegistry_ResourceTypes_SortedAndFilters(t *testing.T) {
 	}
 }
 
+// Remove() leaves the map key in place with a zero-length slice; ensure
+// ResourceTypes() does not advertise types that have had all their
+// definitions removed.
+func TestRegistry_ResourceTypes_ExcludesTypesWithNoDefinitions(t *testing.T) {
+	r := searchparam.NewRegistry()
+	r.Upsert(def("Patient", "name", "string"))
+	r.Upsert(def("Observation", "code", "token"))
+	r.Remove("Observation", "code") // last def for Observation
+
+	got := r.ResourceTypes()
+	for _, rt := range got {
+		if rt == "Observation" {
+			t.Fatalf("Observation should be excluded after its only param was removed; got %v", got)
+		}
+	}
+	if len(got) != 1 || got[0] != "Patient" {
+		t.Fatalf("want [Patient], got %v", got)
+	}
+}
+
 func BenchmarkRegistry_ResourceTypes(b *testing.B) {
 	r := searchparam.NewRegistry()
 	// Simulate the seeded R4 base spec (~133 concrete types).
