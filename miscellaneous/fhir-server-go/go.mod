@@ -8,6 +8,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	golang.org/x/sync v0.19.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -64,5 +65,4 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

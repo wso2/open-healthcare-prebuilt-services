@@ -60,14 +60,22 @@ docker-compose down -v
 psql -U postgres -c "CREATE USER fhir WITH PASSWORD 'fhir';"
 psql -U postgres -c "CREATE DATABASE fhirdb OWNER fhir;"
 
-# Export config (schema migrations run automatically at startup)
+# Option A — point the server at a YAML config file
+cp config.example.yaml config.yaml      # then edit as needed
+go run ./cmd/server --config ./config.yaml
+
+# Option B — drive everything from env vars (no file)
 export DATABASE_URL="postgres://fhir:fhir@localhost:5432/fhirdb?sslmode=disable"
 export SERVER_PORT=9090
 export BASE_URL=http://localhost:9090/fhir/r4
-
-# Start the server
 go run ./cmd/server
+
+# Option C — both: file for non-secrets, env for secrets
+export DB_PASSWORD="$(cat ~/.fhir-db-password)"
+go run ./cmd/server --config ./config.yaml
 ```
+
+Schema migrations run automatically at startup.
 
 The server logs a JSON line to stdout when listening:
 ```json
@@ -95,23 +103,79 @@ docker run --rm \
 
 ## 3. Configuration Reference
 
-All configuration is via environment variables. There are no config files.
+The server reads configuration from a YAML file, environment variables, or both. When the same key is set in multiple places, the higher-priority source wins:
 
-| Variable | Default | Required | Description |
+```
+env var   >   config file   >   built-in default
+```
+
+This lets you keep non-secret defaults in a checked-in `config.yaml` and inject secrets (like `DB_PASSWORD`) via environment variables at deploy time.
+
+### Specifying the config file
+
+Pass the path explicitly — there is no implicit search of the working directory, so behavior is the same on every host.
+
+```bash
+# Via CLI flag (either form):
+fhir-server --config /etc/fhir-server/config.yaml
+fhir-server -c       /etc/fhir-server/config.yaml
+
+# Or via env var (useful in containers):
+FHIR_SERVER_CONFIG=/etc/fhir-server/config.yaml fhir-server
+```
+
+If the path is set but the file is missing, malformed, or contains an unknown key, the server fails to start with a clear error.
+
+### File format
+
+YAML, with the structure below. Every key is optional — omit anything you don't need to override. See [`config.example.yaml`](config.example.yaml) for a copy-paste starting point.
+
+```yaml
+server:
+  port: 9090                                  # SERVER_PORT
+  baseUrl: http://localhost:9090/fhir/r4      # BASE_URL
+
+logging:
+  level: info                                 # LOG_LEVEL — debug | info | warn | error
+
+database:
+  # Either a full DSN ...
+  url: postgres://fhir:fhir@localhost:5432/fhirdb?sslmode=disable   # DATABASE_URL
+  # ... or individual components (ignored when `url` is set):
+  host:     localhost   # DB_HOST
+  port:     "5432"      # DB_PORT (string, in YAML)
+  user:     fhir        # DB_USER
+  password: fhir        # DB_PASSWORD
+  name:     fhirdb      # DB_NAME
+
+ig:
+  packages:                                   # IG_PACKAGES (comma-separated in env)
+    - hl7.fhir.us.core@6.1.0
+    - hl7.fhir.us.carin-bb@2.0.0
+  registryUrl: https://packages.fhir.org      # IG_REGISTRY_URL
+  forceReload: false                          # IG_FORCE_RELOAD
+  cacheDir:    .fhir-ig-cache                 # IG_CACHE_DIR
+```
+
+### Settings table
+
+| YAML key | Env var | Default | Description |
 |---|---|---|---|
-| `DATABASE_URL` | `postgres://fhir:fhir@localhost:5432/fhirdb?sslmode=disable` | Yes | Full PostgreSQL DSN. Overrides all `DB_*` variables. |
-| `DB_HOST` | `localhost` | No | PostgreSQL host (only used when `DATABASE_URL` is not set) |
-| `DB_PORT` | `5432` | No | PostgreSQL port |
-| `DB_USER` | `fhir` | No | PostgreSQL user |
-| `DB_PASSWORD` | `fhir` | No | PostgreSQL password |
-| `DB_NAME` | `fhirdb` | No | PostgreSQL database name |
-| `SERVER_PORT` | `9090` | No | HTTP listen port |
-| `BASE_URL` | `http://localhost:{PORT}/fhir/r4` | No | Canonical server base URL. Written into bundle `link` URLs and the CapabilityStatement. Must match the address clients use. |
-| `LOG_LEVEL` | `info` | No | Log verbosity: `debug`, `info`, `warn`, `error`. Logs are JSON (structured). |
-| `IG_PACKAGES` | *(empty)* | No | Comma-separated list of IG package specs to load at startup. See [Implementation Guides](#8-implementation-guides). |
-| `IG_REGISTRY_URL` | `https://packages.fhir.org` | No | FHIR package registry for resolving `name@version` specs. |
-| `IG_FORCE_RELOAD` | `false` | No | Set to `true` to re-download and re-process IGs even if already recorded in the database. |
-| `IG_CACHE_DIR` | `.fhir-ig-cache` | No | Directory for caching downloaded `.tgz` packages between restarts. |
+| `server.port` | `SERVER_PORT` | `9090` | HTTP listen port |
+| `server.baseUrl` | `BASE_URL` | `http://localhost:{port}/fhir/r4` | Canonical server base URL. Written into bundle `link` URLs and the CapabilityStatement. Must match the address clients use. |
+| `logging.level` | `LOG_LEVEL` | `info` | Log verbosity: `debug`, `info`, `warn`, `error`. Logs are JSON (structured). |
+| `database.url` | `DATABASE_URL` | *(derived)* | Full PostgreSQL DSN. When set, overrides every other `database.*` field. |
+| `database.host` | `DB_HOST` | `localhost` | PostgreSQL host (only used when `database.url` is empty) |
+| `database.port` | `DB_PORT` | `5432` | PostgreSQL port |
+| `database.user` | `DB_USER` | `fhir` | PostgreSQL user |
+| `database.password` | `DB_PASSWORD` | `fhir` | PostgreSQL password |
+| `database.name` | `DB_NAME` | `fhirdb` | PostgreSQL database name |
+| `ig.packages` | `IG_PACKAGES` | *(empty)* | List of IG package specs to load at startup. In env vars, comma-separated. See [Implementation Guides](#8-implementation-guides). |
+| `ig.registryUrl` | `IG_REGISTRY_URL` | `https://packages.fhir.org` | FHIR package registry for resolving `name@version` specs. |
+| `ig.forceReload` | `IG_FORCE_RELOAD` | `false` | Set to `true` to re-download and re-process IGs even if already recorded in the database. |
+| `ig.cacheDir` | `IG_CACHE_DIR` | `.fhir-ig-cache` | Directory for caching downloaded `.tgz` packages between restarts. |
+
+> **Secrets:** Prefer environment variables (or a secret-manager-backed env) for `DB_PASSWORD` and any other sensitive value rather than committing them to the YAML file.
 
 ---
 

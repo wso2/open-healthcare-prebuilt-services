@@ -1,0 +1,37 @@
+# FHIR Server — example configuration
+#
+# All keys are optional. Anything omitted falls back to the matching
+# environment variable, and then to the built-in default.
+#
+# Precedence (highest wins): env var > this file > default.
+# Point the server at this file with:
+#     fhir-server --config /path/to/config.yaml
+#   or
+#     FHIR_SERVER_CONFIG=/path/to/config.yaml fhir-server
+
+server:
+  port: 9090
+  baseUrl: http://localhost:9090/fhir/r4
+
+logging:
+  # One of: debug, info, warn, error
+  level: info
+
+database:
+  # Either supply a full DSN ...
+  url: postgres://fhir:fhir@localhost:5432/fhirdb?sslmode=disable
+  # ... or the individual components (ignored when `url` is set):
+  # host: localhost
+  # port: "5432"
+  # user: fhir
+  # password: fhir
+  # name: fhirdb
+
+ig:
+  # Implementation guides to load at startup.
+  packages:
+    - hl7.fhir.us.core@6.1.0
+    # - hl7.fhir.us.carin-bb@2.0.0
+  registryUrl: https://packages.fhir.org
+  forceReload: false
+  cacheDir: .fhir-ig-cache
