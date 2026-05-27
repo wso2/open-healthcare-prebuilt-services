@@ -1,3 +1,19 @@
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
+
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+
+// http://www.apache.org/licenses/LICENSE-2.0
+
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 import ballerina/log;
 import ballerina/uuid;
 import ballerina/regex;
@@ -153,6 +169,46 @@ public isolated function deleteFromResourceTable(jdbc:Client? jdbcClient, string
     log:printDebug(string `Removed ${resourceType}/${resourceId} from RESOURCE_TABLE`);
 }
 
+// Maintain the cross-type FHIR_RESOURCE_INDEX feed (PostgreSQL only — the table
+// is not present in the H2 schema). Each create/update call upserts a single
+// row; the cost is a single index insert + LAST_UPDATED B-tree update. 
+public isolated function upsertFhirResourceIndex(jdbc:Client? jdbcClient, string resourceType, string resourceId, int versionId) returns error? {
+    string normalizedDbType = dbType.toLowerAscii().trim();
+    if normalizedDbType != "postgresql" && normalizedDbType != "postgres" {
+        return;
+    }
+    jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
+    log:printDebug(string `Upserting FHIR resource index for ${resourceType}/${resourceId} version ${versionId}`);
+    time:Civil now = time:utcToCivil(time:utcNow());
+    sql:ParameterizedQuery upsertQuery = `INSERT INTO "FHIR_RESOURCE_INDEX"
+            ("RESOURCE_TYPE", "RESOURCE_ID", "VERSION_ID", "LAST_UPDATED", "DELETED")
+            VALUES (${resourceType}, ${resourceId}, ${versionId}, ${now}, FALSE)
+        ON CONFLICT ("RESOURCE_TYPE", "RESOURCE_ID") DO UPDATE
+            SET "VERSION_ID" = EXCLUDED."VERSION_ID",
+                "LAST_UPDATED" = EXCLUDED."LAST_UPDATED",
+                "DELETED" = FALSE`;
+    _ = check validatedClient->execute(upsertQuery);
+    log:printDebug(string `Upserted FHIR_RESOURCE_INDEX row for ${resourceType}/${resourceId} v${versionId}`);
+}
+
+// Tombstone a row in FHIR_RESOURCE_INDEX (PostgreSQL only). Called after a
+// successful delete. The row is kept rather than removed so that consumers
+// of cross-type history feeds can observe the deletion event.
+public isolated function markFhirResourceIndexDeleted(jdbc:Client? jdbcClient, string resourceType, string resourceId) returns error? {
+    string normalizedDbType = dbType.toLowerAscii().trim();
+    if normalizedDbType != "postgresql" && normalizedDbType != "postgres" {
+        return;
+    }
+    jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
+    log:printDebug(string `Marking FHIR resource ${resourceType}/${resourceId} as deleted in index`);
+    time:Civil now = time:utcToCivil(time:utcNow());
+    sql:ParameterizedQuery updateQuery = `UPDATE "FHIR_RESOURCE_INDEX"
+            SET "DELETED" = TRUE, "LAST_UPDATED" = ${now}
+            WHERE "RESOURCE_TYPE" = ${resourceType} AND "RESOURCE_ID" = ${resourceId}`;
+    _ = check validatedClient->execute(updateQuery);
+    log:printDebug(string `Marked FHIR_RESOURCE_INDEX row deleted for ${resourceType}/${resourceId}`);
+}
+
 // Delete main resource using generic JDBC query
 public isolated function deleteResource(jdbc:Client? jdbcClient, string resourceType, string resourceId) returns error? {
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
@@ -176,24 +232,22 @@ public isolated function deleteResource(jdbc:Client? jdbcClient, string resource
     log:printDebug(string `Deleted resource: ${resourceType}/${resourceId}`);
 }
 
-// Delete references using generic JDBC query
-public isolated function deleteReferences(jdbc:Client? jdbcClient, int[] referenceIds, TransactionContext 'transaction) returns error? {
+// Delete all REFERENCES rows that originate from the given resource in a single
+// statement. Replaces the prior pattern of SELECT ID … then DELETE-per-row,
+// which cost O(R) round-trips per write and dominated PUT latency for resources
+// with many outgoing references.
+public isolated function deleteReferencesBySource(jdbc:Client? jdbcClient, string sourceType, string sourceId, TransactionContext 'transaction) returns error? {
     jdbc:Client validatedClient = check getValidatedJdbcClient(jdbcClient);
-
-    foreach int refId in referenceIds {
-        // Build DELETE query for REFERENCES table
-        string deleteQuery = string `DELETE FROM "REFERENCES" WHERE "ID" = ${refId}`;
-        
-        // Execute query using RawSQLQuery
-        RawSQLQuery query = new(deleteQuery);
-        sql:ExecutionResult result = check validatedClient->execute(query);
-        
-        if result.affectedRowCount > 0 {
-            'transaction.deletedReferenceIds.push(refId);
-            log:printDebug(string `Deleted reference [${refId}]`);
-        } else {
-            log:printWarn(string `Reference [${refId}] not found, skipping`);
+    sql:ParameterizedQuery deleteQuery = `DELETE FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = ${sourceType} AND "SOURCE_RESOURCE_ID" = ${sourceId}`;
+    sql:ExecutionResult result = check validatedClient->execute(deleteQuery);
+    int deleted = <int>(result.affectedRowCount ?: 0);
+    if deleted > 0 {
+        // Bookkeeping kept for log/debug parity with earlier implementation.
+        // Real rollback is now handled by the JDBC `transaction { }` block
+        foreach int _ in 0 ..< deleted {
+            'transaction.deletedReferenceIds.push(0);
         }
+        log:printDebug(string `Bulk-deleted ${deleted} reference row(s) for ${sourceType}/${sourceId}`);
     }
 }
 

@@ -42,3 +42,4 @@ Cloud.toml
 
 # Ignore export files
 miscellaneous/fhir-server/data/exports/*
+miscellaneous/fhir-server/agent/
