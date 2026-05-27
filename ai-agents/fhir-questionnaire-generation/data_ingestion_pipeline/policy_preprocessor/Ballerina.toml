@@ -1,0 +1,7 @@
+[package]
+org = "joel"
+name = "policy_document_chunker"
+version = "0.1.0"
+
+[build-options]
+sticky = true

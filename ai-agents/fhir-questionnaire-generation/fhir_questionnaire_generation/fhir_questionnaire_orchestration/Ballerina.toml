@@ -1,0 +1,8 @@
+[package]
+org = "joel"
+name = "fhir_questionnaire_generation"
+version = "0.1.0"
+title = "fhir-questionnaire-generation"
+
+[build-options]
+sticky = true
