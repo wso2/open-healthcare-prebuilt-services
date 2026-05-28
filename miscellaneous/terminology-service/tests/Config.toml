@@ -1,7 +1,18 @@
-db_type = "h2"
+[ballerina.http]
+defaultListenerPort = 9089
 
-[terminology_service.store_h2]
+[wso2.terminology_service]
+db_type = "h2" # use "h2" as the value when the db_type is h2. Use "postgresql" as the value when the db_type is postgres.
+
+# When db_type is h2, use the following configuration values to connect to the h2 database. Make sure to update the values accordingly.
+# [wso2.terminology_service.store_h2]
+# url = ""
+# user = ""
+# password = ""
+
+# When db_type is postgres, use the following configuration values to connect to the postgres database. Make sure to update the values accordingly.
+[wso2.terminology_service.store_h2]
+url = ""
 user = ""
 password = ""
-url = ""
 

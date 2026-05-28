@@ -8,7 +8,7 @@
   "issue": [
     {
       "severity": "error",
-      "diagnostics": "01f15a52-ba9f-10de-a2ab-7ef1e327b6aa : Payload for operation \"$subsumes\" is not a valid \"Parameters\" or \"Bundle\" resource. Please provide a valid resource as the payload.",
+      "diagnostics": "01f159b2-1108-13fe-a3f5-7d263a8782d7 : Invalid JSON content detected, missing required element: \"resourceType\"",
       "code": "processing",
       "details": {
         "coding": [
@@ -17,7 +17,7 @@
             "code": "400"
           }
         ],
-        "text": "Invalid operation payload due to Payload for operation \"$subsumes\" is not a valid \"Parameters\" or \"Bundle\" resource. Please provide a valid resource as the payload."
+        "text": "Failed to parse request body as JSON resource due to Invalid JSON content detected, missing required element: \"resourceType\""
       }
     }
   ]

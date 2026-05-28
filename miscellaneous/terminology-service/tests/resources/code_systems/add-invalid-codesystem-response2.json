@@ -1,0 +1,24 @@
+{
+  "resourceType": "OperationOutcome",
+  "meta": {
+    "profile": [
+      "http://hl7.org/fhir/StructureDefinition/OperationOutcome"
+    ]
+  },
+  "issue": [
+    {
+      "severity": "error",
+      "diagnostics": "01f15a60-a8c4-1670-82e3-5d326087db02 : 'map<json>' value cannot be converted to 'health.fhir.r4:CodeSystem':missing required field 'content' of type 'ballerinax/health.fhir.r4:6:CodeSystemContent' in record 'health.fhir.r4:CodeSystem'",
+      "code": "processing",
+      "details": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/issue-type",
+            "code": "400"
+          }
+        ],
+        "text": "Failed to parse request body as JSON resource due to 'map<json>' value cannot be converted to 'health.fhir.r4:CodeSystem': \n\t\tmissing required field 'content' of type 'ballerinax/health.fhir.r4:6:CodeSystemContent' in record 'health.fhir.r4:CodeSystem'"
+      }
+    }
+  ]
+}

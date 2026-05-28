@@ -15,15 +15,13 @@
 // under the License.
 import terminology_service.store_h2;
 
-import ballerina/http;
 import ballerina/persist;
 import ballerina/sql;
 import ballerinax/health.fhir.r4;
-import ballerinax/health.fhir.r4.international401;
 import ballerinax/health.fhir.r4.parser;
 
-isolated function codesystemConceptsToParameters(r4:CodeSystemConcept[]|r4:CodeSystemConcept concepts) returns international401:Parameters {
-    international401:Parameters parameters = {};
+isolated function codesystemConceptsToParameters(r4:CodeSystemConcept[]|r4:CodeSystemConcept concepts) returns r4:Parameters {
+    r4:Parameters parameters = {};
     if concepts is r4:CodeSystemConcept {
         parameters = {
             'parameter: [
@@ -33,24 +31,24 @@ isolated function codesystemConceptsToParameters(r4:CodeSystemConcept[]|r4:CodeS
         };
 
         if concepts.definition is string {
-            (<international401:ParametersParameter[]>parameters.'parameter).push({name: "definition", valueString: concepts.definition});
+            (<r4:ParametersParameter[]>parameters.'parameter).push({name: "definition", valueString: concepts.definition});
         }
 
         if concepts.property is r4:CodeSystemConceptProperty[] {
             foreach var item in <r4:CodeSystemConceptProperty[]>concepts.property {
-                international401:ParametersParameter result = codeSystemConceptPropertyToParameter(item);
-                (<international401:ParametersParameter[]>parameters.'parameter).push(result);
+                r4:ParametersParameter result = codeSystemConceptPropertyToParameter(item);
+                (<r4:ParametersParameter[]>parameters.'parameter).push(result);
             }
         }
 
         if concepts.designation is r4:CodeSystemConceptDesignation[] {
             foreach var item in <r4:CodeSystemConceptDesignation[]>concepts.designation {
-                international401:ParametersParameter result = designationToParameter(item);
-                (<international401:ParametersParameter[]>parameters.'parameter).push(result);
+                r4:ParametersParameter result = designationToParameter(item);
+                (<r4:ParametersParameter[]>parameters.'parameter).push(result);
             }
         }
     } else {
-        international401:ParametersParameter[] p = [];
+        r4:ParametersParameter[] p = [];
         foreach r4:CodeSystemConcept item in concepts {
             p.push({name: "name", valueString: item.code},
                     {name: "display", valueString: item.display});
@@ -61,15 +59,15 @@ isolated function codesystemConceptsToParameters(r4:CodeSystemConcept[]|r4:CodeS
 
             if item.property is r4:CodeSystemConceptProperty[] {
                 foreach var prop in <r4:CodeSystemConceptProperty[]>item.property {
-                    international401:ParametersParameter result = codeSystemConceptPropertyToParameter(prop);
+                    r4:ParametersParameter result = codeSystemConceptPropertyToParameter(prop);
                     p.push(result);
                 }
             }
 
             if item.designation is r4:CodeSystemConceptDesignation[] {
                 foreach var desg in <r4:CodeSystemConceptDesignation[]>item.designation {
-                    international401:ParametersParameter result = designationToParameter(desg);
-                    (<international401:ParametersParameter[]>parameters.'parameter).push(result);
+                    r4:ParametersParameter result = designationToParameter(desg);
+                    (<r4:ParametersParameter[]>parameters.'parameter).push(result);
                 }
             }
         }
@@ -78,9 +76,9 @@ isolated function codesystemConceptsToParameters(r4:CodeSystemConcept[]|r4:CodeS
     return parameters;
 }
 
-isolated function designationToParameter(r4:CodeSystemConceptDesignation designation) returns international401:ParametersParameter {
-    international401:ParametersParameter param = {name: "designation"};
-    international401:ParametersParameter[] part = [];
+isolated function designationToParameter(r4:CodeSystemConceptDesignation designation) returns r4:ParametersParameter {
+    r4:ParametersParameter param = {name: "designation"};
+    r4:ParametersParameter[] part = [];
 
     if designation.language is string {
         part.push({name: "language", valueCode: designation.language});
@@ -103,26 +101,12 @@ isolated function stringToParameterizedQuery(string queryStr) returns sql:Parame
 }
 
 isolated function codeSystemToByte(r4:CodeSystem codeSystem) returns byte[]|r4:FHIRError {
-    // remove concepts from the codeSystem object
-    // because concepts are stored in separate table in database
+    // Concepts are stripped here because they are stored separately in the concepts table.
+    // The incoming CodeSystem is already validated by fhirr4:Listener, so no round-trip
+    // re-parse is needed.
     r4:CodeSystem codeSystemWithoutConcepts = codeSystem.clone();
     codeSystemWithoutConcepts.concept = ();
-
-    byte[] byteArray = codeSystemWithoutConcepts.toJsonString().toBytes();
-
-    // check whether the conversion was successful
-    r4:CodeSystem|error parsedcs = byteToCodeSystem(byteArray);
-
-    if parsedcs is r4:CodeSystem {
-        return byteArray;
-    } else {
-        return r4:createFHIRError(
-                "Error while converting CodeSystem to byte, CodeSystem is not valid, " + parsedcs.message(),
-                r4:ERROR,
-                r4:INVALID_REQUIRED,
-                cause = parsedcs,
-                httpStatusCode = http:STATUS_BAD_REQUEST);
-    }
+    return codeSystemWithoutConcepts.toJsonString().toBytes();
 }
 
 isolated function byteToCodeSystem(byte[] byteArray) returns r4:CodeSystem|error {

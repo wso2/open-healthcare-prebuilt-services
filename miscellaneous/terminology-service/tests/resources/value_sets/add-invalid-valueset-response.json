@@ -8,8 +8,8 @@
     "issue": [
         {
             "severity": "error",
-            "diagnostics": "01f0150f-8182-1a18-94f2-641fed742b3c",
-            "code": "required",
+            "diagnostics": "01f159b0-7491-16de-aa07-0f823126867f : 'map<json>' value cannot be converted to 'health.fhir.r4:ValueSet': \n\t\tmissing required field 'status' of type 'ballerinax/health.fhir.r4:6:ValueSetStatus' in record 'health.fhir.r4:ValueSet'",
+            "code": "processing",
             "details": {
                 "coding": [
                     {
@@ -17,7 +17,7 @@
                         "code": "400"
                     }
                 ],
-                "text": "Invalid request payload"
+                "text": "Failed to parse request body as JSON resource due to 'map<json>' value cannot be converted to 'health.fhir.r4:ValueSet': \n\t\tmissing required field 'status' of type 'ballerinax/health.fhir.r4:6:ValueSetStatus' in record 'health.fhir.r4:ValueSet'"
             }
         }
     ]

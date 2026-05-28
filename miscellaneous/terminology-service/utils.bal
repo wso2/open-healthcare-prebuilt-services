@@ -18,7 +18,6 @@ import ballerina/io;
 import ballerina/regex;
 import ballerina/time;
 import ballerinax/health.fhir.r4;
-import ballerinax/health.fhir.r4.international401;
 import ballerinax/health.fhir.r4.parser;
 
 import ballerinacentral/zip;
@@ -33,8 +32,8 @@ isolated function createNewTempDirectory() returns string {
     }
 }
 
-isolated function validationResultToParameters(international401:Parameters|r4:FHIRError concept) returns international401:Parameters|r4:FHIRError {
-    international401:ParametersParameter[] params = [];
+isolated function validationResultToParameters(r4:Parameters|r4:FHIRError concept) returns r4:Parameters|r4:FHIRError {
+    r4:ParametersParameter[] params = [];
     if concept is r4:FHIRError {
         if concept.message().matches(re `Can not find any valid concepts for the code:.*`) {
             params.push({name: "result", valueBoolean: false});
@@ -42,8 +41,8 @@ isolated function validationResultToParameters(international401:Parameters|r4:FH
             return concept;
         }
     } else {
-        if (<international401:ParametersParameter[]>concept.'parameter).length() > 0 {
-            foreach var c in <international401:ParametersParameter[]>concept.'parameter {
+        if (<r4:ParametersParameter[]>concept.'parameter).length() > 0 {
+            foreach var c in <r4:ParametersParameter[]>concept.'parameter {
                 _ = c.name == "name" ? params.push({name: "result", valueBoolean: true}) : "";
                 _ = c.name == "display" ? params.push(c) : "";
                 _ = c.name == "definition" ? params.push(c) : "";
@@ -126,9 +125,9 @@ isolated function createRequestSearchParameter(string name, string value, r4:FHI
     return {name: name, value: value, 'type: r4:STRING, typedValue: {modifier: modifier}};
 }
 
-isolated function codeSystemConceptPropertyToParameter(r4:CodeSystemConceptProperty property) returns international401:ParametersParameter {
-    international401:ParametersParameter param = {name: "property"};
-    international401:ParametersParameter[] part = [];
+isolated function codeSystemConceptPropertyToParameter(r4:CodeSystemConceptProperty property) returns r4:ParametersParameter {
+    r4:ParametersParameter param = {name: "property"};
+    r4:ParametersParameter[] part = [];
 
     if property.valueString is string {
         part.push(
@@ -209,10 +208,6 @@ isolated function readFileJsonAndReturnCodeSystem(string path) returns r4:CodeSy
     return check parser:parse(jsonString).ensureType();
 }
 
-function init() returns error? {
-    check removeDirectory(TEMPORARY_FILES_DIRECTORY_NAME);
-}
-
 isolated function createExpandedValueSet(r4:ValueSet vs, r4:ValueSetExpansionContains[] concepts) returns r4:ValueSetExpansion {
     r4:ValueSetExpansionContains[] contains = [];
     foreach r4:ValueSetExpansionContains concept in concepts {
@@ -222,3 +217,42 @@ isolated function createExpandedValueSet(r4:ValueSet vs, r4:ValueSetExpansionCon
     r4:ValueSetExpansion expansion = {timestamp: time:utcToString(time:utcNow()), contains: contains};
     return expansion;
 }
+
+public isolated function getSearchParametersFromFHIRContext(r4:FHIRContext fhirContext) returns map<r4:RequestSearchParameter[]>|error {
+
+    map<r4:RequestSearchParameter[]>|error searchParameters = {};
+
+    r4:FHIRRequest? fhirRequest = fhirContext.getFHIRRequest();
+    if fhirRequest !is () {
+        searchParameters = check fhirRequest.getSearchParameters().cloneWithType();
+    }
+    return searchParameters;
+}
+
+// public isolated function getQueryParamsFromFHIRContext(r4:FHIRContext fhirContext) returns map<string[]> {
+
+//     map<string[]> queryParameters = {};
+
+//     r4:FHIRRequest? fhirRequest = fhirContext.getFHIRRequest();
+//     if fhirRequest !is () {
+//         queryParameters = getQueryParamsMap(fhirRequest.getSearchParameters());
+//     }
+//     return queryParameters.clone();
+// }
+
+// isolated function getQueryParamsMap(map<r4:RequestSearchParameter[] & readonly> requestSearchParameters) returns map<string[]> {
+
+//     map<string[]> queryParameters = {};
+//     foreach var key in requestSearchParameters.keys() {
+//         r4:RequestSearchParameter[] & readonly searchParameters = requestSearchParameters[key] ?: [];
+//         foreach var searchParameter in searchParameters {
+//             string name = searchParameter.name;
+//             if queryParameters[name] is string[] {
+//                 (<string[]>queryParameters[name]).push(searchParameter.value);
+//             } else {
+//                 queryParameters[name] = [searchParameter.value];
+//             }
+//         }
+//     }
+//     return queryParameters;
+// }

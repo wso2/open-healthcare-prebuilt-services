@@ -1,21 +1,24 @@
 {
-  "resourceType": "OperationOutcome",
-  "meta": {
-    "profile": ["http://hl7.org/fhir/StructureDefinition/OperationOutcome"]
-  },
-  "issue": [
-    {
-      "severity": "error",
-      "code": "required",
-      "details": {
-        "coding": [
-          {
-            "system": "http://hl7.org/fhir/issue-type",
-            "code": "400"
-          }
-        ],
-        "text": "Cannot parse request as a FHIR Bundle"
-      }
-    }
-  ]
+    "resourceType": "OperationOutcome",
+    "meta": {
+        "profile": [
+            "http://hl7.org/fhir/StructureDefinition/OperationOutcome"
+        ]
+    },
+    "issue": [
+        {
+            "severity": "error",
+            "diagnostics": "01f15813-b3d6-1878-92cd-a353386d9de6 : 'map<json>' value cannot be converted to 'health.fhir.r4:Bundle': \n\t\tfield 'entry' in record 'health.fhir.r4:Bundle' should be of type 'health.fhir.r4:BundleEntry[]', found '\"invalid-entry\"'",
+            "code": "processing",
+            "details": {
+                "coding": [
+                    {
+                        "system": "http://hl7.org/fhir/issue-type",
+                        "code": "400"
+                    }
+                ],
+                "text": "Failed to parse request body as JSON resource due to 'map<json>' value cannot be converted to 'health.fhir.r4:Bundle': \n\t\tfield 'entry' in record 'health.fhir.r4:Bundle' should be of type 'health.fhir.r4:BundleEntry[]', found '\"invalid-entry\"'"
+            }
+        }
+    ]
 }
