@@ -25,6 +25,7 @@ import ballerina/regex;
 import ballerina/sql;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.terminology;
+// import ballerina/io;
 
 // Improve after the issue https://github.com/wso2/open-healthcare-prebuilt-services/issues/151 is fixed
 final store_pg:Client sClient = check initializeClient();
@@ -271,24 +272,30 @@ public isolated class TerminologySource {
     }
 
     public isolated function searchValueSet(map<r4:RequestSearchParameter[]> params, int? offset, int? count) returns r4:ValueSet[]|r4:FHIRError {
-        sql:ParameterizedQuery whereClause = `1=1`;
+        
+        stream<store_h2:ValueSet, persist:Error?> valueSetStream;
 
-        foreach var [paramName, paramList] in params.entries() {
-            if terminology:CODESYSTEMS_SEARCH_PARAMS.hasKey(paramName) {
-                foreach var param in paramList {
-                    sql:ParameterizedQuery fragment = sql:queryConcat(escapeToQuery(paramName == "system" ? "url" : paramName), ` = ${param.value}`);
-                    if fragment.strings.length() > 0 {
-                        whereClause = sql:queryConcat(whereClause, ` AND `, fragment);
+        if params.length() == 0 {
+            valueSetStream = sClient->/valuesets(store_h2:ValueSet);
+        } else {
+            sql:ParameterizedQuery whereClause = ``;
+            foreach var [paramName, paramList] in params.entries() {
+                if terminology:CODESYSTEMS_SEARCH_PARAMS.hasKey(paramName) {
+                    foreach var param in paramList {
+                        sql:ParameterizedQuery fragment = sql:queryConcat(escapeToQuery(paramName == "system" ? "url" : paramName), ` = ${param.value}`);
+                        if fragment.strings.length() > 0 {
+                            whereClause = sql:queryConcat(whereClause, fragment);
+                        }
                     }
                 }
             }
-        }
 
-        if offset is int && count is int {
-            whereClause = sql:queryConcat(whereClause, ` `,getLimitClause(count, offset));
+            if offset is int && count is int {
+                whereClause = sql:queryConcat(whereClause, ` `,getLimitClause(count, offset));
+            }
+            valueSetStream = sClient->/valuesets(store_h2:ValueSet, whereClause);
         }
-
-        stream<store_h2:ValueSet, persist:Error?> valueSetStream = sClient->/valuesets(store_h2:ValueSet, whereClause);
+        
         store_h2:ValueSet[]|error dbValueSets = streamToStoreValueSet(valueSetStream);
 
         if dbValueSets is error {
