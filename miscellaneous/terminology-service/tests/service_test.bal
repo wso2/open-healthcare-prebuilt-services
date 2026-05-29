@@ -148,7 +148,7 @@ public function lookupCodeSystem1() returns error? {
 public function lookupCodeSystem3() returns error? {
     r4:Coding|r4:FHIRError coding = terminology:createCoding("http://hl7.org/fhir/account-status", "inactive", terminology = terminology_source);
     r4:Parameters p = {'parameter: [{name: "coding", valueCoding: check coding}]};
-    http:Response response = check csClient->post("/$lookup", p, {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/$lookup", p, {"Content-Type": FHIR_JSON});
     json actual = check response.getJsonPayload();
 
     json expected = returnCodeSystemData("account-status-inactive");
@@ -159,7 +159,7 @@ public function lookupCodeSystem3() returns error? {
     groups: ["codesystem", "lookup_codesystem", "failure_scenario"]
 }
 public function lookupCodeSystem4() returns error? {
-    http:Response response = check csClient->post("/$lookup", (), {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/$lookup", (), {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
     test:assertEquals((<r4:CodeableConcept>actual.issue[0].details).text, "Invalid request payload");
@@ -185,7 +185,7 @@ public function lookupCodeSystem5() returns error? {
 }
 public function lookupCodeSystem6() returns error? {
     json codingJson = returnCodeSystemData("invalid-json-payload");
-    http:Response response = check csClient->post("/$lookup", codingJson, {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/$lookup", codingJson, {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
 
@@ -200,7 +200,7 @@ public function lookupCodeSystem6() returns error? {
     groups: ["codesystem", "lookup_codesystem", "failure_scenario"]
 }
 public function lookupCodeSystem7() returns error? {
-    http:Response response = check csClient->post("/$lookup", (), {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/$lookup", (), {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
     test:assertEquals((<r4:CodeableConcept>actual.issue[0].details).text, "Invalid request payload");
@@ -210,7 +210,7 @@ public function lookupCodeSystem7() returns error? {
     groups: ["codesystem", "lookup_codesystem", "failure_scenario"]
 }
 public function lookupCodeSystem8() returns error? {
-    http:Response response = check csClient->post("/$lookup", {}, {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/$lookup", {}, {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
     test:assertEquals((<r4:CodeableConcept>actual.issue[0].details).text, "Invalid operation payload due to Payload for operation \"$lookup\" is not a valid \"Parameters\" or \"Bundle\" resource. Please provide a valid resource as the payload.");
@@ -221,7 +221,7 @@ public function lookupCodeSystem8() returns error? {
 }
 public function lookupCodeSystem9() returns error? {
     r4:Parameters parameters = {'parameter: [{name: "sample"}]};
-    http:Response response = check csClient->post("/$lookup", parameters, {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/$lookup", parameters, {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
     test:assertEquals((<r4:CodeableConcept>actual.issue[0].details).text, "Unknown operation parameter due to Unknown parameter \"sample\" for operation \"$lookup\". Known parameters for \"$lookup\" operation: [\"code\",\"system\",\"version\",\"coding\",\"date\",\"displayLanguage\",\"property\"].");
@@ -234,7 +234,7 @@ public function lookupCodeSystem10() returns error? {
     r4:Coding coding = check terminology:createCoding("http://hl7.org/fhir/account-status", "inactive", terminology = terminology_source);
     coding.system = ();
     r4:Parameters parameters = {'parameter: [{name: "coding", valueCoding: coding}]};
-    http:Response response = check csClient->post("/$lookup", parameters, {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/$lookup", parameters, {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
     test:assertEquals((<r4:CodeableConcept>actual.issue[0].details).text, "Can not find a CodeSystem");
@@ -275,7 +275,7 @@ public function subsumeCodeSystem3() returns error? {
     r4:ParametersParameter system = {name: "system", valueUri: "http://hl7.org/fhir/account-status"};
     r4:Parameters requestPayload = {'parameter: [cA, cB, system]};
 
-    http:Response response = check csClient->post("/$subsumes", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/$subsumes", requestPayload, {"Content-Type": FHIR_JSON});
     json actual = check response.getJsonPayload();
 
     json expected = returnCodeSystemData("subsume-equal");
@@ -304,7 +304,7 @@ public function subsumeCodeSystem5() returns error? {
 public function subsumeCodeSystem6() returns error? {
 
     json requestJson = returnCodeSystemData("invalid-json-payload");
-    http:Response response = check csClient->post("/$subsumes", requestJson, {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/$subsumes", requestJson, {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
 
@@ -319,7 +319,7 @@ public function subsumeCodeSystem6() returns error? {
     groups: ["codesystem", "subsume_codesystem", "failure_scenario"]
 }
 public function subsumeCodeSystem7() returns error? {
-    http:Response response = check csClient->post("/$subsumes", (), {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/$subsumes", (), {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
     test:assertEquals((<r4:CodeableConcept>actual.issue[0].details).text, "Invalid request payload");
@@ -386,7 +386,7 @@ public function subsumeCodeSystem12() returns error? {
     r4:ParametersParameter system = {name: "system", valueUri: "urn:oid:2.16.840.1.113883.6.238"};
     r4:Parameters requestPayload = {'parameter: [cA, cB, system]};
 
-    http:Response response2 = check csClient->post("/$subsumes", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response2 = check csClient->post("/$subsumes", requestPayload, {"Content-Type": FHIR_JSON});
      json actual = check response2.getJsonPayload();
 
     json expected = returnCodeSystemData("subsumed");
@@ -452,7 +452,7 @@ public function validateCodeValueSet1() returns error? {
 }
 public function validateCodeValueSet2() returns error? {
     json requestPayload = returnValueSetData("account-status-as-parameter2");
-    http:Response response = check vsClient->post("/$validate-code", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/$validate-code", requestPayload, {"Content-Type": FHIR_JSON});
     json actual = check response.getJsonPayload();
 
     json expected = returnValueSetData("validate-code");
@@ -475,7 +475,7 @@ public function validateCodeValueSet3() returns error? {
 }
 public function validateCodeValueSet4() returns error? {
     json requestPayload = returnValueSetData("account-status-as-parameter2");
-    http:Response response = check vsClient->post("/$validate-code", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/$validate-code", requestPayload, {"Content-Type": FHIR_JSON});
     json actual = check response.getJsonPayload();
 
     json expected = returnValueSetData("validate-code");
@@ -488,7 +488,7 @@ public function validateCodeValueSet4() returns error? {
 public function validateCodeValueSet5() returns error? {
     json requestPayload = returnValueSetData("account-status-as-parameter2");
 
-    http:Response response = check vsClient->post("/$validate-code", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/$validate-code", requestPayload, {"Content-Type": FHIR_JSON});
     json actual = check response.getJsonPayload();
 
     json expected = returnValueSetData("validate-code");
@@ -499,7 +499,7 @@ public function validateCodeValueSet5() returns error? {
     groups: ["valueset", "validate_code_valueset", "failure_scenario"]
 }
 public function validateCodeValueSet6() returns error? {
-    http:Response response = check vsClient->post("/$validate-code", (), {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/$validate-code", (), {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
 
@@ -510,7 +510,7 @@ public function validateCodeValueSet6() returns error? {
     groups: ["valueset", "validate_code_valueset", "failure_scenario"]
 }
 public function validateCodeValueSet7() returns error? {
-    http:Response response = check vsClient->post("/$validate-code", {}, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/$validate-code", {}, {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
 
@@ -524,7 +524,7 @@ public function validateCodeValueSet7() returns error? {
 }
 public function validateCodeValueSet8() returns error? {
     json requestPayload = returnValueSetData("coding-as-parameter");
-    http:Response response = check vsClient->post("/$validate-code", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/$validate-code", requestPayload, {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
 
@@ -601,7 +601,7 @@ public function expandValueSet2() returns error? {
 }
 public function expandValueSet3() returns error? { // check here first
     json requestPayload = returnValueSetData("account-status-as-parameter");
-    http:Response response = check vsClient->post("/$expand", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/$expand", requestPayload, {"Content-Type": FHIR_JSON});
 
     json actualJson = check response.getJsonPayload();
     r4:ValueSet actual = check actualJson.cloneWithType(r4:ValueSet);
@@ -617,7 +617,7 @@ public function expandValueSet3() returns error? { // check here first
     groups: ["valueset", "expand_valueset", "failure_scenario"]
 }
 public function expandValueSet4() returns error? {
-    http:Response response = check vsClient->post("/$expand", (), {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/$expand", (), {"Content-Type": FHIR_JSON});
 
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
@@ -633,7 +633,7 @@ public function expandValueSet4() returns error? {
     groups: ["valueset", "expand_valueset", "failure_scenario"]
 }
 public function expandValueSet5() returns error? {
-    http:Response response = check vsClient->post("/$expand", {}, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/$expand", {}, {"Content-Type": FHIR_JSON});
 
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
@@ -761,7 +761,7 @@ public function testBatchValidateValueSetsValid() returns error? {
     json requestPayload = returnBatchData("valid-batch-request");
     json expectedResponse = returnBatchData("valid-batch-response");
 
-    http:Response response = check baseClient->post("/", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check baseClient->post("/", requestPayload, {"Content-Type": FHIR_JSON});
     test:assertEquals(response.getJsonPayload(), expectedResponse);
 }
 
@@ -770,7 +770,7 @@ public function testBatchValidateValueSetsValid() returns error? {
 }
 public function testBatchValidateValueSetsInvalidJson() returns error? {
     json requestPayload = returnBatchData("invalid-json-batch-request");
-    http:Response response = check baseClient->post("/", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check baseClient->post("/", requestPayload, {"Content-Type": FHIR_JSON});
 
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
@@ -787,7 +787,7 @@ public function testBatchValidateValueSetsInvalidJson() returns error? {
 }
 public function testBatchValidateValueSetsNotBatchType() returns error? {
     json requestPayload = returnBatchData("not-batch-type-request");
-    http:Response response = check baseClient->post("/", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check baseClient->post("/", requestPayload, {"Content-Type": FHIR_JSON});
 
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
@@ -804,7 +804,7 @@ public function testBatchValidateValueSetsNotBatchType() returns error? {
 }
 public function testBatchValidateValueSetsNoEntries() returns error? {
     json requestPayload = returnBatchData("no-entries-batch-request");
-    http:Response response = check baseClient->post("/", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check baseClient->post("/", requestPayload, {"Content-Type": FHIR_JSON});
 
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
@@ -822,7 +822,7 @@ public function testBatchValidateValueSetsNoEntries() returns error? {
 public function testAddValidCodeSystemJson() returns error? {
     json requestPayload = returnCodeSystemData("add-valid-codesystem");
 
-    http:Response response = check csClient->post("/", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/", requestPayload, {"Content-Type": FHIR_JSON});
 
     // check the response status code is 201 or not
     test:assertEquals(response.statusCode, 201);
@@ -846,7 +846,7 @@ public function testAddValidCodeSystemJson() returns error? {
 }
 public function testAddInvalidCodeSystemJson() returns error? {
     json codingJson = returnCodeSystemData("add-invalid-codesystem");
-    http:Response response = check csClient->post("/", codingJson, {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/", codingJson, {"Content-Type": FHIR_JSON});
 
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
@@ -880,7 +880,7 @@ public function testAddInvalidCodeSystemJson() returns error? {
     groups: ["codesystem", "add_codesystem", "failure_scenario"]
 }
 public function testAddEmptyCodeSystemPayload() returns error? {
-    http:Response response = check csClient->post("/", {}, {"Content-Type": "application/fhir+json"});
+    http:Response response = check csClient->post("/", {}, {"Content-Type": FHIR_JSON});
 
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
@@ -898,7 +898,7 @@ public function testAddEmptyCodeSystemPayload() returns error? {
 public function testAddValidValueSet() returns error? {
     json requestPayload = returnValueSetData("add-valid-valueset");
 
-    http:Response response = check vsClient->post("/", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/", requestPayload, {"Content-Type": FHIR_JSON});
 
     // check the response status code is 201 or not
     test:assertEquals(response.statusCode, 201);
@@ -910,7 +910,7 @@ public function testAddValidValueSet() returns error? {
 public function testAddValidValueSet2() returns error? {
     json requestPayload = returnValueSetData("add-valid-valueset2");
 
-    http:Response response = check vsClient->post("/", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/", requestPayload, {"Content-Type": FHIR_JSON});
 
     // check the response status code is 201 or not
     test:assertEquals(response.statusCode, 201);
@@ -922,7 +922,7 @@ public function testAddValidValueSet2() returns error? {
 public function testAddValidValueSet3() returns error? {
     json requestPayload = returnValueSetData("add-valid-valueset3");
 
-    http:Response response = check vsClient->post("/", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/", requestPayload, {"Content-Type": FHIR_JSON});
 
     // check the response status code is 201 or not
     test:assertEquals(response.statusCode, 201);
@@ -934,7 +934,7 @@ public function testAddValidValueSet3() returns error? {
 public function testAddValidValueSet4() returns error? {
     json requestPayload = returnValueSetData("add-valid-valueset4");
 
-    http:Response response = check vsClient->post("/", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/", requestPayload, {"Content-Type": FHIR_JSON});
 
     // check the response status code is 201 or not
     test:assertEquals(response.statusCode, 201);
@@ -946,7 +946,7 @@ public function testAddValidValueSet4() returns error? {
 public function testAddValidValueSet5() returns error? {
     json requestPayload = returnValueSetData("add-valid-valueset5");
 
-    http:Response response = check vsClient->post("/", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/", requestPayload, {"Content-Type": FHIR_JSON});
 
     // check the response status code is 201 or not
     test:assertEquals(response.statusCode, 201);
@@ -957,7 +957,7 @@ public function testAddValidValueSet5() returns error? {
 }
 public function testAddInvalidValueSet() returns error? {
     json valueSetJson = returnValueSetData("add-invalid-valueset");
-    http:Response response = check vsClient->post("/", valueSetJson, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/", valueSetJson, {"Content-Type": FHIR_JSON});
 
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
@@ -973,7 +973,7 @@ public function testAddInvalidValueSet() returns error? {
     groups: ["valueset", "add_valueset", "failure_scenario"]
 }
 public function testAddEmptyValueSetPayload() returns error? {
-    http:Response response = check vsClient->post("/", {}, {"Content-Type": "application/fhir+json"});
+    http:Response response = check vsClient->post("/", {}, {"Content-Type": FHIR_JSON});
 
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
@@ -1124,7 +1124,7 @@ public function searchConceptPost1() returns error? {
     r4:ParametersParameter offsetParam = {name: "_offset", valueInteger: 1};
     r4:Parameters requestPayload = {'parameter: [filterParam, countParam, offsetParam]};
 
-    http:Response response = check baseClient->post("/$find-code", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check baseClient->post("/$find-code", requestPayload, {"Content-Type": FHIR_JSON});
 
     json actualJson = check response.getJsonPayload();
     r4:Bundle actual = check actualJson.cloneWithType(r4:Bundle);
@@ -1140,7 +1140,7 @@ public function searchConceptPost_MissingFilter() returns error? {
     // Missing 'filter' parameter
     r4:ParametersParameter propertyParam = {name: "property", valueString: "display"};
     r4:Parameters requestPayload = {'parameter: [propertyParam]};
-    http:Response response = check baseClient->post("/$find-code", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check baseClient->post("/$find-code", requestPayload, {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
     test:assertEquals((<r4:CodeableConcept>actual.issue[0].details).text, "Missing 'filter' parameter");
@@ -1154,7 +1154,7 @@ public function searchConceptPost_InvalidProperty() returns error? {
     r4:ParametersParameter filterParam = {name: "filter", valueString: "active"};
     r4:ParametersParameter propertyParam = {name: "property", valueString: "invalid"};
     r4:Parameters requestPayload = {'parameter: [filterParam, propertyParam]};
-    http:Response response = check baseClient->post("/$find-code", requestPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check baseClient->post("/$find-code", requestPayload, {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
     test:assertEquals((<r4:CodeableConcept>actual.issue[0].details).text, "Invalid property value. Only 'display' or 'definition' are allowed.");
@@ -1165,7 +1165,7 @@ public function searchConceptPost_InvalidProperty() returns error? {
 }
 public function searchConceptPost_EmptyPayload() returns error? {
     // Empty payload
-    http:Response response = check baseClient->post("/$find-code", (), {"Content-Type": "application/fhir+json"});
+    http:Response response = check baseClient->post("/$find-code", (), {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
     test:assertEquals((<r4:CodeableConcept>actual.issue[0].details).text, "Empty request payload");
@@ -1177,7 +1177,7 @@ public function searchConceptPost_EmptyPayload() returns error? {
 public function searchConceptPost_InvalidPayload() returns error? {
     // Invalid payload (not a Parameters resource)
     json invalidPayload = {"foo": "bar"};
-    http:Response response = check baseClient->post("/$find-code", invalidPayload, {"Content-Type": "application/fhir+json"});
+    http:Response response = check baseClient->post("/$find-code", invalidPayload, {"Content-Type": FHIR_JSON});
     json actualJson = check response.getJsonPayload();
     r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
     test:assertEquals((<r4:CodeableConcept>actual.issue[0].details).text, "Invalid request payload");
@@ -1187,7 +1187,7 @@ public function searchConceptPost_InvalidPayload() returns error? {
     groups: ["capabilitystatement", "metadata", "successful_scenario"]
 }
 public function getCapabilityStatementFromMetadata() returns error? {
-    http:Response response = check baseClient->get("/metadata", {"Content-Type": "application/fhir+json"});
+    http:Response response = check baseClient->get("/metadata", {"Content-Type": FHIR_JSON});
     test:assertEquals(response.statusCode, 200);
     json payload = check response.getJsonPayload();
     international401:CapabilityStatement|error capabilityStatement = payload.cloneWithType(international401:CapabilityStatement);
