@@ -2,7 +2,7 @@
 org = "wso2"
 name = "terminology_service"
 version = "0.1.1"
-distribution = "2201.12.10"
+distribution = "2201.13.4"
 template=true
 
 [build-options]
