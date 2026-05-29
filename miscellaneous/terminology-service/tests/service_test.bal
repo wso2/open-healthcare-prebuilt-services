@@ -599,7 +599,7 @@ public function expandValueSet2() returns error? {
 @test:Config {
     groups: ["valueset", "expand_valueset", "successful_scenario"]
 }
-public function expandValueSet3() returns error? { // check here first
+public function expandValueSet3() returns error? {
     json requestPayload = returnValueSetData("account-status-as-parameter");
     http:Response response = check vsClient->post("/$expand", requestPayload, {"Content-Type": FHIR_JSON});
 
@@ -828,7 +828,7 @@ public function testAddValidCodeSystemJson() returns error? {
     test:assertEquals(response.statusCode, 201);
 }
 
-// Todo: Uncomment after supporitng XML payloads
+// Todo: Uncomment after supporitng XML payloads: https://github.com/wso2-enterprise/open-healthcare/issues/2181
 // @test:Config {
 //     groups: ["codesystem", "add_codesystem", "successful_scenario"]
 // }
@@ -858,7 +858,7 @@ public function testAddInvalidCodeSystemJson() returns error? {
     test:assertEquals(string:trim(actual.toJsonString()), string:trim(expected.toJsonString()));
 }
 
-// Todo: Uncomment after supporitng XML payloads
+// Todo: Uncomment after supporitng XML payloads: https://github.com/wso2-enterprise/open-healthcare/issues/2181
 // @test:Config {
 //     groups: ["codesystem", "add_codesystem", "failure_scenario"]
 // }

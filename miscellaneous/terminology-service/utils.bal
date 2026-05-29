@@ -228,31 +228,3 @@ public isolated function getSearchParametersFromFHIRContext(r4:FHIRContext fhirC
     }
     return searchParameters;
 }
-
-// public isolated function getQueryParamsFromFHIRContext(r4:FHIRContext fhirContext) returns map<string[]> {
-
-//     map<string[]> queryParameters = {};
-
-//     r4:FHIRRequest? fhirRequest = fhirContext.getFHIRRequest();
-//     if fhirRequest !is () {
-//         queryParameters = getQueryParamsMap(fhirRequest.getSearchParameters());
-//     }
-//     return queryParameters.clone();
-// }
-
-// isolated function getQueryParamsMap(map<r4:RequestSearchParameter[] & readonly> requestSearchParameters) returns map<string[]> {
-
-//     map<string[]> queryParameters = {};
-//     foreach var key in requestSearchParameters.keys() {
-//         r4:RequestSearchParameter[] & readonly searchParameters = requestSearchParameters[key] ?: [];
-//         foreach var searchParameter in searchParameters {
-//             string name = searchParameter.name;
-//             if queryParameters[name] is string[] {
-//                 (<string[]>queryParameters[name]).push(searchParameter.value);
-//             } else {
-//                 queryParameters[name] = [searchParameter.value];
-//             }
-//         }
-//     }
-//     return queryParameters;
-// }
