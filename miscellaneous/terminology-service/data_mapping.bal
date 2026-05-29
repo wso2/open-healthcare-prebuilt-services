@@ -19,6 +19,7 @@ import ballerina/persist;
 import ballerina/sql;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.parser;
+import ballerina/log;
 
 isolated function codesystemConceptsToParameters(r4:CodeSystemConcept[]|r4:CodeSystemConcept concepts) returns r4:Parameters {
     r4:Parameters parameters = {};
@@ -101,6 +102,7 @@ isolated function stringToParameterizedQuery(string queryStr) returns sql:Parame
 }
 
 isolated function codeSystemToByte(r4:CodeSystem codeSystem) returns byte[]|r4:FHIRError {
+    log:printDebug("Converting CodeSystem to byte array, codeSystem id: " + (codeSystem.id ?: "unknown"));
     // Concepts are stripped here because they are stored separately in the concepts table.
     // The incoming CodeSystem is already validated by fhirr4:Listener, so no round-trip
     // re-parse is needed.

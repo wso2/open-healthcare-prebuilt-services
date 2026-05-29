@@ -233,6 +233,7 @@ service http:InterceptableService /fhir/r4/\$upload on baseListener {
         r4:FHIRError? response = upload(request);
 
         if response is r4:FHIRError {
+            log:printError(string `Upload failed: ${response.message()}`);
             return response;
         } else {
             http:Response successResponse = new;

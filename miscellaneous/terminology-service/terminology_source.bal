@@ -262,6 +262,7 @@ public isolated class TerminologySource {
         foreach store_h2:CodeSystem dbCodeSystem in dbCodeSystems {
             r4:CodeSystem|error parsedCodeSystem = byteToCodeSystem(dbCodeSystem.codeSystem);
             if parsedCodeSystem is error {
+                log:printError("Error while parsing CodeSystem: " + parsedCodeSystem.message());
                 // Skip this CodeSystem if parsing fails
                 continue;
             }
@@ -299,6 +300,7 @@ public isolated class TerminologySource {
         store_h2:ValueSet[]|error dbValueSets = streamToStoreValueSet(valueSetStream);
 
         if dbValueSets is error {
+            log:printError("Error while streaming ValueSets: " + dbValueSets.message());
             return r4:createFHIRError(
                     dbValueSets.message(),
                     r4:ERROR,

@@ -22,6 +22,7 @@ import ballerina/regex;
 import ballerina/time;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.terminology;
+import ballerina/log;
 
 final TerminologySource terminology_source = new TerminologySource();
 
@@ -62,6 +63,7 @@ public isolated function searchValueSet(r4:FHIRContext ctx) returns r4:Bundle|r4
     map<r4:RequestSearchParameter[]>|error params = getSearchParametersFromFHIRContext(ctx);
 
     if params is error {
+        log:printError("Failed to get search parameters from FHIR context", 'error = params);
         return r4:createFHIRError(
                 "Invalid search parameters",
                 r4:ERROR,
