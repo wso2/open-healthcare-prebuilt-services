@@ -5,7 +5,7 @@
 
 [ballerina]
 dependencies-toml-version = "2"
-distribution-version = "2201.13.4"
+distribution-version = "2201.12.10"
 
 [[package]]
 org = "ballerina"
@@ -91,7 +91,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "ftp"
-version = "2.20.0"
+version = "2.17.1"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "data.csv"},
@@ -100,13 +100,14 @@ dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "log"},
-	{org = "ballerina", name = "task"}
+	{org = "ballerina", name = "task"},
+	{org = "ballerina", name = "time"}
 ]
 
 [[package]]
 org = "ballerina"
 name = "http"
-version = "2.16.3"
+version = "2.14.11"
 dependencies = [
 	{org = "ballerina", name = "auth"},
 	{org = "ballerina", name = "cache"},
@@ -260,7 +261,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "log"
-version = "2.17.0"
+version = "2.14.0"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -285,7 +286,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "oauth2"
-version = "2.15.0"
+version = "2.14.1"
 dependencies = [
 	{org = "ballerina", name = "cache"},
 	{org = "ballerina", name = "crypto"},
@@ -298,7 +299,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "observe"
-version = "1.7.1"
+version = "1.6.0"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
@@ -338,7 +339,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "sql"
-version = "1.19.0"
+version = "1.17.1"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -610,7 +611,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "java.jdbc"
-version = "1.15.1"
+version = "1.14.1"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -640,7 +641,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "postgresql"
-version = "1.18.0"
+version = "1.17.0"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "io"},
