@@ -28,6 +28,7 @@ type mockStore struct {
 	fetchReferencesFn   func(ctx context.Context, rt, id string, reverse bool) ([]map[string]any, error)
 	syncSearchParamFn   func(ctx context.Context, body map[string]any) error
 	deleteSearchParamFn func(ctx context.Context, id string) error
+	executeBundleFn     func(ctx context.Context, bundleType, baseURL string, entries []store.BundleEntryRequest) ([]store.BundleEntryResult, error)
 }
 
 func (m *mockStore) Read(ctx context.Context, rt, id string) (map[string]any, error) {
@@ -74,6 +75,12 @@ func (m *mockStore) DeleteSearchParameter(ctx context.Context, id string) error 
 		return m.deleteSearchParamFn(ctx, id)
 	}
 	return nil
+}
+func (m *mockStore) ExecuteBundle(ctx context.Context, bundleType, baseURL string, entries []store.BundleEntryRequest) ([]store.BundleEntryResult, error) {
+	if m.executeBundleFn != nil {
+		return m.executeBundleFn(ctx, bundleType, baseURL, entries)
+	}
+	return nil, nil
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

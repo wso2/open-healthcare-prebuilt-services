@@ -695,8 +695,12 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 			"version": "1.0.0",
 		},
 		"rest": []any{map[string]any{
-			"mode":      "server",
-			"resource":  resources,
+			"mode":     "server",
+			"resource": resources,
+			"interaction": []any{
+				map[string]any{"code": "transaction"},
+				map[string]any{"code": "batch"},
+			},
 			"operation": []any{map[string]any{"name": "everything", "definition": "http://hl7.org/fhir/OperationDefinition/Patient-everything"}},
 		}},
 	}

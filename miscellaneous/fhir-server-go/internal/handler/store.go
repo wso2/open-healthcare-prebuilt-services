@@ -21,4 +21,5 @@ type StoreAPI interface {
 	FetchReferences(ctx context.Context, resourceType, resourceID string, reverse bool) ([]map[string]any, error)
 	SyncSearchParameter(ctx context.Context, body map[string]any) error
 	DeleteSearchParameter(ctx context.Context, resourceID string) error
+	ExecuteBundle(ctx context.Context, bundleType, baseURL string, entries []store.BundleEntryRequest) ([]store.BundleEntryResult, error)
 }

@@ -345,6 +345,7 @@ Track which IG packages have been loaded (for skip-on-restart) and which profile
 | Method | Path | Status | Description |
 |---|---|---|---|
 | `GET` | `/metadata` | 200 | CapabilityStatement |
+| `POST` | `/` (FHIR base) | 200, 400, 4xx | Process a `transaction` / `batch` Bundle |
 | `GET` | `/{type}/{id}` | 200, 404, 410 | Read resource (410 if soft-deleted) |
 | `GET` | `/{type}/{id}/_history/{vid}` | 200, 400, 404 | Read specific version |
 | `POST` | `/{type}` | 201 | Create resource |
@@ -455,6 +456,63 @@ curl -X DELETE http://localhost:9090/fhir/r4/Patient/550e8400-e29b-41d4-a716-446
 ```
 
 The resource row is soft-deleted (`is_deleted = TRUE`). Subsequent reads return **410 Gone**.
+
+#### Transaction / Batch Bundle
+
+`POST` a `Bundle` to the FHIR base (`/fhir/r4`). Each `entry.request` carries the
+`method` and `url` the entry would have used as a standalone interaction.
+
+```bash
+curl -X POST http://localhost:9090/fhir/r4 \
+  -H 'Content-Type: application/fhir+json' \
+  -d '{
+    "resourceType": "Bundle",
+    "type": "transaction",
+    "entry": [
+      {
+        "fullUrl": "urn:uuid:pat-1",
+        "resource": { "resourceType": "Patient", "name": [{"family": "Smith"}] },
+        "request": { "method": "POST", "url": "Patient" }
+      },
+      {
+        "resource": {
+          "resourceType": "Observation", "status": "final",
+          "code": { "text": "heart-rate" },
+          "subject": { "reference": "urn:uuid:pat-1" }
+        },
+        "request": { "method": "POST", "url": "Observation" }
+      }
+    ]
+  }'
+```
+
+The response is a `transaction-response` Bundle whose entries carry
+`response.status` / `response.location` / `response.etag`.
+
+**Semantics**
+
+| Bundle type | Atomicity | On entry failure |
+|---|---|---|
+| `transaction` | All entries commit in a **single DB transaction** | Whole Bundle rolls back; a single `OperationOutcome` is returned with the failing entry's status |
+| `batch` | Each entry runs **independently** | Only that entry fails (its `response` carries an `OperationOutcome`); siblings are unaffected; overall status is `200` |
+
+Supported per-entry methods: `POST`, `PUT`, `PATCH` (JSON Merge Patch), `DELETE`, `GET`.
+
+- **Reference resolution** — within a `transaction`, `urn:uuid:` (and absolute-URL)
+  references between entries are rewritten to the server-assigned `Type/id` before
+  persisting. `POST` entries are processed in FHIR verb order (DELETE → POST →
+  PUT/PATCH → GET) so references resolve regardless of entry order.
+- **Conditional create** — `entry.request.ifNoneExist` (a search query). If it
+  matches one existing resource the create is skipped and the entry resolves to it;
+  more than one match is a `412`.
+- **Conditional update / delete** — a `PUT`/`DELETE` whose `request.url` is a search
+  query (e.g. `Patient?identifier=urn:cond|abc`). One match updates/deletes it;
+  zero matches creates (PUT) or no-ops (DELETE); multiple matches is a `412`.
+- **Optimistic locking** — `entry.request.ifMatch` (e.g. `W/"2"`) is honoured on `PUT`.
+
+> **Note:** `GET` search entries inside a `transaction` read the *committed* snapshot
+> and do not observe not-yet-committed writes from earlier entries in the same Bundle.
+> Instance reads (`GET Type/id`) do observe them.
 
 #### Search (GET)
 
