@@ -285,14 +285,14 @@ public isolated class TerminologySource {
                     foreach var param in paramList {
                         sql:ParameterizedQuery fragment = sql:queryConcat(escapeToQuery(paramName == "system" ? "url" : paramName), ` = ${param.value}`);
                         if fragment.strings.length() > 0 {
-                            whereClause = sql:queryConcat(whereClause, fragment);
+                            whereClause = sql:queryConcat(fragment);
                         }
                     }
                 }
             }
 
             if offset is int && count is int {
-                whereClause = sql:queryConcat(whereClause, ` `,getLimitClause(count, offset));
+                whereClause = sql:queryConcat(whereClause, ` `, getLimitClause(count, offset));
             }
             valueSetStream = sClient->/valuesets(store_h2:ValueSet, whereClause);
         }
