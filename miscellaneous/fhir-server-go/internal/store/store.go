@@ -33,6 +33,30 @@ func New(pool *pgxpool.Pool, registry *searchparam.Registry) *Store {
 // ─── Create ───────────────────────────────────────────────────────────────────
 
 func (s *Store) Create(ctx context.Context, resourceType string, body map[string]any) (map[string]any, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	result, err := s.createInTx(ctx, tx, resourceType, body)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	id, _ := result["id"].(string)
+	slog.Info("created resource", "type", resourceType, "id", id)
+	return result, nil
+}
+
+// createInTx performs a create within an existing transaction. It is the shared
+// implementation behind the public Create and behind transaction/batch Bundle
+// processing, where many writes must commit or roll back together.
+func (s *Store) createInTx(ctx context.Context, tx pgx.Tx, resourceType string, body map[string]any) (map[string]any, error) {
 	resourceID, _ := body["id"].(string)
 	if resourceID == "" {
 		resourceID = uuid.NewString()
@@ -47,12 +71,6 @@ func (s *Store) Create(ctx context.Context, resourceType string, body map[string
 	if err != nil {
 		return nil, fmt.Errorf("marshal resource: %w", err)
 	}
-
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO resources (fhir_id, resource_type, version_id, last_updated, is_deleted, resource_json)
@@ -70,11 +88,6 @@ func (s *Store) Create(ctx context.Context, resourceType string, body map[string
 		return nil, err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-
-	slog.Info("created resource", "type", resourceType, "id", resourceID)
 	return body, nil
 }
 
@@ -111,14 +124,30 @@ func (s *Store) Read(ctx context.Context, resourceType, resourceID string) (map[
 // any value >= 0 is compared to the current version_id and a ConflictError
 // (412) is returned if they differ.
 func (s *Store) Update(ctx context.Context, resourceType, resourceID string, body map[string]any, ifMatchVersion int) (map[string]any, error) {
-	body["id"] = resourceID
-	body["resourceType"] = resourceType
-
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
+
+	result, err := s.updateInTx(ctx, tx, resourceType, resourceID, body, ifMatchVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	slog.Info("updated resource", "type", resourceType, "id", resourceID, "version", metaVersionID(result))
+	return result, nil
+}
+
+// updateInTx performs an update within an existing transaction. Shared by the
+// public Update and by transaction/batch Bundle processing.
+func (s *Store) updateInTx(ctx context.Context, tx pgx.Tx, resourceType, resourceID string, body map[string]any, ifMatchVersion int) (map[string]any, error) {
+	body["id"] = resourceID
+	body["resourceType"] = resourceType
 
 	newVersion, currentVersion, lastUpdated, err := bumpVersion(ctx, tx, resourceType, resourceID)
 	if err != nil {
@@ -152,11 +181,6 @@ func (s *Store) Update(ctx context.Context, resourceType, resourceID string, bod
 		return nil, err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-
-	slog.Info("updated resource", "type", resourceType, "id", resourceID, "version", newVersion)
 	return body, nil
 }
 
@@ -172,6 +196,22 @@ func (s *Store) Patch(ctx context.Context, resourceType, resourceID string, patc
 	}
 	defer tx.Rollback(ctx)
 
+	merged, newVersion, err := s.patchInTx(ctx, tx, resourceType, resourceID, patch)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	slog.Info("patched resource", "type", resourceType, "id", resourceID, "version", newVersion)
+	return merged, nil
+}
+
+// patchInTx applies a JSON Merge Patch within an existing transaction, taking a
+// FOR UPDATE lock on the row. Shared by the public Patch and by Bundle processing.
+func (s *Store) patchInTx(ctx context.Context, tx pgx.Tx, resourceType, resourceID string, patch map[string]any) (map[string]any, int, error) {
 	var raw []byte
 	var versionID int
 	var lastUpdated time.Time
@@ -182,17 +222,17 @@ func (s *Store) Patch(ctx context.Context, resourceType, resourceID string, patc
 		resourceID, resourceType,
 	).Scan(&raw, &versionID, &lastUpdated, &isDeleted); err != nil {
 		if isNoRows(err) {
-			return nil, NotFoundError{resourceType, resourceID}
+			return nil, 0, NotFoundError{resourceType, resourceID}
 		}
-		return nil, err
+		return nil, 0, err
 	}
 	if isDeleted {
-		return nil, GoneError{resourceType, resourceID}
+		return nil, 0, GoneError{resourceType, resourceID}
 	}
 
 	existing, err := unmarshalWithMeta(raw, versionID, lastUpdated)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	merged := mergePatch(existing, patch)
 	merged["id"] = resourceID
@@ -203,7 +243,7 @@ func (s *Store) Patch(ctx context.Context, resourceType, resourceID string, patc
 	merged = setMeta(merged, newVersion, now)
 	mergedRaw, err := json.Marshal(merged)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	if _, err := tx.Exec(ctx, `
@@ -211,23 +251,19 @@ func (s *Store) Patch(ctx context.Context, resourceType, resourceID string, patc
 		WHERE fhir_id = $4 AND resource_type = $5`,
 		newVersion, now, mergedRaw, resourceID, resourceType,
 	); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err := index.Delete(ctx, tx, resourceType, resourceID); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err := s.extractor.Index(ctx, tx, resourceType, resourceID, merged); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err := saveHistory(ctx, tx, resourceType, resourceID, newVersion, "PUT", mergedRaw, now); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	slog.Info("patched resource", "type", resourceType, "id", resourceID, "version", newVersion)
-	return merged, nil
+	return merged, newVersion, nil
 }
 
 // mergePatch applies a JSON Merge Patch (RFC 7396).
@@ -261,6 +297,22 @@ func (s *Store) Delete(ctx context.Context, resourceType, resourceID string) err
 	}
 	defer tx.Rollback(ctx)
 
+	if err := s.deleteInTx(ctx, tx, resourceType, resourceID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	slog.Info("deleted resource", "type", resourceType, "id", resourceID)
+	return nil
+}
+
+// deleteInTx soft-deletes a resource within an existing transaction. Shared by
+// the public Delete and by Bundle processing. Idempotent: deleting an already
+// deleted or non-existent resource returns nil.
+func (s *Store) deleteInTx(ctx context.Context, tx pgx.Tx, resourceType, resourceID string) error {
 	// Lock the row first to prevent a concurrent Update from bumping the version
 	// between our read and our soft-delete write, which would produce a UNIQUE
 	// constraint violation on resource_history(fhir_id, resource_type, version_id).
@@ -301,11 +353,6 @@ func (s *Store) Delete(ctx context.Context, resourceType, resourceID string) err
 		return err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return err
-	}
-
-	slog.Info("deleted resource", "type", resourceType, "id", resourceID)
 	return nil
 }
 
@@ -420,6 +467,40 @@ func saveHistory(ctx context.Context, tx pgx.Tx, resourceType, resourceID string
 		resourceID, resourceType, versionID, op, raw, ts,
 	)
 	return err
+}
+
+// metaVersionID returns the meta.versionId string of a resource, or "" if absent.
+func metaVersionID(body map[string]any) string {
+	if meta, ok := body["meta"].(map[string]any); ok {
+		if v, ok := meta["versionId"].(string); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// readInTx reads a live (non-deleted) resource within an existing transaction,
+// so a GET inside a transaction Bundle observes writes made earlier in the same
+// Bundle. Mirrors the public Read but uses the supplied tx instead of the pool.
+func (s *Store) readInTx(ctx context.Context, tx pgx.Tx, resourceType, resourceID string) (map[string]any, error) {
+	var raw []byte
+	var versionID int
+	var lastUpdated time.Time
+	var isDeleted bool
+	if err := tx.QueryRow(ctx, `
+		SELECT resource_json, version_id, last_updated, is_deleted
+		FROM resources WHERE fhir_id = $1 AND resource_type = $2`,
+		resourceID, resourceType,
+	).Scan(&raw, &versionID, &lastUpdated, &isDeleted); err != nil {
+		if isNoRows(err) {
+			return nil, NotFoundError{resourceType, resourceID}
+		}
+		return nil, err
+	}
+	if isDeleted {
+		return nil, GoneError{resourceType, resourceID}
+	}
+	return unmarshalWithMeta(raw, versionID, lastUpdated)
 }
 
 func bumpVersion(ctx context.Context, tx pgx.Tx, resourceType, resourceID string) (newVersion, currentVersion int, lastUpdated time.Time, err error) {

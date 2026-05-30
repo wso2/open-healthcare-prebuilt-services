@@ -31,9 +31,17 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, b
 		}
 	})
 
+	// System-level transaction / batch Bundle, posted to the FHIR base. Registered
+	// without a trailing slash here and with one below so both /fhir/r4 and
+	// /fhir/r4/ are accepted.
+	r.Post("/fhir/r4", h.bundle)
+
 	r.Route("/fhir/r4", func(r chi.Router) {
 		// Capability statement
 		r.Get("/metadata", h.metadata)
+
+		// System-level transaction / batch Bundle (trailing-slash form)
+		r.Post("/", h.bundle)
 
 		// Per-resource-type routes
 		r.Route("/{resourceType}", func(r chi.Router) {

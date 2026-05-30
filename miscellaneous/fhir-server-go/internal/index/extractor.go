@@ -158,6 +158,11 @@ func insertToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, v any) e
 	sys := asString(m["system"])
 	code := asString(m["code"])
 	display := asString(m["display"])
+	// Identifier and ContactPoint carry their token in "value" rather than
+	// "code"; fall back to it so identifier/telecom token searches match.
+	if code == "" {
+		code = asString(m["value"])
+	}
 	if code == "" {
 		return nil
 	}
