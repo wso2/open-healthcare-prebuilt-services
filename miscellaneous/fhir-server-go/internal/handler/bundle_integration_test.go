@@ -4,7 +4,15 @@ package handler_test
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
+
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/handler"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/searchparam"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/testutil"
 )
 
 // ─── Transaction: create with inter-entry reference resolution ─────────────────
@@ -155,7 +163,7 @@ func TestIntegration_Batch_IndependentEntries(t *testing.T) {
 		t.Errorf("entry[0] status = %v, want 201 Created", r0["status"])
 	}
 	r1 := entries[1].(map[string]any)["response"].(map[string]any)
-	if status, _ := r1["status"].(string); status[:3] != "404" {
+	if status, _ := r1["status"].(string); !strings.HasPrefix(status, "404") {
 		t.Errorf("entry[1] status = %v, want 404", r1["status"])
 	}
 
@@ -208,6 +216,57 @@ func TestIntegration_Transaction_ConditionalCreate(t *testing.T) {
 	}
 	if loc, _ := entry["location"].(string); lastPathID(loc) != id {
 		t.Errorf("conditional create should reuse existing id %s, got location %v", id, loc)
+	}
+}
+
+// ─── Transaction: SearchParameter DELETE cleans up the registry ────────────────
+
+// newServerWithRegistry builds a real server but also returns the registry so a
+// test can assert custom SearchParameter definitions are added/removed.
+func newServerWithRegistry(t *testing.T) (*httptest.Server, *searchparam.Registry) {
+	t.Helper()
+	pool := testutil.MustSeededDB(t)
+	reg := testutil.MustRegistry(t, pool)
+	s := store.New(pool, reg)
+	var ready atomic.Int32
+	ready.Store(1)
+	srv := httptest.NewServer(handler.NewRouter(s, pool, reg, "http://test-server/fhir/r4", &ready))
+	t.Cleanup(srv.Close)
+	return srv, reg
+}
+
+func TestIntegration_Transaction_SearchParameterDeleteCleansUpRegistry(t *testing.T) {
+	srv, reg := newServerWithRegistry(t)
+
+	// Create a custom SearchParameter directly so it lands in the registry.
+	id, _ := iCreate(t, srv, "SearchParameter", map[string]any{
+		"resourceType": "SearchParameter",
+		"code":         "bundle-custom",
+		"base":         []any{"Patient"},
+		"type":         "string",
+		"expression":   "Patient.extension('http://example.com/bundle-custom')",
+	})
+	if _, ok := reg.Lookup("Patient", "bundle-custom"); !ok {
+		t.Fatal("custom SearchParameter should be in the registry after create")
+	}
+
+	// Delete it via a transaction Bundle. Before the fix, the Bundle path never
+	// called DeleteSearchParameter, so the registry/definition leaked.
+	bundle := map[string]any{
+		"resourceType": "Bundle",
+		"type":         "transaction",
+		"entry": []any{map[string]any{
+			"request": map[string]any{"method": "DELETE", "url": "SearchParameter/" + id},
+		}},
+	}
+	resp := iDo(t, srv, http.MethodPost, "/fhir/r4", bundle)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("transaction delete: want 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if _, ok := reg.Lookup("Patient", "bundle-custom"); ok {
+		t.Error("custom SearchParameter should be removed from the registry after Bundle DELETE")
 	}
 }
 

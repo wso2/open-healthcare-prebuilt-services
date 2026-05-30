@@ -33,6 +33,13 @@ type BundleEntryResult struct {
 	ETag     string         // entry.response.etag, e.g. W/"1"
 	Resource map[string]any // entry.resource for the response (POST/PUT/GET payloads)
 	Outcome  map[string]any // OperationOutcome — set for batch entries that failed
+
+	// Method/ResourceType/ID describe the interaction that produced this result.
+	// They let the handler run post-commit maintenance (e.g. SearchParameter
+	// registry sync/cleanup) uniformly, including for DELETE which has no Resource.
+	Method       string
+	ResourceType string
+	ID           string
 }
 
 // BundleError is returned by ExecuteBundle when a transaction (atomic) Bundle
@@ -154,9 +161,30 @@ func (s *Store) executeTransaction(ctx context.Context, baseURL string, entries 
 	return results, nil
 }
 
-// execOpInTx runs a single planned op against an open transaction. A returned
+// execOpInTx runs a single planned op against an open transaction, stamping the
+// result with the interaction's method/type/id so the caller can run post-commit
+// maintenance (e.g. SearchParameter registry sync) uniformly. A returned
 // *BundleError aborts (and rolls back) the whole transaction.
 func (s *Store) execOpInTx(ctx context.Context, tx pgx.Tx, op bundleOp) (BundleEntryResult, *BundleError) {
+	res, berr := s.runOpInTx(ctx, tx, op)
+	if berr != nil {
+		return res, berr
+	}
+	res.Method = op.method
+	if op.skip && op.skipResType != "" {
+		res.ResourceType = op.skipResType
+		res.ID = op.skipID
+	} else {
+		res.ResourceType = op.resourceType
+		if res.ID == "" {
+			res.ID = op.id
+		}
+	}
+	return res, nil
+}
+
+// runOpInTx executes a single planned op against the open transaction.
+func (s *Store) runOpInTx(ctx context.Context, tx pgx.Tx, op bundleOp) (BundleEntryResult, *BundleError) {
 	if op.skip {
 		return BundleEntryResult{
 			Status:   op.skipStatus,
