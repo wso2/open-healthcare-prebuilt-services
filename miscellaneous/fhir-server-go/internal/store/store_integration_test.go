@@ -443,6 +443,176 @@ func TestSearch_ByDateParam(t *testing.T) {
 	}
 }
 
+func TestSearch_ByReferenceParam(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	pat, _ := s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+	patID := pat["id"].(string)
+
+	obs, _ := s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation",
+		"status":       "final",
+		"subject":      map[string]any{"reference": "Patient/" + patID},
+		"code": map[string]any{
+			"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8310-5"}},
+		},
+	})
+	obsID := obs["id"].(string)
+
+	// An Observation for a different patient that must NOT match.
+	s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation",
+		"status":       "final",
+		"subject":      map[string]any{"reference": "Patient/someone-else"},
+		"code": map[string]any{
+			"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8310-5"}},
+		},
+	})
+
+	// Type/id form: Observation?subject=Patient/<id>
+	result, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Observation",
+		Params:       map[string][]string{"subject": {"Patient/" + patID}},
+	})
+	if err != nil {
+		t.Fatalf("Search by subject=Patient/id: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("expected exactly 1 Observation for subject=Patient/%s, got %d", patID, result.Total)
+	}
+	if result.Entries[0]["id"] != obsID {
+		t.Errorf("wrong Observation returned: got %v, want %v", result.Entries[0]["id"], obsID)
+	}
+
+	// Bare id form: Observation?subject=<id>
+	bare, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Observation",
+		Params:       map[string][]string{"subject": {patID}},
+	})
+	if err != nil {
+		t.Fatalf("Search by subject=<bare id>: %v", err)
+	}
+	if bare.Total != 1 {
+		t.Errorf("expected 1 Observation for subject=%s (bare id), got %d", patID, bare.Total)
+	}
+}
+
+func TestSearch_ByQuantityParam(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Encounter.length is a quantity search param (Encounter.length).
+	s.Create(ctx, "Encounter", map[string]any{
+		"resourceType": "Encounter",
+		"status":       "finished",
+		"class":        map[string]any{"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "AMB"},
+		"length": map[string]any{
+			"value":  float64(120),
+			"unit":   "min",
+			"system": "http://unitsofmeasure.org",
+			"code":   "min",
+		},
+	})
+
+	// Exact value with system|code.
+	result, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Encounter",
+		Params:       map[string][]string{"length": {"120|http://unitsofmeasure.org|min"}},
+	})
+	if err != nil {
+		t.Fatalf("Search by length=120|...|min: %v", err)
+	}
+	if result.Total < 1 {
+		t.Errorf("expected ≥1 Encounter for length=120|...|min, got %d", result.Total)
+	}
+
+	// gt prefix.
+	gt, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Encounter",
+		Params:       map[string][]string{"length": {"gt100"}},
+	})
+	if err != nil {
+		t.Fatalf("Search by length=gt100: %v", err)
+	}
+	if gt.Total < 1 {
+		t.Errorf("expected ≥1 Encounter for length=gt100, got %d", gt.Total)
+	}
+
+	// Non-matching upper bound: lt100 should exclude the 120-min encounter.
+	lt, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Encounter",
+		Params:       map[string][]string{"length": {"lt100"}},
+	})
+	if err != nil {
+		t.Fatalf("Search by length=lt100: %v", err)
+	}
+	if lt.Total != 0 {
+		t.Errorf("expected 0 Encounters for length=lt100, got %d", lt.Total)
+	}
+
+	// Boundary: gt120 must NOT match the encounter whose length is exactly 120.
+	gtBoundary, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Encounter",
+		Params:       map[string][]string{"length": {"gt120"}},
+	})
+	if err != nil {
+		t.Fatalf("Search by length=gt120: %v", err)
+	}
+	if gtBoundary.Total != 0 {
+		t.Errorf("expected 0 Encounters for length=gt120 (boundary), got %d", gtBoundary.Total)
+	}
+}
+
+func TestSearch_MissingModifier(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Observation.subject is a reference param, indexed into sp_reference — the
+	// table :missing previously failed to consult.
+	pat, _ := s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+	patID := pat["id"].(string)
+
+	withSubject, _ := s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation",
+		"status":       "final",
+		"subject":      map[string]any{"reference": "Patient/" + patID},
+		"code":         map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8310-5"}}},
+	})
+	withID := withSubject["id"].(string)
+
+	noSubject, _ := s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation",
+		"status":       "final",
+		"code":         map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8310-5"}}},
+	})
+	noID := noSubject["id"].(string)
+
+	// subject:missing=true → only the Observation without a subject.
+	missing, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Observation",
+		Params:       map[string][]string{"subject:missing": {"true"}},
+	})
+	if err != nil {
+		t.Fatalf("Search subject:missing=true: %v", err)
+	}
+	if missing.Total != 1 || missing.Entries[0]["id"] != noID {
+		t.Errorf("subject:missing=true expected only %s, got total=%d", noID, missing.Total)
+	}
+
+	// subject:missing=false → only the Observation with a subject.
+	present, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Observation",
+		Params:       map[string][]string{"subject:missing": {"false"}},
+	})
+	if err != nil {
+		t.Fatalf("Search subject:missing=false: %v", err)
+	}
+	if present.Total != 1 || present.Entries[0]["id"] != withID {
+		t.Errorf("subject:missing=false expected only %s, got total=%d", withID, present.Total)
+	}
+}
+
 func TestSearch_DeletedResourcesExcluded(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

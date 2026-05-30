@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/searchparam"
 )
 
 // SearchParams are the parsed query parameters from the HTTP request.
@@ -38,7 +39,7 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 	}
 	offset := (sp.Page - 1) * sp.PageSize
 
-	b := &queryBuilder{rt: sp.ResourceType}
+	b := &queryBuilder{rt: sp.ResourceType, reg: s.registry}
 	b.writeBase()
 
 	for rawKey, values := range sp.Params {
@@ -112,6 +113,7 @@ func (s *Store) resolveIncludes(ctx context.Context, entries []map[string]any, r
 
 type queryBuilder struct {
 	rt    string
+	reg   *searchparam.Registry
 	where strings.Builder
 	args  []any
 	argN  int
@@ -156,7 +158,22 @@ func (b *queryBuilder) applyParam(rawKey, value string) {
 
 func (b *queryBuilder) applySearchParam(param, modifier, value string) {
 	if modifier == "missing" {
-		exists := b.spExists("sp_string", param, "")
+		// :missing must look in the table the param was actually indexed into,
+		// otherwise typed params (reference, token, date, quantity, uri) are all
+		// reported as missing. Fall back to sp_string for params the registry
+		// doesn't know.
+		table := "sp_string"
+		if b.reg != nil {
+			if def, ok := b.reg.Lookup(b.rt, param); ok {
+				t := tableForType(def.ParamType)
+				if t == "" {
+					// composite / special — cannot determine presence; skip.
+					return
+				}
+				table = t
+			}
+		}
+		exists := b.spExists(table, param, "")
 		if value == "true" {
 			b.and(fmt.Sprintf("NOT EXISTS (%s)", exists))
 		} else {
@@ -187,12 +204,74 @@ func (b *queryBuilder) applySearchParam(param, modifier, value string) {
 	}
 }
 
-// buildExistsForValue builds an EXISTS subquery for a single value.
-// Without knowing the param type at query-build time, we do a best-effort
-// guess from the value format. In practice the handler layer can inject
-// the registry lookup; for now string/token cover the common cases.
+// buildExistsForValue builds an EXISTS subquery for a single value, routing to
+// the correct sp_* table by the param's declared type in the registry. When the
+// param is unknown to the registry (e.g. a custom param not yet loaded) it falls
+// back to a best-effort guess from the value format.
 func (b *queryBuilder) buildExistsForValue(param, modifier, value string) (string, bool) {
-	// Heuristic type detection from value format
+	if b.reg != nil {
+		if def, ok := b.reg.Lookup(b.rt, param); ok {
+			return b.buildTypedExists(def.ParamType, param, modifier, value)
+		}
+	}
+	return b.buildHeuristicExists(param, modifier, value)
+}
+
+// buildTypedExists routes a value match to the sp_* table for the given FHIR
+// search param type. Returns (subquery, false) for types we don't yet support
+// (composite, special) so the caller can skip the filter rather than misroute it.
+func (b *queryBuilder) buildTypedExists(paramType, param, modifier, value string) (string, bool) {
+	switch paramType {
+	case "string":
+		return b.buildStringExists(param, modifier, value), true
+	case "token":
+		return b.buildTokenExists(param, modifier, value), true
+	case "date", "dateTime", "instant", "Period":
+		return b.buildDateExists(param, value), true
+	case "number":
+		return b.buildNumberExists(param, value), true
+	case "quantity":
+		return b.buildQuantityExists(param, value), true
+	case "uri":
+		return b.buildURIExists(param, modifier, value), true
+	case "reference":
+		return b.buildReferenceExists(param, modifier, value), true
+	default:
+		// composite / special — not yet supported. Skip rather than misroute,
+		// and surface it so a dropped filter isn't silently treated as a match.
+		slog.Warn("unsupported search param type; filter skipped",
+			"resourceType", b.rt, "param", param, "paramType", paramType)
+		return "", false
+	}
+}
+
+// tableForType maps a FHIR search param type to its sp_* index table. Returns ""
+// for types without a dedicated table (composite, special).
+func tableForType(paramType string) string {
+	switch paramType {
+	case "string":
+		return "sp_string"
+	case "token":
+		return "sp_token"
+	case "date", "dateTime", "instant", "Period":
+		return "sp_date"
+	case "number":
+		return "sp_number"
+	case "quantity":
+		return "sp_quantity"
+	case "uri":
+		return "sp_uri"
+	case "reference":
+		return "sp_reference"
+	default:
+		return ""
+	}
+}
+
+// buildHeuristicExists is the legacy value-format guess, used only when the
+// param type is unknown. Reference/quantity/uri params are never reachable here
+// once the registry is loaded.
+func (b *queryBuilder) buildHeuristicExists(param, modifier, value string) (string, bool) {
 	switch {
 	case looksLikeDate(value):
 		return b.buildDateExists(param, value), true
@@ -201,8 +280,8 @@ func (b *queryBuilder) buildExistsForValue(param, modifier, value string) (strin
 	case strings.Contains(value, "|"):
 		return b.buildTokenExists(param, modifier, value), true
 	default:
-		// Without registry type info, match against both sp_string and sp_token so
-		// plain-code token searches (e.g. gender=female) work alongside string params.
+		// Match against both sp_string and sp_token so plain-code token searches
+		// (e.g. gender=female) work alongside string params.
 		strQ := b.buildStringExists(param, modifier, value)
 		tokQ := b.buildTokenExists(param, modifier, value)
 		return strQ + " UNION ALL " + tokQ, true
@@ -298,6 +377,130 @@ func (b *queryBuilder) buildNumberExists(param, value string) string {
 		lowP := b.next(f - eps)
 		return fmt.Sprintf("SELECT 1 FROM sp_number s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value_low <= %s AND s.value_high >= %s", rtP, pP, highP, lowP)
 	}
+}
+
+// buildReferenceExists matches a reference param against sp_reference. It accepts
+// "Type/id", a bare "id", or an absolute URL, and supports the :identifier
+// modifier (patient:identifier=system|value) and an explicit target-type
+// modifier (subject:Patient=123).
+func (b *queryBuilder) buildReferenceExists(param, modifier, value string) string {
+	rtP := b.next(b.rt)
+	pP := b.next(param)
+
+	if modifier == "identifier" {
+		system, val := "", value
+		if i := strings.Index(value, "|"); i >= 0 {
+			system, val = value[:i], value[i+1:]
+		}
+		if system != "" {
+			sP := b.next(system)
+			vP := b.next(val)
+			return fmt.Sprintf("SELECT 1 FROM sp_reference s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.identifier_system = %s AND s.identifier_value = %s", rtP, pP, sP, vP)
+		}
+		vP := b.next(val)
+		return fmt.Sprintf("SELECT 1 FROM sp_reference s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.identifier_value = %s", rtP, pP, vP)
+	}
+
+	typ, id := parseSearchReference(value)
+	if typ == "" && modifier != "" {
+		// e.g. subject:Patient=123 — the modifier names the target type.
+		typ = modifier
+	}
+	if typ != "" {
+		tP := b.next(typ)
+		iP := b.next(id)
+		return fmt.Sprintf("SELECT 1 FROM sp_reference s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.target_type = %s AND s.target_id = %s", rtP, pP, tP, iP)
+	}
+	iP := b.next(id)
+	return fmt.Sprintf("SELECT 1 FROM sp_reference s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.target_id = %s", rtP, pP, iP)
+}
+
+// buildQuantityExists matches a quantity param against sp_quantity. The value is
+// "[prefix]number|system|code"; system and code are optional. The third token is
+// matched against the coded (UCUM) unit stored in sp_quantity.code.
+func (b *queryBuilder) buildQuantityExists(param, value string) string {
+	numPart := value
+	var system, code string
+	if parts := strings.SplitN(value, "|", 3); len(parts) > 1 {
+		numPart = parts[0]
+		system = parts[1]
+		if len(parts) == 3 {
+			code = parts[2]
+		}
+	}
+	prefix, numStr := extractComparatorPrefix(numPart)
+	f, _ := strconv.ParseFloat(numStr, 64)
+	eps := math.Abs(f) * 1e-7
+	if eps == 0 {
+		eps = 1e-7
+	}
+	low, high := f-eps, f+eps
+	rtP := b.next(b.rt)
+	pP := b.next(param)
+
+	// Compare the indexed range against the search range endpoints (mirrors
+	// buildDateExists) so boundary values are not matched incorrectly — e.g. an
+	// indexed 5 must not satisfy gt5.
+	var cond string
+	switch prefix {
+	case "gt":
+		cond = fmt.Sprintf("s.value_low > %s", b.next(high))
+	case "lt":
+		cond = fmt.Sprintf("s.value_high < %s", b.next(low))
+	case "ge":
+		cond = fmt.Sprintf("s.value_high >= %s", b.next(low))
+	case "le":
+		cond = fmt.Sprintf("s.value_low <= %s", b.next(high))
+	case "ne":
+		hP := b.next(high)
+		lP := b.next(low)
+		cond = fmt.Sprintf("NOT (s.value_low <= %s AND s.value_high >= %s)", hP, lP)
+	default: // eq
+		hP := b.next(high)
+		lP := b.next(low)
+		cond = fmt.Sprintf("s.value_low <= %s AND s.value_high >= %s", hP, lP)
+	}
+
+	q := fmt.Sprintf("SELECT 1 FROM sp_quantity s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND %s", rtP, pP, cond)
+	if system != "" {
+		q += fmt.Sprintf(" AND s.system = %s", b.next(system))
+	}
+	if code != "" {
+		q += fmt.Sprintf(" AND s.code = %s", b.next(code))
+	}
+	return q
+}
+
+// buildURIExists matches a uri param against sp_uri (exact match). The :above /
+// :below hierarchy modifiers are not yet handled.
+func (b *queryBuilder) buildURIExists(param, _, value string) string {
+	rtP := b.next(b.rt)
+	pP := b.next(param)
+	vP := b.next(value)
+	return fmt.Sprintf("SELECT 1 FROM sp_uri s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value = %s", rtP, pP, vP)
+}
+
+// parseSearchReference splits a reference search value into (type, id). It
+// accepts "Patient/123", a bare "123", or an absolute URL ending in Type/id,
+// and strips any "/_history/x" version suffix. Mirrors index.parseRefString.
+func parseSearchReference(value string) (resourceType, id string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", ""
+	}
+	if i := strings.Index(value, "/_history/"); i >= 0 {
+		value = value[:i]
+	}
+	if idx := strings.LastIndex(value, "/"); idx >= 0 {
+		pre := value[:idx]
+		if slashIdx := strings.LastIndex(pre, "/"); slashIdx >= 0 {
+			resourceType = pre[slashIdx+1:]
+		} else {
+			resourceType = pre
+		}
+		return resourceType, value[idx+1:]
+	}
+	return "", value
 }
 
 func (b *queryBuilder) applyLastUpdated(value string) {
