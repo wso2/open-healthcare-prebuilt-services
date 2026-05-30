@@ -306,12 +306,11 @@ func indexQuantity(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals [
 		}
 		sys := asString(m["system"])
 		code := asString(m["code"])
-		unit := asString(m["unit"])
 		eps := math.Abs(f) * 1e-7
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO sp_quantity (resource_id, resource_type, param_name, value_low, value_high, system, code, unit)
+			INSERT INTO sp_quantity (resource_id, resource_type, param_name, value, value_low, value_high, system, code)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			rid, rt, param, f-eps, f+eps, sys, code, unit,
+			rid, rt, param, f, f-eps, f+eps, sys, code,
 		); err != nil {
 			return err
 		}
