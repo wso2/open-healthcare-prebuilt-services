@@ -45,6 +45,8 @@ func (h *fhirHandler) bundle(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var be *store.BundleError
 		if errors.As(err, &be) {
+			slog.Error("bundle execution failed", "bundleType", bundleType,
+				"entryIndex", be.EntryIndex, "status", be.HTTPStatus, "err", be.Diagnostics)
 			diag := be.Diagnostics
 			if be.EntryIndex >= 0 {
 				diag = fmt.Sprintf("entry[%d]: %s", be.EntryIndex, be.Diagnostics)
@@ -52,16 +54,26 @@ func (h *fhirHandler) bundle(w http.ResponseWriter, r *http.Request) {
 			operationOutcome(w, be.HTTPStatus, "error", be.Code, diag)
 			return
 		}
+		slog.Error("bundle execution failed", "bundleType", bundleType, "err", err)
 		operationOutcome(w, http.StatusInternalServerError, "error", "exception", err.Error())
 		return
 	}
 
 	// Keep the in-memory SearchParameter registry in sync with any custom
-	// SearchParameters written by the Bundle, mirroring the single-resource path.
+	// SearchParameters written by the Bundle, mirroring the single-resource path:
+	// create/update re-sync the definition, delete removes it.
 	for _, res := range results {
-		if res.Resource != nil {
-			if rt, _ := res.Resource["resourceType"].(string); rt == "SearchParameter" {
+		if res.ResourceType != "SearchParameter" {
+			continue
+		}
+		switch res.Method {
+		case "POST", "PUT", "PATCH":
+			if res.Resource != nil {
 				_ = h.store.SyncSearchParameter(r.Context(), res.Resource)
+			}
+		case "DELETE":
+			if res.ID != "" {
+				_ = h.store.DeleteSearchParameter(r.Context(), res.ID)
 			}
 		}
 	}
