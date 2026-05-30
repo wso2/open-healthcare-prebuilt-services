@@ -550,6 +550,67 @@ func TestSearch_ByQuantityParam(t *testing.T) {
 	if lt.Total != 0 {
 		t.Errorf("expected 0 Encounters for length=lt100, got %d", lt.Total)
 	}
+
+	// Boundary: gt120 must NOT match the encounter whose length is exactly 120.
+	gtBoundary, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Encounter",
+		Params:       map[string][]string{"length": {"gt120"}},
+	})
+	if err != nil {
+		t.Fatalf("Search by length=gt120: %v", err)
+	}
+	if gtBoundary.Total != 0 {
+		t.Errorf("expected 0 Encounters for length=gt120 (boundary), got %d", gtBoundary.Total)
+	}
+}
+
+func TestSearch_MissingModifier(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Observation.subject is a reference param, indexed into sp_reference — the
+	// table :missing previously failed to consult.
+	pat, _ := s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+	patID := pat["id"].(string)
+
+	withSubject, _ := s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation",
+		"status":       "final",
+		"subject":      map[string]any{"reference": "Patient/" + patID},
+		"code":         map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8310-5"}}},
+	})
+	withID := withSubject["id"].(string)
+
+	noSubject, _ := s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation",
+		"status":       "final",
+		"code":         map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8310-5"}}},
+	})
+	noID := noSubject["id"].(string)
+
+	// subject:missing=true → only the Observation without a subject.
+	missing, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Observation",
+		Params:       map[string][]string{"subject:missing": {"true"}},
+	})
+	if err != nil {
+		t.Fatalf("Search subject:missing=true: %v", err)
+	}
+	if missing.Total != 1 || missing.Entries[0]["id"] != noID {
+		t.Errorf("subject:missing=true expected only %s, got total=%d", noID, missing.Total)
+	}
+
+	// subject:missing=false → only the Observation with a subject.
+	present, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Observation",
+		Params:       map[string][]string{"subject:missing": {"false"}},
+	})
+	if err != nil {
+		t.Fatalf("Search subject:missing=false: %v", err)
+	}
+	if present.Total != 1 || present.Entries[0]["id"] != withID {
+		t.Errorf("subject:missing=false expected only %s, got total=%d", withID, present.Total)
+	}
 }
 
 func TestSearch_DeletedResourcesExcluded(t *testing.T) {

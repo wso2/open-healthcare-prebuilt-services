@@ -158,7 +158,22 @@ func (b *queryBuilder) applyParam(rawKey, value string) {
 
 func (b *queryBuilder) applySearchParam(param, modifier, value string) {
 	if modifier == "missing" {
-		exists := b.spExists("sp_string", param, "")
+		// :missing must look in the table the param was actually indexed into,
+		// otherwise typed params (reference, token, date, quantity, uri) are all
+		// reported as missing. Fall back to sp_string for params the registry
+		// doesn't know.
+		table := "sp_string"
+		if b.reg != nil {
+			if def, ok := b.reg.Lookup(b.rt, param); ok {
+				t := tableForType(def.ParamType)
+				if t == "" {
+					// composite / special — cannot determine presence; skip.
+					return
+				}
+				table = t
+			}
+		}
+		exists := b.spExists(table, param, "")
 		if value == "true" {
 			b.and(fmt.Sprintf("NOT EXISTS (%s)", exists))
 		} else {
@@ -222,8 +237,34 @@ func (b *queryBuilder) buildTypedExists(paramType, param, modifier, value string
 	case "reference":
 		return b.buildReferenceExists(param, modifier, value), true
 	default:
-		// composite / special — not yet supported; skip rather than misroute.
+		// composite / special — not yet supported. Skip rather than misroute,
+		// and surface it so a dropped filter isn't silently treated as a match.
+		slog.Warn("unsupported search param type; filter skipped",
+			"resourceType", b.rt, "param", param, "paramType", paramType)
 		return "", false
+	}
+}
+
+// tableForType maps a FHIR search param type to its sp_* index table. Returns ""
+// for types without a dedicated table (composite, special).
+func tableForType(paramType string) string {
+	switch paramType {
+	case "string":
+		return "sp_string"
+	case "token":
+		return "sp_token"
+	case "date", "dateTime", "instant", "Period":
+		return "sp_date"
+	case "number":
+		return "sp_number"
+	case "quantity":
+		return "sp_quantity"
+	case "uri":
+		return "sp_uri"
+	case "reference":
+		return "sp_reference"
+	default:
+		return ""
 	}
 }
 
@@ -393,26 +434,30 @@ func (b *queryBuilder) buildQuantityExists(param, value string) string {
 	if eps == 0 {
 		eps = 1e-7
 	}
+	low, high := f-eps, f+eps
 	rtP := b.next(b.rt)
 	pP := b.next(param)
 
+	// Compare the indexed range against the search range endpoints (mirrors
+	// buildDateExists) so boundary values are not matched incorrectly — e.g. an
+	// indexed 5 must not satisfy gt5.
 	var cond string
 	switch prefix {
 	case "gt":
-		cond = fmt.Sprintf("s.value_high > %s", b.next(f))
+		cond = fmt.Sprintf("s.value_low > %s", b.next(high))
 	case "lt":
-		cond = fmt.Sprintf("s.value_low < %s", b.next(f))
+		cond = fmt.Sprintf("s.value_high < %s", b.next(low))
 	case "ge":
-		cond = fmt.Sprintf("s.value_high >= %s", b.next(f))
+		cond = fmt.Sprintf("s.value_high >= %s", b.next(low))
 	case "le":
-		cond = fmt.Sprintf("s.value_low <= %s", b.next(f))
+		cond = fmt.Sprintf("s.value_low <= %s", b.next(high))
 	case "ne":
-		hP := b.next(f + eps)
-		lP := b.next(f - eps)
+		hP := b.next(high)
+		lP := b.next(low)
 		cond = fmt.Sprintf("NOT (s.value_low <= %s AND s.value_high >= %s)", hP, lP)
 	default: // eq
-		hP := b.next(f + eps)
-		lP := b.next(f - eps)
+		hP := b.next(high)
+		lP := b.next(low)
 		cond = fmt.Sprintf("s.value_low <= %s AND s.value_high >= %s", hP, lP)
 	}
 
