@@ -48,17 +48,18 @@ func Evaluate(expr string, resource map[string]any) ([]any, error) {
 type nodeKind int
 
 const (
-	kindPath      nodeKind = iota // foo.bar.baz
-	kindOfType                    // .ofType(X)
-	kindWhere                     // .where(key='val')
-	kindExists                    // .exists()
-	kindExtension                 // .extension('url')
+	kindPath           nodeKind = iota // foo.bar.baz
+	kindOfType                         // .ofType(X)
+	kindWhere                          // .where(key='val')
+	kindWhereResolveIs                 // .where(resolve() is Type)
+	kindExists                         // .exists()
+	kindExtension                      // .extension('url')
 )
 
 type node struct {
 	kind     nodeKind
 	field    string // for kindPath
-	typeName string // for kindOfType
+	typeName string // for kindOfType, kindWhereResolveIs
 	whereKey string // for kindWhere
 	whereVal string // for kindWhere
 	extURL   string // for kindExtension
@@ -183,6 +184,23 @@ func parseToken(tok string) (node, error) {
 }
 
 func parseWhere(inner string) (node, error) {
+	inner = strings.TrimSpace(inner)
+
+	// resolve() is Type — keep only references whose target is the named type.
+	// Used by many standard params (e.g. patient on Encounter is
+	// "Encounter.subject.where(resolve() is Patient)"). Without this case the
+	// clause falls through to the unsupported branch below and the indexer
+	// extracts nothing for ~50 patient/source/etc. params.
+	if rest, ok := strings.CutPrefix(inner, "resolve()"); ok {
+		rest = strings.TrimSpace(rest)
+		if t, ok := strings.CutPrefix(rest, "is "); ok {
+			typeName := strings.TrimSpace(t)
+			if typeName != "" {
+				return node{kind: kindWhereResolveIs, typeName: typeName}, nil
+			}
+		}
+	}
+
 	// Supports: key = 'value'  or  key != 'value'
 	// "!=" must be checked before "=" to avoid matching the "=" inside "!="
 	for _, sep := range []string{"!=", "="} {
@@ -230,6 +248,9 @@ func applyNode(n node, input any) ([]any, error) {
 
 	case kindWhere:
 		return filterWhere(input, n.whereKey, n.whereVal, n.field), nil
+
+	case kindWhereResolveIs:
+		return filterResolveIs(input, n.typeName), nil
 
 	case kindExists:
 		// exists() returns a boolean — not useful for value extraction; return input as-is
@@ -317,6 +338,32 @@ func filterWhere(input any, key, val, op string) []any {
 		var results []any
 		for _, item := range v {
 			results = append(results, filterWhere(item, key, val, op)...)
+		}
+		return results
+	}
+	return nil
+}
+
+// filterResolveIs implements where(resolve() is TypeName) for Reference inputs.
+// Since indexing has no DB context to actually resolve the reference, we accept
+// a reference whose .reference string is a "TypeName/..." literal (which is how
+// references look after the transaction-bundle rewriter normalises urn:uuid
+// fullUrls into Type/id form). References lacking a typed prefix (e.g. an
+// unresolved "urn:uuid:..." or a bare id) are dropped — correct, because the
+// FHIRPath says "is TypeName" and we cannot prove the target type without
+// fetching it.
+func filterResolveIs(input any, typeName string) []any {
+	prefix := typeName + "/"
+	switch v := input.(type) {
+	case map[string]any:
+		if ref, ok := v["reference"].(string); ok && strings.HasPrefix(ref, prefix) {
+			return []any{v}
+		}
+		return nil
+	case []any:
+		var results []any
+		for _, item := range v {
+			results = append(results, filterResolveIs(item, typeName)...)
 		}
 		return results
 	}

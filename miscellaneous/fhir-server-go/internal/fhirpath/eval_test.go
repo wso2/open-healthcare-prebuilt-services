@@ -105,6 +105,38 @@ func TestEvaluate_Where_NoMatch(t *testing.T) {
 	}
 }
 
+func TestEvaluate_Where_ResolveIs_Match(t *testing.T) {
+	r := map[string]any{
+		"subject": map[string]any{"reference": "Patient/abc-123"},
+	}
+	got, err := fhirpath.Evaluate("Encounter.subject.where(resolve() is Patient).reference", r)
+	assertNoErr(t, err)
+	assertStrings(t, got, "Patient/abc-123")
+}
+
+func TestEvaluate_Where_ResolveIs_WrongType(t *testing.T) {
+	r := map[string]any{
+		"subject": map[string]any{"reference": "Group/xyz"},
+	}
+	got, err := fhirpath.Evaluate("Encounter.subject.where(resolve() is Patient).reference", r)
+	assertNoErr(t, err)
+	if len(got) != 0 {
+		t.Fatalf("want 0 results for non-Patient subject, got %d: %v", len(got), got)
+	}
+}
+
+func TestEvaluate_Where_ResolveIs_UnresolvedUrnUuid(t *testing.T) {
+	// Pre-bundle-rewrite references can't prove their target type — drop them.
+	r := map[string]any{
+		"subject": map[string]any{"reference": "urn:uuid:abc-123"},
+	}
+	got, err := fhirpath.Evaluate("Encounter.subject.where(resolve() is Patient).reference", r)
+	assertNoErr(t, err)
+	if len(got) != 0 {
+		t.Fatalf("want 0 results for un-typed urn:uuid, got %d: %v", len(got), got)
+	}
+}
+
 func TestEvaluate_Extension(t *testing.T) {
 	r := map[string]any{
 		"extension": []any{
