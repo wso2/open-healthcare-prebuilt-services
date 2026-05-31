@@ -680,6 +680,32 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 		if profs, ok := profiles[rt]; ok && len(profs) > 0 {
 			entry["supportedProfile"] = profs
 		}
+
+		// searchParam: every param the registry knows for this resource type.
+		// searchInclude: reference params can be used as _include targets.
+		// (searchRevInclude is intentionally omitted — it requires per-param
+		// target-type knowledge the registry's FHIRPath strings don't carry
+		// reliably for un-filtered refs like "Encounter.subject".)
+		if h.registry != nil {
+			defs := h.registry.ForResource(rt)
+			if len(defs) > 0 {
+				sps := make([]any, 0, len(defs))
+				var includes []string
+				for _, d := range defs {
+					sps = append(sps, map[string]any{
+						"name": d.ParamName,
+						"type": d.ParamType,
+					})
+					if d.ParamType == "reference" {
+						includes = append(includes, rt+":"+d.ParamName)
+					}
+				}
+				entry["searchParam"] = sps
+				if len(includes) > 0 {
+					entry["searchInclude"] = includes
+				}
+			}
+		}
 		resources = append(resources, entry)
 	}
 

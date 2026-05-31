@@ -638,3 +638,66 @@ func TestMetadata_ListsFullR4ResourceSet(t *testing.T) {
 		}
 	}
 }
+
+// TestMetadata_AdvertisesSearchParams verifies each rest.resource entry carries
+// a populated searchParam list sourced from the registry, and that reference
+// params are projected into searchInclude. Capability-driven clients (SMART
+// launchers, generic explorers) rely on this for param discovery.
+func TestMetadata_AdvertisesSearchParams(t *testing.T) {
+	srv := newRealServer(t)
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/metadata", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	cs := iJSON(t, resp)
+	rest, _ := cs["rest"].([]any)
+	rest0, _ := rest[0].(map[string]any)
+	resources, _ := rest0["resource"].([]any)
+
+	byType := map[string]map[string]any{}
+	for _, r := range resources {
+		e, _ := r.(map[string]any)
+		if rt, ok := e["type"].(string); ok {
+			byType[rt] = e
+		}
+	}
+
+	enc, ok := byType["Encounter"]
+	if !ok {
+		t.Fatal("Encounter missing from CapabilityStatement")
+	}
+	sps, _ := enc["searchParam"].([]any)
+	if len(sps) == 0 {
+		t.Fatal("Encounter.searchParam is empty — registry contents not projected")
+	}
+
+	// Spot-check that "patient" is present and typed as reference.
+	var foundPatient bool
+	for _, p := range sps {
+		m, _ := p.(map[string]any)
+		if m["name"] == "patient" {
+			foundPatient = true
+			if m["type"] != "reference" {
+				t.Errorf("Encounter.searchParam[patient].type = %v, want reference", m["type"])
+			}
+		}
+	}
+	if !foundPatient {
+		t.Error("Encounter.searchParam is missing 'patient'")
+	}
+
+	// searchInclude should at minimum list reference params on this resource.
+	incs, _ := enc["searchInclude"].([]any)
+	if len(incs) == 0 {
+		t.Fatal("Encounter.searchInclude is empty — reference params not projected as _include targets")
+	}
+	var foundEncPatient bool
+	for _, v := range incs {
+		if s, _ := v.(string); s == "Encounter:patient" {
+			foundEncPatient = true
+		}
+	}
+	if !foundEncPatient {
+		t.Errorf("Encounter.searchInclude missing 'Encounter:patient'; got %v", incs)
+	}
+}
