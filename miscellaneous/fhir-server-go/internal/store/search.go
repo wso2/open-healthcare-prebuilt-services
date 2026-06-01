@@ -28,6 +28,14 @@ type SearchResult struct {
 	Included []map[string]any // _include / _revinclude results
 }
 
+// UnsupportedParamError is returned when a search request names a registry-known
+// param whose type the query builder can't translate (composite, special).
+// The HTTP layer should map this to a 400 OperationOutcome rather than execute
+// a query that silently ignores the predicate.
+type UnsupportedParamError struct{ Msg string }
+
+func (e *UnsupportedParamError) Error() string { return e.Msg }
+
 // Search executes a FHIR search against the resources + sp_* tables,
 // and resolves _include / _revinclude parameters.
 func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, error) {
@@ -49,6 +57,10 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 		for _, v := range values {
 			b.applyParam(rawKey, v)
 		}
+	}
+
+	if b.err != nil {
+		return SearchResult{}, b.err
 	}
 
 	total, err := b.count(ctx, s.pool)
@@ -117,6 +129,10 @@ type queryBuilder struct {
 	where strings.Builder
 	args  []any
 	argN  int
+	// err is set when the request can't be satisfied (e.g. a registry-known
+	// param of unsupported type like composite/special). Search() returns it
+	// as an UnsupportedParamError rather than silently widening the result set.
+	err error
 }
 
 func (b *queryBuilder) next(v any) string {
@@ -167,7 +183,11 @@ func (b *queryBuilder) applySearchParam(param, modifier, value string) {
 			if def, ok := b.reg.Lookup(b.rt, param); ok {
 				t := tableForType(def.ParamType)
 				if t == "" {
-					// composite / special — cannot determine presence; skip.
+					// composite / special — we can't tell from registry alone where
+					// this param indexes, so :missing is unanswerable. Fail closed
+					// rather than skipping the predicate (which widens the result
+					// set unexpectedly).
+					b.err = &UnsupportedParamError{Msg: fmt.Sprintf("param %q on %s has type %q which is not yet supported for :missing", param, b.rt, def.ParamType)}
 					return
 				}
 				table = t
@@ -237,9 +257,11 @@ func (b *queryBuilder) buildTypedExists(paramType, param, modifier, value string
 	case "reference":
 		return b.buildReferenceExists(param, modifier, value), true
 	default:
-		// composite / special — not yet supported. Skip rather than misroute,
-		// and surface it so a dropped filter isn't silently treated as a match.
-		slog.Warn("unsupported search param type; filter skipped",
+		// composite / special — not yet supported. Fail the request rather
+		// than silently dropping the predicate (which would broaden results
+		// and could surprise callers).
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("param %q on %s has type %q which is not yet supported", param, b.rt, paramType)}
+		slog.Warn("unsupported search param type; failing request",
 			"resourceType", b.rt, "param", param, "paramType", paramType)
 		return "", false
 	}

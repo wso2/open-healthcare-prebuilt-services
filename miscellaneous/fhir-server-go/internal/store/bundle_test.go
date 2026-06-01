@@ -20,7 +20,10 @@ func TestParseEntryURL(t *testing.T) {
 		{"search query", "Patient?name=smith", "Patient", "", "", false},
 		{"vread", "Patient/123/_history/2", "Patient", "123", "2", false},
 		{"absolute under base", base + "/Observation/abc", "Observation", "abc", "", false},
-		{"absolute other host", "http://other/Patient/9", "Patient", "9", "", false},
+		// An absolute URL pointing at a different server is rejected; we used to
+		// silently strip scheme+host, but that risked operating on the wrong
+		// resource if a bundle entry pointed at another server.
+		{"absolute other host", "http://other/Patient/9", "", "", "", true},
 		{"leading slash", "/Patient/5", "Patient", "5", "", false},
 		{"empty", "", "", "", "", true},
 	}

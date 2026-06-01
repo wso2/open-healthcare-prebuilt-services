@@ -55,13 +55,17 @@ func (h *fhirHandler) bundle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("bundle execution failed", "bundleType", bundleType, "err", err)
-		operationOutcome(w, http.StatusInternalServerError, "error", "exception", err.Error())
+		operationOutcome(w, http.StatusInternalServerError, "error", "exception",
+			"unexpected error processing the bundle; see server logs")
 		return
 	}
 
 	// Keep the in-memory SearchParameter registry in sync with any custom
 	// SearchParameters written by the Bundle, mirroring the single-resource path:
-	// create/update re-sync the definition, delete removes it.
+	// create/update re-sync the definition, delete removes it. A sync failure
+	// here means the persisted resource and the in-memory registry are out of
+	// step — log loudly so an operator can spot it; we still return success
+	// because the Bundle itself committed.
 	for _, res := range results {
 		if res.ResourceType != "SearchParameter" {
 			continue
@@ -69,11 +73,17 @@ func (h *fhirHandler) bundle(w http.ResponseWriter, r *http.Request) {
 		switch res.Method {
 		case "POST", "PUT", "PATCH":
 			if res.Resource != nil {
-				_ = h.store.SyncSearchParameter(r.Context(), res.Resource)
+				if serr := h.store.SyncSearchParameter(r.Context(), res.Resource); serr != nil {
+					slog.Error("bundle SearchParameter sync failed; registry may be stale",
+						"method", res.Method, "resourceID", res.ID, "err", serr)
+				}
 			}
 		case "DELETE":
 			if res.ID != "" {
-				_ = h.store.DeleteSearchParameter(r.Context(), res.ID)
+				if serr := h.store.DeleteSearchParameter(r.Context(), res.ID); serr != nil {
+					slog.Error("bundle SearchParameter delete-sync failed; registry may be stale",
+						"resourceID", res.ID, "err", serr)
+				}
 			}
 		}
 	}
