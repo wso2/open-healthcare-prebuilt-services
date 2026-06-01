@@ -99,6 +99,10 @@ func newRouter(s handler.StoreAPI) http.Handler {
 }
 
 func do(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {
+	return doWithCT(t, h, method, path, body, "application/fhir+json")
+}
+
+func doWithCT(t *testing.T, h http.Handler, method, path string, body any, contentType string) *httptest.ResponseRecorder {
 	t.Helper()
 	var bodyBytes []byte
 	if body != nil {
@@ -110,7 +114,7 @@ func do(t *testing.T, h http.Handler, method, path string, body any) *httptest.R
 	}
 	req := httptest.NewRequest(method, path, bytes.NewReader(bodyBytes))
 	if body != nil {
-		req.Header.Set("Content-Type", "application/fhir+json")
+		req.Header.Set("Content-Type", contentType)
 	}
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -294,7 +298,7 @@ func TestPatch_Success(t *testing.T) {
 
 	h := newRouter(ms)
 	payload := map[string]any{"active": false}
-	w := do(t, h, http.MethodPatch, "/fhir/r4/Patient/p1", payload)
+	w := doWithCT(t, h, http.MethodPatch, "/fhir/r4/Patient/p1", payload, "application/merge-patch+json")
 	if w.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", w.Code)
 	}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/ig"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/patch"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/validate"
 )
@@ -614,23 +615,89 @@ func (h *fhirHandler) update(w http.ResponseWriter, r *http.Request) {
 
 // ─── Patch ────────────────────────────────────────────────────────────────────
 
+// patch dispatches to the correct PATCH implementation based on Content-Type:
+//   - application/merge-patch+json (default/unset) → JSON Merge Patch (RFC 7396)
+//   - application/json-patch+json                  → JSON Patch (RFC 6902)
+//   - application/fhir+json (resourceType=Parameters) → FHIR Patch
 func (h *fhirHandler) patch(w http.ResponseWriter, r *http.Request) {
 	rt := chi.URLParam(r, "resourceType")
 	id := chi.URLParam(r, "id")
 
-	body, err := readBody(r)
-	if err != nil {
-		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
+	ct := strings.TrimSpace(strings.SplitN(r.Header.Get("Content-Type"), ";", 2)[0])
+
+	switch ct {
+	case "application/json-patch+json":
+		h.jsonPatch(w, r, rt, id)
+	case "application/fhir+json":
+		h.fhirPatch(w, r, rt, id)
+	default: // application/merge-patch+json or empty
+		body, err := readBody(r)
+		if err != nil {
+			operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
+			return
+		}
+		resource, err := h.store.Patch(r.Context(), rt, id, body)
+		if err != nil {
+			handleError(w, err)
+			return
+		}
+		w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(resource)))
+		writeJSON(w, http.StatusOK, resource)
+	}
+}
+
+func (h *fhirHandler) jsonPatch(w http.ResponseWriter, r *http.Request, rt, id string) {
+	var ops []map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&ops); err != nil {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON Patch: "+err.Error())
 		return
 	}
-
-	resource, err := h.store.Patch(r.Context(), rt, id, body)
+	resource, err := h.store.Read(r.Context(), rt, id)
 	if err != nil {
 		handleError(w, err)
 		return
 	}
-	w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(resource)))
-	writeJSON(w, http.StatusOK, resource)
+	patched, err := patch.ApplyJSONPatch(resource, ops)
+	if err != nil {
+		operationOutcome(w, http.StatusUnprocessableEntity, "error", "invalid", "JSON Patch failed: "+err.Error())
+		return
+	}
+	patched["id"] = id
+	patched["resourceType"] = rt
+	updated, err := h.store.Update(r.Context(), rt, id, patched, -1)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(updated)))
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (h *fhirHandler) fhirPatch(w http.ResponseWriter, r *http.Request, rt, id string) {
+	var params map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
+		return
+	}
+	resource, err := h.store.Read(r.Context(), rt, id)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	patched, err := patch.ApplyFHIRPatch(resource, params)
+	if err != nil {
+		operationOutcome(w, http.StatusUnprocessableEntity, "error", "invalid", "FHIR Patch failed: "+err.Error())
+		return
+	}
+	patched["id"] = id
+	patched["resourceType"] = rt
+	updated, err := h.store.Update(r.Context(), rt, id, patched, -1)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(updated)))
+	writeJSON(w, http.StatusOK, updated)
 }
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
@@ -1080,6 +1147,11 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 		"kind":                "instance",
 		"fhirVersion":         "4.0.1",
 		"format":              []string{"application/fhir+json"},
+		"patchFormat": []string{
+			"application/json-patch+json",
+			"application/merge-patch+json",
+			"application/fhir+json",
+		},
 		"implementationGuide": igURLs,
 		"software": map[string]any{
 			"name":    "open-healthcare-fhir-server-go",

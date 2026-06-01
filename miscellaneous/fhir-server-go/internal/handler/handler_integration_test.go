@@ -902,6 +902,63 @@ func TestMetadata_AdvertisesSearchParams(t *testing.T) {
 	}
 }
 
+// ─── Patch formats ────────────────────────────────────────────────────────────
+
+func TestIntegration_JSONPatch_RFC6902(t *testing.T) {
+	srv := newRealServer(t)
+	id, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+
+	ops := []map[string]any{
+		{"op": "replace", "path": "/gender", "value": "male"},
+		{"op": "add", "path": "/active", "value": true},
+	}
+	b, _ := json.Marshal(ops)
+	req, _ := http.NewRequest(http.MethodPatch, srv.URL+"/fhir/r4/Patient/"+id, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json-patch+json")
+	resp, _ := srv.Client().Do(req)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("JSON Patch: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	updated := iJSON(t, resp)
+	if updated["gender"] != "male" {
+		t.Errorf("gender: want male, got %v", updated["gender"])
+	}
+	if updated["active"] != true {
+		t.Errorf("active: want true, got %v", updated["active"])
+	}
+	meta, _ := updated["meta"].(map[string]any)
+	if v, _ := meta["versionId"].(string); v != "2" {
+		t.Errorf("versionId: want 2, got %v", v)
+	}
+}
+
+func TestIntegration_FHIRPatch(t *testing.T) {
+	srv := newRealServer(t)
+	id, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+
+	params := map[string]any{
+		"resourceType": "Parameters",
+		"parameter": []any{map[string]any{
+			"name": "operation",
+			"part": []any{
+				map[string]any{"name": "type", "valueCode": "replace"},
+				map[string]any{"name": "path", "valueString": "Patient.gender"},
+				map[string]any{"name": "value", "valueString": "other"},
+			},
+		}},
+	}
+	resp := iDo(t, srv, http.MethodPatch, "/fhir/r4/Patient/"+id, params, "Content-Type", "application/fhir+json")
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("FHIR Patch: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	updated := iJSON(t, resp)
+	if updated["gender"] != "other" {
+		t.Errorf("gender: want other, got %v", updated["gender"])
+	}
+}
+
 func TestIntegration_Metrics_Endpoint(t *testing.T) {
 	srv := newRealServer(t)
 	// Make a request to populate the histogram.
