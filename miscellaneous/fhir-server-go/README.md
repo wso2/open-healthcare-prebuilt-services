@@ -345,7 +345,7 @@ Track which IG packages have been loaded (for skip-on-restart) and which profile
 | Method | Path | Status | Description |
 |---|---|---|---|
 | `GET` | `/metadata` | 200 | CapabilityStatement |
-| `POST` | `/` (FHIR base) | 200, 400, 4xx | Process a `transaction` / `batch` Bundle |
+| `POST` | `/` (FHIR base) | 200, 400, 4xx, 500 | Process a `transaction` / `batch` Bundle |
 | `GET` | `/{type}/{id}` | 200, 404, 410 | Read resource (410 if soft-deleted) |
 | `GET` | `/{type}/{id}/_history/{vid}` | 200, 400, 404 | Read specific version |
 | `POST` | `/{type}` | 201 | Create resource |
@@ -500,7 +500,7 @@ Supported per-entry methods: `POST`, `PUT`, `PATCH` (JSON Merge Patch), `DELETE`
 
 - **Reference resolution** — within a `transaction`, `urn:uuid:` (and absolute-URL)
   references between entries are rewritten to the server-assigned `Type/id` before
-  persisting. `POST` entries are processed in FHIR verb order (DELETE → POST →
+  persisting. Entries are processed in FHIR verb order (DELETE → POST →
   PUT/PATCH → GET) so references resolve regardless of entry order.
 - **Conditional create** — `entry.request.ifNoneExist` (a search query). If it
   matches one existing resource the create is skipped and the entry resolves to it;

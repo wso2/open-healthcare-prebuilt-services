@@ -259,7 +259,7 @@ func (s *Store) patchInTx(ctx context.Context, tx pgx.Tx, resourceType, resource
 	if err := s.extractor.Index(ctx, tx, resourceType, resourceID, merged); err != nil {
 		return nil, 0, err
 	}
-	if err := saveHistory(ctx, tx, resourceType, resourceID, newVersion, "PUT", mergedRaw, now); err != nil {
+	if err := saveHistory(ctx, tx, resourceType, resourceID, newVersion, "PATCH", mergedRaw, now); err != nil {
 		return nil, 0, err
 	}
 

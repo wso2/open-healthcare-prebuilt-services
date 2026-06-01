@@ -289,8 +289,15 @@ func (s *Store) execGetInTx(ctx context.Context, tx pgx.Tx, op bundleOp) (Bundle
 		return BundleEntryResult{Status: "200 OK", Resource: res, ETag: etag(res)}, nil
 	}
 
-	// Search is served from the committed snapshot (the pool), so it does not
-	// observe not-yet-committed writes from earlier entries in this Bundle.
+	// Search is served from the committed snapshot (the pool), NOT the open
+	// transaction — so a GET search at the end of a Bundle does not observe
+	// not-yet-committed writes from earlier POST/PUT/PATCH/DELETE entries.
+	// This is a known limitation of the current Store API: search uses the
+	// pool, not a tx. Moving to a tx-aware search builder requires plumbing
+	// pgx.Tx through buildExistsForValue, count(), fetch(), and resolveIncludes
+	// — tracked as a follow-up so this PR doesn't grow into a Store refactor.
+	// GETs are still processed last (FHIR verb order) so this only affects
+	// Bundles that mix writes and reads against the same data.
 	result, err := s.Search(ctx, SearchParams{ResourceType: op.resourceType, Params: valuesToMap(op.query)})
 	if err != nil {
 		return BundleEntryResult{}, &BundleError{HTTPStatus: 500, Code: "exception", Diagnostics: err.Error()}
@@ -374,6 +381,9 @@ func (s *Store) planOps(ctx context.Context, baseURL string, entries []BundleEnt
 			if rt == "" {
 				return nil, nil, &BundleError{HTTPStatus: 400, Code: "value", EntryIndex: i, Diagnostics: "POST entry.request.url must be a resource type"}
 			}
+			if e.Resource == nil {
+				return nil, nil, &BundleError{HTTPStatus: 400, Code: "required", EntryIndex: i, Diagnostics: "POST entry.resource is required"}
+			}
 			// Conditional create (If-None-Exist): reuse an existing match if present.
 			if e.IfNoneExist != "" {
 				existingID, count, serr := s.conditionalMatch(ctx, rt, e.IfNoneExist)
@@ -411,6 +421,9 @@ func (s *Store) planOps(ctx context.Context, baseURL string, entries []BundleEnt
 			if rt == "" {
 				return nil, nil, &BundleError{HTTPStatus: 400, Code: "value", EntryIndex: i, Diagnostics: "PUT entry.request.url must include a resource type"}
 			}
+			if e.Resource == nil {
+				return nil, nil, &BundleError{HTTPStatus: 400, Code: "required", EntryIndex: i, Diagnostics: "PUT entry.resource is required"}
+			}
 			// Conditional update: url carries a query and no id.
 			if id == "" && len(query) > 0 {
 				existingID, count, serr := s.conditionalMatch(ctx, rt, query.Encode())
@@ -435,6 +448,9 @@ func (s *Store) planOps(ctx context.Context, baseURL string, entries []BundleEnt
 			}
 
 		case "PATCH", "DELETE":
+			if method == "PATCH" && e.Resource == nil {
+				return nil, nil, &BundleError{HTTPStatus: 400, Code: "required", EntryIndex: i, Diagnostics: "PATCH entry.resource is required"}
+			}
 			// Conditional delete: url carries a query and no id.
 			if id == "" && len(query) > 0 {
 				existingID, count, serr := s.conditionalMatch(ctx, rt, query.Encode())
@@ -497,13 +513,13 @@ func parseEntryURL(baseURL, raw string) (resourceType, id, versionID string, que
 	if raw == "" {
 		return "", "", "", nil, "entry.request.url is required"
 	}
-	// Strip an absolute base if present.
+	// Strip an absolute base if present. Reject absolute URLs that point at a
+	// different server — silently treating them as local paths could cause an
+	// entry to operate on the wrong resource.
 	if baseURL != "" && strings.HasPrefix(raw, baseURL) {
 		raw = strings.TrimPrefix(raw, baseURL)
-	} else if i := strings.Index(raw, "://"); i >= 0 {
-		if slash := strings.IndexByte(raw[i+3:], '/'); slash >= 0 {
-			raw = raw[i+3+slash:]
-		}
+	} else if strings.Contains(raw, "://") {
+		return "", "", "", nil, fmt.Sprintf("entry.request.url %q must be relative or under the server baseURL", raw)
 	}
 	raw = strings.TrimPrefix(raw, "/")
 
