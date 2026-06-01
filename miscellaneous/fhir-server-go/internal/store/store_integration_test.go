@@ -342,6 +342,47 @@ func TestSearch_ByID(t *testing.T) {
 	}
 }
 
+func TestSearch_Sort(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Distinct family names; create out of order to prove the sort is real.
+	for _, fam := range []string{"Charlie", "Alice", "Bob"} {
+		s.Create(ctx, "Patient", map[string]any{
+			"resourceType": "Patient",
+			"name":         []any{map[string]any{"family": fam}},
+		})
+	}
+
+	familiesInOrder := func(params map[string][]string) []string {
+		result, err := s.Search(ctx, store.SearchParams{ResourceType: "Patient", Params: params})
+		if err != nil {
+			t.Fatalf("Search: %v", err)
+		}
+		var fams []string
+		for _, e := range result.Entries {
+			names, _ := e["name"].([]any)
+			if len(names) == 0 {
+				continue
+			}
+			n, _ := names[0].(map[string]any)
+			fams = append(fams, n["family"].(string))
+		}
+		return fams
+	}
+
+	asc := familiesInOrder(map[string][]string{"family": {"a,b,c"}, "_sort": {"family"}})
+	// The family search filter matches all three (prefix a/b/c); assert order.
+	if len(asc) != 3 || asc[0] != "Alice" || asc[1] != "Bob" || asc[2] != "Charlie" {
+		t.Fatalf("ascending _sort=family: got %v, want [Alice Bob Charlie]", asc)
+	}
+
+	desc := familiesInOrder(map[string][]string{"family": {"a,b,c"}, "_sort": {"-family"}})
+	if len(desc) != 3 || desc[0] != "Charlie" || desc[1] != "Bob" || desc[2] != "Alice" {
+		t.Fatalf("descending _sort=-family: got %v, want [Charlie Bob Alice]", desc)
+	}
+}
+
 func TestSearch_Pagination(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

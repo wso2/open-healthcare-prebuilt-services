@@ -129,10 +129,18 @@ type queryBuilder struct {
 	where strings.Builder
 	args  []any
 	argN  int
+	sort  []sortKey
 	// err is set when the request can't be satisfied (e.g. a registry-known
 	// param of unsupported type like composite/special). Search() returns it
 	// as an UnsupportedParamError rather than silently widening the result set.
 	err error
+}
+
+// sortKey is one component of a _sort directive: the search param name and
+// whether the order is descending (the param was prefixed with '-').
+type sortKey struct {
+	param string
+	desc  bool
 }
 
 func (b *queryBuilder) next(v any) string {
@@ -165,7 +173,9 @@ func (b *queryBuilder) applyParam(rawKey, value string) {
 	case "_text", "_content":
 		p := b.next(value)
 		b.and(fmt.Sprintf("r.search_text @@ plainto_tsquery('english', %s)", p))
-	case "_count", "_page", "_sort", "_include", "_revinclude", "_format", "_summary":
+	case "_sort":
+		b.addSort(value)
+	case "_count", "_page", "_include", "_revinclude", "_format", "_summary", "_elements", "_total":
 		// control params — handled at the HTTP layer
 	default:
 		b.applySearchParam(paramName, modifier, value)
@@ -548,6 +558,100 @@ func (b *queryBuilder) applyLastUpdated(value string) {
 	}
 }
 
+// addSort parses a _sort value (comma-separated; a leading '-' means
+// descending) and appends each component to b.sort, preserving order.
+func (b *queryBuilder) addSort(value string) {
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		desc := false
+		if strings.HasPrefix(part, "-") {
+			desc = true
+			part = part[1:]
+		}
+		b.sort = append(b.sort, sortKey{param: part, desc: desc})
+	}
+}
+
+// orderByClause builds the SQL ORDER BY body (without the "ORDER BY" keyword)
+// from b.sort. Each search-param key becomes a correlated subquery into its
+// sp_* table — MIN(value) for ascending, MAX(value) for descending — so a
+// resource with multiple values sorts by its lowest/highest, with NULLS LAST
+// so unindexed resources sort to the end. _id and _lastUpdated sort directly
+// off the resources table. Falls back to last_updated DESC when no usable key
+// is supplied.
+func (b *queryBuilder) orderByClause() string {
+	var clauses []string
+	for _, k := range b.sort {
+		dir := "ASC"
+		if k.desc {
+			dir = "DESC"
+		}
+		switch k.param {
+		case "_id":
+			clauses = append(clauses, "r.fhir_id "+dir)
+			continue
+		case "_lastUpdated":
+			clauses = append(clauses, "r.last_updated "+dir)
+			continue
+		case "_score":
+			// relevance scoring is not implemented; skip rather than error.
+			continue
+		}
+
+		table, col := "", ""
+		if b.reg != nil {
+			if def, ok := b.reg.Lookup(b.rt, k.param); ok {
+				table = tableForType(def.ParamType)
+				col = sortColumnForTable(table)
+			}
+		}
+		if table == "" || col == "" {
+			// Unknown or unsortable param (composite/special): skip it rather
+			// than fail the whole search.
+			continue
+		}
+		agg := "MIN"
+		if k.desc {
+			agg = "MAX"
+		}
+		pP := b.next(k.param)
+		expr := fmt.Sprintf(
+			"(SELECT %s(s.%s) FROM %s s WHERE s.resource_id = r.fhir_id AND s.resource_type = r.resource_type AND s.param_name = %s)",
+			agg, col, table, pP,
+		)
+		clauses = append(clauses, expr+" "+dir+" NULLS LAST")
+	}
+	if len(clauses) == 0 {
+		return "r.last_updated DESC"
+	}
+	return strings.Join(clauses, ", ")
+}
+
+// sortColumnForTable returns the value column to sort on for a given sp_* table.
+func sortColumnForTable(table string) string {
+	switch table {
+	case "sp_string":
+		return "value_lower"
+	case "sp_token":
+		return "code"
+	case "sp_date":
+		return "value_low"
+	case "sp_number":
+		return "value"
+	case "sp_quantity":
+		return "value"
+	case "sp_uri":
+		return "value"
+	case "sp_reference":
+		return "target_id"
+	default:
+		return ""
+	}
+}
+
 // spExists returns a bare SELECT EXISTS subquery (without value filter) for
 // the :missing modifier.
 func (b *queryBuilder) spExists(table, param, _ string) string {
@@ -564,15 +668,18 @@ func (b *queryBuilder) count(ctx context.Context, pool *pgxpool.Pool) (int, erro
 }
 
 func (b *queryBuilder) fetch(ctx context.Context, pool *pgxpool.Pool, limit, offset int) ([]map[string]any, error) {
+	// Build the ORDER BY before binding LIMIT/OFFSET so the positional args line
+	// up: [where args…, order-by param args…, limit, offset].
+	orderBy := b.orderByClause()
 	limitP := b.next(limit)
 	offsetP := b.next(offset)
 	q := fmt.Sprintf(`
 		SELECT r.resource_json, r.version_id, r.last_updated
 		FROM resources r
 		WHERE %s
-		ORDER BY r.last_updated DESC
+		ORDER BY %s
 		LIMIT %s OFFSET %s`,
-		b.where.String(), limitP, offsetP,
+		b.where.String(), orderBy, limitP, offsetP,
 	)
 
 	rows, err := pool.Query(ctx, q, b.args...)
