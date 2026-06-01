@@ -14,20 +14,31 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/index"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/searchparam"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/terminology"
 )
 
 type Store struct {
-	pool      *pgxpool.Pool
-	extractor *index.Extractor
-	registry  *searchparam.Registry
+	pool        *pgxpool.Pool
+	extractor   *index.Extractor
+	registry    *searchparam.Registry
+	terminology *terminology.Client // may be nil if FHIR_TERMINOLOGY_URL is unset
 }
 
-func New(pool *pgxpool.Pool, registry *searchparam.Registry) *Store {
-	return &Store{
+func New(pool *pgxpool.Pool, registry *searchparam.Registry, opts ...func(*Store)) *Store {
+	s := &Store{
 		pool:      pool,
 		extractor: index.New(registry),
 		registry:  registry,
 	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
+}
+
+// WithTerminology configures the store to call tc for :in/:not-in expansion.
+func WithTerminology(tc *terminology.Client) func(*Store) {
+	return func(s *Store) { s.terminology = tc }
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────

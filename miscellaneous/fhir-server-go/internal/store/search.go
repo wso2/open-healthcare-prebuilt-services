@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/searchparam"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/terminology"
 )
 
 // SearchParams are the parsed query parameters from the HTTP request.
@@ -75,7 +76,7 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 		sp.Params = params
 	}
 
-	b := &queryBuilder{rt: sp.ResourceType, reg: s.registry}
+	b := &queryBuilder{rt: sp.ResourceType, reg: s.registry, terminology: s.terminology, ctx: ctx}
 	b.writeBase()
 
 	for rawKey, values := range sp.Params {
@@ -201,12 +202,14 @@ func (s *Store) resolveIncludes(ctx context.Context, entries []map[string]any, r
 // ─── Query builder ────────────────────────────────────────────────────────────
 
 type queryBuilder struct {
-	rt    string
-	reg   *searchparam.Registry
-	where strings.Builder
-	args  []any
-	argN  int
-	sort  []sortKey
+	rt          string
+	reg         *searchparam.Registry
+	terminology *terminology.Client // nil if no terminology server configured
+	ctx         context.Context     // for terminology expansion calls
+	where       strings.Builder
+	args        []any
+	argN        int
+	sort        []sortKey
 	// err is set when the request can't be satisfied (e.g. a registry-known
 	// param of unsupported type like composite/special). Search() returns it
 	// as an UnsupportedParamError rather than silently widening the result set.
@@ -319,11 +322,16 @@ func (b *queryBuilder) applySearchParam(param, modifier, value string) {
 		return
 	}
 
-	// :not negates the match: the resource must have NO value satisfying the
-	// (comma-OR'd) criteria. Build the positive condition with the modifier
-	// cleared, then negate the whole thing.
+	// :not negates the match. :not-in is also negated (handled in buildTypedExists
+	// but needs to be NOT EXISTS at the applyParam level).
 	if modifier == "not" {
 		if expr := b.combinedExists(param, "", value); expr != "" {
+			b.and("NOT " + expr)
+		}
+		return
+	}
+	if modifier == "not-in" {
+		if expr := b.combinedExists(param, "not-in", value); expr != "" {
 			b.and("NOT " + expr)
 		}
 		return
@@ -647,11 +655,13 @@ func (b *queryBuilder) buildTypedExists(def searchparam.Definition, param, modif
 	case "string":
 		return b.buildStringExists(param, modifier, value), true
 	case "token":
-		// :above/:below/:in/:not-in walk a code-system or ValueSet hierarchy and
-		// :of-type matches Identifier.type — all of which need terminology or
-		// type indexing we don't have here. Fail closed rather than mismatch.
+		// :in/:not-in expand a ValueSet via the terminology server.
+		// :above/:below/:of-type need code-system hierarchy or Identifier.type
+		// indexing — still unsupported.
 		switch modifier {
-		case "above", "below", "in", "not-in", "of-type":
+		case "in", "not-in":
+			return b.buildTokenInExists(param, modifier, value)
+		case "above", "below", "of-type":
 			b.err = &UnsupportedParamError{Msg: fmt.Sprintf("modifier :%s on token param %q is not supported by the repository (needs a terminology server)", modifier, param)}
 			return "", false
 		}
@@ -761,6 +771,51 @@ func (b *queryBuilder) buildTokenExists(param, modifier, value string) string {
 	}
 	vP := b.next(value)
 	return fmt.Sprintf("SELECT 1 FROM sp_token s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.code = %s", rtP, pP, vP)
+}
+
+// buildTokenInExists expands a ValueSet URL and builds an IN/NOT IN subquery
+// against sp_token. Requires b.terminology to be set.
+func (b *queryBuilder) buildTokenInExists(param, modifier, vsURL string) (string, bool) {
+	if b.terminology == nil {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("modifier :%s on param %q requires FHIR_TERMINOLOGY_URL to be configured", modifier, param)}
+		return "", false
+	}
+	codes, err := b.terminology.Expand(b.ctx, vsURL)
+	if err != nil {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("ValueSet $expand %s failed: %v", vsURL, err)}
+		return "", false
+	}
+	if len(codes) == 0 {
+		// Empty ValueSet — no resource can match :in; every resource matches :not-in.
+		if modifier == "not-in" {
+			return "1=1", true // always true — included below via EXISTS
+		}
+		return "1=0", true // always false
+	}
+
+	rtP := b.next(b.rt)
+	pP := b.next(param)
+
+	// Build OR of (system,code) pairs.
+	var pairOrs []string
+	for _, c := range codes {
+		if c.System != "" {
+			sP := b.next(c.System)
+			cP := b.next(c.Code)
+			pairOrs = append(pairOrs, fmt.Sprintf("(s.system = %s AND s.code = %s)", sP, cP))
+		} else {
+			cP := b.next(c.Code)
+			pairOrs = append(pairOrs, fmt.Sprintf("s.code = %s", cP))
+		}
+	}
+	codeFilter := "(" + strings.Join(pairOrs, " OR ") + ")"
+	sub := fmt.Sprintf("SELECT 1 FROM sp_token s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND %s",
+		rtP, pP, codeFilter)
+
+	if modifier == "not-in" {
+		return sub, true // caller wraps in NOT EXISTS
+	}
+	return sub, true
 }
 
 func (b *queryBuilder) buildDateExists(param, value string) string {

@@ -30,6 +30,7 @@ type Config struct {
 	IGForceReload   bool     // re-load IGs even if already recorded in ig_packages
 	IGCacheDir      string   // local .tgz cache dir (default: .fhir-ig-cache)
 	ValidateOnWrite bool     // enforce profile validation on create/update (default off)
+	TerminologyURL  string   // base URL of the FHIR terminology server for :in/:not-in (empty = disabled)
 }
 
 // FileConfig is the on-disk YAML schema. Each field is optional — anything
@@ -120,6 +121,7 @@ func resolve(fc *FileConfig) (*Config, error) {
 	}
 
 	validateOnWrite := strings.EqualFold(os.Getenv("FHIR_VALIDATE_ON_WRITE"), "true")
+	terminologyURL := os.Getenv("FHIR_TERMINOLOGY_URL")
 
 	return &Config{
 		DatabaseURL:     dbURL,
@@ -131,6 +133,7 @@ func resolve(fc *FileConfig) (*Config, error) {
 		IGForceReload:   igForceReload,
 		IGCacheDir:      igCacheDir,
 		ValidateOnWrite: validateOnWrite,
+		TerminologyURL:  terminologyURL,
 	}, nil
 }
 
