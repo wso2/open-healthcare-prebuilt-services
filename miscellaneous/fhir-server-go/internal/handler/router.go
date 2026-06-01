@@ -47,6 +47,8 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, b
 		r.Route("/{resourceType}", func(r chi.Router) {
 			r.Get("/", h.search)
 			r.Post("/", h.create)
+			r.Put("/", h.conditionalUpdate)    // PUT /{type}?<search>
+			r.Delete("/", h.conditionalDelete) // DELETE /{type}?<search>
 			r.Post("/_search", h.searchPost)
 			r.Post("/$validate", h.validate)
 			r.Get("/_history", h.typeHistory)

@@ -486,6 +486,14 @@ func (s *Store) planOps(ctx context.Context, baseURL string, entries []BundleEnt
 	return ops, refMap, nil
 }
 
+// ConditionalMatch resolves a FHIR conditional query (e.g. "identifier=sys|val")
+// against resourceType, returning the matched id when exactly one resource
+// matches, the total match count, and any error. It backs conditional create/
+// update/delete at both the Bundle and HTTP layers.
+func (s *Store) ConditionalMatch(ctx context.Context, resourceType, rawQuery string) (id string, count int, err error) {
+	return s.conditionalMatch(ctx, resourceType, rawQuery)
+}
+
 // conditionalMatch runs a search and returns the single matched id (if count==1),
 // the total match count, and any error.
 func (s *Store) conditionalMatch(ctx context.Context, resourceType, rawQuery string) (id string, count int, err error) {

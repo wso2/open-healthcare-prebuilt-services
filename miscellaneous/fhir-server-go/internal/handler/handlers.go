@@ -493,6 +493,34 @@ func (h *fhirHandler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Conditional create (If-None-Exist): create only if no existing resource
+	// matches the query. One match → return it (200, no create); many → 412.
+	if ifne := strings.TrimSpace(r.Header.Get("If-None-Exist")); ifne != "" {
+		existingID, count, err := h.store.ConditionalMatch(r.Context(), rt, ifne)
+		if err != nil {
+			slog.Error("conditional create match failed", "resourceType", rt, "err", err)
+			operationOutcome(w, http.StatusInternalServerError, "error", "exception", "conditional match failed")
+			return
+		}
+		switch {
+		case count > 1:
+			operationOutcome(w, http.StatusPreconditionFailed, "error", "conflict",
+				fmt.Sprintf("If-None-Exist matched %d resources", count))
+			return
+		case count == 1:
+			existing, err := h.store.Read(r.Context(), rt, existingID)
+			if err != nil {
+				handleError(w, err)
+				return
+			}
+			w.Header().Set("Location", fmt.Sprintf("%s/%s/%s", h.baseURL, rt, existingID))
+			w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(existing)))
+			writeJSON(w, http.StatusOK, existing)
+			return
+		}
+		// count == 0 → fall through to a normal create.
+	}
+
 	resource, err := h.store.Create(r.Context(), rt, body)
 	if err != nil {
 		slog.Error("create failed", "resourceType", rt, "err", err)
@@ -603,6 +631,115 @@ func (h *fhirHandler) delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.Delete(r.Context(), rt, id); err != nil {
+		handleError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ─── Conditional update / delete (collection level) ────────────────────────────
+
+// conditionalUpdate handles PUT /{resourceType}?<search> — update the single
+// matching resource, create when none match, and 412 when more than one match.
+func (h *fhirHandler) conditionalUpdate(w http.ResponseWriter, r *http.Request) {
+	rt := chi.URLParam(r, "resourceType")
+	query := strings.TrimSpace(r.URL.RawQuery)
+	if query == "" {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "conditional update requires search criteria")
+		return
+	}
+	if !requireFHIRContent(w, r) {
+		return
+	}
+	body, err := readBody(r)
+	if err != nil {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
+		return
+	}
+	if bodyRT, ok := body["resourceType"].(string); ok && bodyRT != "" && bodyRT != rt {
+		operationOutcome(w, http.StatusUnprocessableEntity, "error", "invalid",
+			fmt.Sprintf("body resourceType %q does not match URL resource type %q", bodyRT, rt))
+		return
+	}
+	if msg := validateRequiredFields(rt, body); msg != "" {
+		operationOutcome(w, http.StatusUnprocessableEntity, "error", "required", msg)
+		return
+	}
+
+	existingID, count, err := h.store.ConditionalMatch(r.Context(), rt, query)
+	if err != nil {
+		slog.Error("conditional update match failed", "resourceType", rt, "err", err)
+		operationOutcome(w, http.StatusInternalServerError, "error", "exception", "conditional match failed")
+		return
+	}
+	if count > 1 {
+		operationOutcome(w, http.StatusPreconditionFailed, "error", "conflict",
+			fmt.Sprintf("conditional update matched %d resources", count))
+		return
+	}
+
+	if count == 1 {
+		resource, err := h.store.Update(r.Context(), rt, existingID, body, -1)
+		if err != nil {
+			handleError(w, err)
+			return
+		}
+		if rt == "SearchParameter" {
+			_ = h.store.SyncSearchParameter(r.Context(), resource)
+		}
+		w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(resource)))
+		writeJSON(w, http.StatusOK, resource)
+		return
+	}
+
+	// No match → create a new resource.
+	resource, err := h.store.Create(r.Context(), rt, body)
+	if err != nil {
+		slog.Error("conditional update create failed", "resourceType", rt, "err", err)
+		operationOutcome(w, http.StatusInternalServerError, "error", "exception", err.Error())
+		return
+	}
+	if rt == "SearchParameter" {
+		_ = h.store.SyncSearchParameter(r.Context(), resource)
+	}
+	id, _ := resource["id"].(string)
+	w.Header().Set("Location", fmt.Sprintf("%s/%s/%s/_history/1", h.baseURL, rt, id))
+	w.Header().Set("ETag", `W/"1"`)
+	writeJSON(w, http.StatusCreated, resource)
+}
+
+// conditionalDelete handles DELETE /{resourceType}?<search> — delete the single
+// matching resource. Refuses without criteria (no mass delete) and 412s on more
+// than one match (multiple conditional delete is not supported).
+func (h *fhirHandler) conditionalDelete(w http.ResponseWriter, r *http.Request) {
+	rt := chi.URLParam(r, "resourceType")
+	query := strings.TrimSpace(r.URL.RawQuery)
+	if query == "" {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid",
+			"conditional delete requires search criteria")
+		return
+	}
+
+	existingID, count, err := h.store.ConditionalMatch(r.Context(), rt, query)
+	if err != nil {
+		slog.Error("conditional delete match failed", "resourceType", rt, "err", err)
+		operationOutcome(w, http.StatusInternalServerError, "error", "exception", "conditional match failed")
+		return
+	}
+	if count > 1 {
+		operationOutcome(w, http.StatusPreconditionFailed, "error", "conflict",
+			fmt.Sprintf("conditional delete matched %d resources; multiple delete is not supported", count))
+		return
+	}
+	if count == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if rt == "SearchParameter" {
+		_ = h.store.DeleteSearchParameter(r.Context(), existingID)
+	}
+	if err := h.store.Delete(r.Context(), rt, existingID); err != nil {
 		handleError(w, err)
 		return
 	}
@@ -811,7 +948,9 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 			"versioning":        "versioned",
 			"readHistory":       true,
 			"updateCreate":      false,
-			"conditionalCreate": false,
+			"conditionalCreate": true,
+			"conditionalUpdate": true,
+			"conditionalDelete": "single",
 		}
 		if profs, ok := profiles[rt]; ok && len(profs) > 0 {
 			entry["supportedProfile"] = profs
