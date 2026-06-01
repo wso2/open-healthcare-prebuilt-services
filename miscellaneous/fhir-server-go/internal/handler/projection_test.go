@@ -62,13 +62,29 @@ func TestApplyProjection_SummaryData(t *testing.T) {
 	}
 }
 
-func TestApplyProjection_SummaryTrue_DropsTextAndContained(t *testing.T) {
-	out := applyProjection(sampleResource(), "true", nil)
-	if _, ok := out["text"]; ok {
-		t.Error("_summary=true must drop text")
+func TestApplyProjection_SummaryTrue_UsesR4SummaryElements(t *testing.T) {
+	// Patient with both summary (name, gender) and non-summary (birthDate) fields.
+	res := map[string]any{
+		"resourceType": "Patient",
+		"id":           "p1",
+		"meta":         map[string]any{"versionId": "1"},
+		"name":         []any{map[string]any{"family": "Smith"}},
+		"gender":       "female",
+		"maritalStatus": map[string]any{"text": "Single"}, // NOT in Patient summary
+		"text":         map[string]any{"status": "generated", "div": "<div/>"},
 	}
-	if _, ok := out["contained"]; ok {
-		t.Error("_summary=true must drop contained")
+	out := applyProjection(res, "true", nil)
+	// maritalStatus is not a Patient summary element — must be excluded.
+	if _, ok := out["maritalStatus"]; ok {
+		t.Error("_summary=true should exclude non-summary maritalStatus")
+	}
+	// name IS a Patient summary element — must be present.
+	if _, ok := out["name"]; !ok {
+		t.Error("_summary=true should include summary element name")
+	}
+	// text is NOT in summary elements for Patient — excluded.
+	if _, ok := out["text"]; ok {
+		t.Error("_summary=true should exclude text (not in summary elements)")
 	}
 	if !hasSubsettedTag(out) {
 		t.Error("_summary=true must carry SUBSETTED tag")

@@ -409,6 +409,29 @@ func applyProjection(resource map[string]any, summary string, elements []string)
 		delete(out, "text")
 		return tagSubsetted(out)
 	case summary == "true":
+		rt, _ := resource["resourceType"].(string)
+		if paths, ok := r4SummaryElements[rt]; ok && len(paths) > 0 {
+			// Extract unique top-level field names from the summary paths.
+			// Nested summary (e.g. "link.other") implies keeping the parent
+			// element "link" — the caller receives the full parent object.
+			topLevel := make(map[string]bool, len(paths))
+			for _, p := range paths {
+				key := p
+				if i := strings.IndexByte(p, '.'); i >= 0 {
+					key = p[:i]
+				}
+				if i := strings.IndexByte(key, '['); i >= 0 {
+					key = key[:i] // strip [x] polymorphic suffix
+				}
+				topLevel[key] = true
+			}
+			summaryKeys := make([]string, 0, len(topLevel))
+			for k := range topLevel {
+				summaryKeys = append(summaryKeys, k)
+			}
+			return applyProjection(resource, "", summaryKeys)
+		}
+		// Fallback for unknown types: drop narrative and contained only.
 		out := shallowCopy(resource)
 		delete(out, "text")
 		delete(out, "contained")
