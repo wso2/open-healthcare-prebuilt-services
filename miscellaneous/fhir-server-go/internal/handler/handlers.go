@@ -1049,6 +1049,9 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 			if len(includes) > 0 {
 				entry["searchInclude"] = includes
 			}
+			if revIncludes := h.registry.RevInclude(rt); len(revIncludes) > 0 {
+				entry["searchRevInclude"] = revIncludes
+			}
 		}
 		entry["searchParam"] = sps
 		resources = append(resources, entry)

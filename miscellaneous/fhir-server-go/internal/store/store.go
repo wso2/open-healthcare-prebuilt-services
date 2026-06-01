@@ -616,16 +616,28 @@ func (s *Store) SyncSearchParameter(ctx context.Context, body map[string]any) er
 		return err
 	}
 
+	// Collect target types if this is a reference param.
+	var targets []string
+	if targetArr, ok := body["target"].([]any); ok {
+		for _, t := range targetArr {
+			if s, ok := t.(string); ok && s != "" {
+				targets = append(targets, s)
+			}
+		}
+	}
+	targetTypes := strings.Join(targets, "|")
+
 	var defs []searchparam.Definition
 	for rt := range newBases {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO search_param_definitions (resource_type, param_name, param_type, fhirpath_expr, is_custom)
-			VALUES ($1, $2, $3, $4, TRUE)
+			INSERT INTO search_param_definitions (resource_type, param_name, param_type, fhirpath_expr, is_custom, target_types)
+			VALUES ($1, $2, $3, $4, TRUE, $5)
 			ON CONFLICT (resource_type, param_name)
 			DO UPDATE SET param_type = EXCLUDED.param_type,
-			              fhirpath_expr = EXCLUDED.fhirpath_expr
+			              fhirpath_expr = EXCLUDED.fhirpath_expr,
+			              target_types = EXCLUDED.target_types
 			WHERE search_param_definitions.is_custom = TRUE`,
-			rt, code, paramType, expression,
+			rt, code, paramType, expression, targetTypes,
 		); err != nil {
 			return fmt.Errorf("upsert search param %s.%s: %w", rt, code, err)
 		}
@@ -635,6 +647,7 @@ func (s *Store) SyncSearchParameter(ctx context.Context, body map[string]any) er
 			ParamType:    paramType,
 			FHIRPath:     expression,
 			IsCustom:     true,
+			Targets:      targets,
 		})
 	}
 

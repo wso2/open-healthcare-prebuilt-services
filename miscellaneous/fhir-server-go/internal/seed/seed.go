@@ -85,12 +85,17 @@ func seedFromReader(ctx context.Context, pool *pgxpool.Pool, r io.Reader) error 
 			continue
 		}
 
+		targetTypes := ""
+		if colIdx.targetTypes >= 0 && colIdx.targetTypes < len(row) {
+			targetTypes = strings.TrimSpace(row[colIdx.targetTypes])
+		}
+
 		_, err = tx.Exec(ctx, `
 			INSERT INTO search_param_definitions
-				(resource_type, param_name, param_type, fhirpath_expr, is_custom)
-			VALUES ($1, $2, $3, $4, FALSE)
+				(resource_type, param_name, param_type, fhirpath_expr, is_custom, target_types)
+			VALUES ($1, $2, $3, $4, FALSE, $5)
 			ON CONFLICT (resource_type, param_name) DO NOTHING`,
-			resourceType, paramName, paramType, expression,
+			resourceType, paramName, paramType, expression, targetTypes,
 		)
 		if err != nil {
 			return fmt.Errorf("insert %s.%s: %w", resourceType, paramName, err)
@@ -111,6 +116,7 @@ type colIndex struct {
 	resourceType int
 	paramType    int
 	expression   int
+	targetTypes  int // optional 5th column; -1 = absent
 }
 
 func (c colIndex) maxIdx() int {
@@ -128,7 +134,7 @@ func (c colIndex) maxIdx() int {
 // the Ballerina CSV format (Search_Parm, Resource, Search_Pram_Type, Expression)
 // and a canonical format (param_name, resource_type, param_type, fhirpath_expr).
 func csvColumnIndex(header []string) colIndex {
-	idx := colIndex{paramName: 0, resourceType: 1, paramType: 2, expression: 3}
+	idx := colIndex{paramName: 0, resourceType: 1, paramType: 2, expression: 3, targetTypes: -1}
 	for i, h := range header {
 		switch strings.ToLower(strings.TrimSpace(h)) {
 		case "search_parm", "param_name", "name":
@@ -139,6 +145,8 @@ func csvColumnIndex(header []string) colIndex {
 			idx.paramType = i
 		case "expression", "fhirpath_expr", "fhirpath":
 			idx.expression = i
+		case "target_types", "targets":
+			idx.targetTypes = i
 		}
 	}
 	return idx

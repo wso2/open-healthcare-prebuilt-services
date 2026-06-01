@@ -146,12 +146,13 @@ func LoadPackage(
 			if baseRes == "" {
 				continue
 			}
+			targetTypes := strings.Join(sp.Target, "|")
 			tag, err := tx.Exec(ctx, `
 				INSERT INTO search_param_definitions
-					(resource_type, param_name, param_type, fhirpath_expr, is_custom, ig_source)
-				VALUES ($1, $2, $3, $4, FALSE, $5)
+					(resource_type, param_name, param_type, fhirpath_expr, is_custom, ig_source, target_types)
+				VALUES ($1, $2, $3, $4, FALSE, $5, $6)
 				ON CONFLICT (resource_type, param_name) DO NOTHING`,
-				baseRes, sp.Code, sp.Type, sp.Expression, source,
+				baseRes, sp.Code, sp.Type, sp.Expression, source, targetTypes,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("insert search_param_definitions (%s/%s): %w", baseRes, sp.Code, err)
@@ -166,6 +167,7 @@ func LoadPackage(
 						FHIRPath:     sp.Expression,
 						IsCustom:     false,
 						IGSource:     source,
+						Targets:      sp.Target,
 					})
 				}
 			}
@@ -360,6 +362,7 @@ type fhirSearchParam struct {
 	Type       string   `json:"type"`
 	Base       []string `json:"base"`
 	Expression string   `json:"expression"`
+	Target     []string `json:"target"`
 }
 
 type fhirProfile struct {
@@ -435,6 +438,13 @@ func parsePackage(data []byte) (*fhirPackage, error) {
 				for _, b := range baseArr {
 					if s, ok := b.(string); ok {
 						sp.Base = append(sp.Base, s)
+					}
+				}
+			}
+			if targetArr, ok := m["target"].([]any); ok {
+				for _, t := range targetArr {
+					if s, ok := t.(string); ok && s != "" {
+						sp.Target = append(sp.Target, s)
 					}
 				}
 			}

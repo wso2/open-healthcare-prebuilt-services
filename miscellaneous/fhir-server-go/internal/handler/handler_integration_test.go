@@ -569,6 +569,49 @@ func TestIntegration_Validate_415_WrongContentType(t *testing.T) {
 	}
 }
 
+// ─── searchRevInclude in CapabilityStatement ──────────────────────────────────
+
+func TestIntegration_CapabilityStatement_SearchRevInclude(t *testing.T) {
+	srv := newRealServer(t)
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/metadata", nil)
+	cs := iJSON(t, resp)
+	if cs["resourceType"] != "CapabilityStatement" {
+		t.Fatalf("expected CapabilityStatement, got %v", cs["resourceType"])
+	}
+	rest, _ := cs["rest"].([]any)
+	if len(rest) == 0 {
+		t.Fatal("rest is empty")
+	}
+	r0, _ := rest[0].(map[string]any)
+	resources, _ := r0["resource"].([]any)
+	var patient map[string]any
+	for _, r := range resources {
+		rm, _ := r.(map[string]any)
+		if rm["type"] == "Patient" {
+			patient = rm
+			break
+		}
+	}
+	if patient == nil {
+		t.Fatal("Patient not found in CapabilityStatement")
+	}
+	revIncludes, _ := patient["searchRevInclude"].([]any)
+	if len(revIncludes) == 0 {
+		t.Fatal("Patient.searchRevInclude should be non-empty (Encounter:patient etc.)")
+	}
+	// Encounter:patient must be one of them
+	found := false
+	for _, ri := range revIncludes {
+		if ri == "Encounter:patient" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Encounter:patient not in Patient.searchRevInclude; got %v", revIncludes[:min(len(revIncludes), 5)])
+	}
+}
+
 // ─── Type-level history ───────────────────────────────────────────────────────
 
 func TestIntegration_TypeHistory_Basic(t *testing.T) {

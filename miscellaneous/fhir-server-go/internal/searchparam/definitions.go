@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,30 +16,48 @@ import (
 type Definition struct {
 	ResourceType string
 	ParamName    string
-	ParamType    string // string|token|date|number|quantity|uri|reference|composite|special
+	ParamType    string   // string|token|date|number|quantity|uri|reference|composite|special
 	FHIRPath     string
 	IsCustom     bool
-	IGSource     string // '' = base FHIR R4, 'user' = user-defined, 'name@ver' = IG package
+	IGSource     string   // '' = base FHIR R4, 'user' = user-defined, 'name@ver' = IG package
+	Targets      []string // reference params only: allowed target resource types (from SearchParameter.target)
 }
 
 type Registry struct {
-	mu    sync.RWMutex
-	byRes map[string][]Definition // resource_type → []Definition
-	byKey map[string]Definition   // "ResourceType.paramName" → Definition
+	mu      sync.RWMutex
+	byRes   map[string][]Definition   // resource_type → []Definition
+	byKey   map[string]Definition     // "ResourceType.paramName" → Definition
+	revIncl map[string][]string       // targetType → []"SourceType:paramName" for _revinclude
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
-		byRes: make(map[string][]Definition),
-		byKey: make(map[string]Definition),
+		byRes:   make(map[string][]Definition),
+		byKey:   make(map[string]Definition),
+		revIncl: make(map[string][]string),
 	}
+}
+
+// RevInclude returns the searchRevInclude entries for a given target resource
+// type (e.g. "Patient" → ["Encounter:patient", "Observation:subject", ...]).
+func (r *Registry) RevInclude(targetType string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := r.revIncl[targetType]
+	if len(out) == 0 {
+		return nil
+	}
+	cp := make([]string, len(out))
+	copy(cp, out)
+	return cp
 }
 
 // Load reads all definitions from the DB and replaces the current cache.
 func (r *Registry) Load(ctx context.Context, pool *pgxpool.Pool) error {
 	slog.Info("loading search param definitions from database")
 	rows, err := pool.Query(ctx, `
-		SELECT resource_type, param_name, param_type, fhirpath_expr, is_custom, ig_source
+		SELECT resource_type, param_name, param_type, fhirpath_expr, is_custom, ig_source,
+		       COALESCE(target_types, '')
 		FROM search_param_definitions
 		ORDER BY resource_type, param_name
 	`)
@@ -53,8 +72,12 @@ func (r *Registry) Load(ctx context.Context, pool *pgxpool.Pool) error {
 
 	for rows.Next() {
 		var d Definition
-		if err := rows.Scan(&d.ResourceType, &d.ParamName, &d.ParamType, &d.FHIRPath, &d.IsCustom, &d.IGSource); err != nil {
+		var targetTypes string
+		if err := rows.Scan(&d.ResourceType, &d.ParamName, &d.ParamType, &d.FHIRPath, &d.IsCustom, &d.IGSource, &targetTypes); err != nil {
 			return fmt.Errorf("scan definition row: %w", err)
+		}
+		if targetTypes != "" {
+			d.Targets = strings.Split(targetTypes, "|")
 		}
 		byRes[d.ResourceType] = append(byRes[d.ResourceType], d)
 		byKey[d.ResourceType+"."+d.ParamName] = d
@@ -64,9 +87,24 @@ func (r *Registry) Load(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("iterate definitions: %w", err)
 	}
 
+	// Build reverse-include index: targetType → []"SourceType:paramName"
+	revIncl := make(map[string][]string)
+	for _, defs := range byRes {
+		for _, d := range defs {
+			if d.ParamType != "reference" {
+				continue
+			}
+			entry := d.ResourceType + ":" + d.ParamName
+			for _, tgt := range d.Targets {
+				revIncl[tgt] = append(revIncl[tgt], entry)
+			}
+		}
+	}
+
 	r.mu.Lock()
 	r.byRes = byRes
 	r.byKey = byKey
+	r.revIncl = revIncl
 	r.mu.Unlock()
 
 	slog.Info("loaded search param definitions", "count", count)
@@ -123,14 +161,43 @@ func (r *Registry) Upsert(d Definition) {
 	existing := r.byRes[d.ResourceType]
 	for i, e := range existing {
 		if e.ParamName == d.ParamName {
+			r.removeRevIncl(e)
 			existing[i] = d
 			r.byRes[d.ResourceType] = existing
 			r.byKey[key] = d
+			r.addRevIncl(d)
 			return
 		}
 	}
 	r.byRes[d.ResourceType] = append(existing, d)
 	r.byKey[key] = d
+	r.addRevIncl(d)
+}
+
+func (r *Registry) addRevIncl(d Definition) {
+	if d.ParamType != "reference" {
+		return
+	}
+	entry := d.ResourceType + ":" + d.ParamName
+	for _, tgt := range d.Targets {
+		r.revIncl[tgt] = append(r.revIncl[tgt], entry)
+	}
+}
+
+func (r *Registry) removeRevIncl(d Definition) {
+	if d.ParamType != "reference" {
+		return
+	}
+	entry := d.ResourceType + ":" + d.ParamName
+	for _, tgt := range d.Targets {
+		sl := r.revIncl[tgt]
+		for i, v := range sl {
+			if v == entry {
+				r.revIncl[tgt] = append(sl[:i], sl[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
 // Remove drops a custom definition by code (for SearchParameter deletes).
