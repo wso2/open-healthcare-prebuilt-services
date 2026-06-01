@@ -789,8 +789,16 @@ func (h *fhirHandler) history(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// systemHistory serves GET /fhir/r4/_history — cross-type history.
+func (h *fhirHandler) systemHistory(w http.ResponseWriter, r *http.Request) {
+	h.serveHistory(w, r, "")
+}
+
 func (h *fhirHandler) typeHistory(w http.ResponseWriter, r *http.Request) {
-	rt := chi.URLParam(r, "resourceType")
+	h.serveHistory(w, r, chi.URLParam(r, "resourceType"))
+}
+
+func (h *fhirHandler) serveHistory(w http.ResponseWriter, r *http.Request, rt string) {
 	q := r.URL.Query()
 
 	page, _ := strconv.Atoi(q.Get("_page"))
@@ -804,7 +812,7 @@ func (h *fhirHandler) typeHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.store.GetTypeHistory(r.Context(), store.HistoryParams{
-		ResourceType: rt,
+		ResourceType: rt, // empty string → system-level (cross-type) history
 		Since:        since,
 		Page:         page,
 		PageSize:     pageSize,
@@ -823,11 +831,15 @@ func (h *fhirHandler) typeHistory(w http.ResponseWriter, r *http.Request) {
 
 	bundleEntries := make([]any, 0, len(result.Entries))
 	for _, e := range result.Entries {
+		entryRT := rt
+		if entryRT == "" {
+			entryRT, _ = e.Resource["resourceType"].(string)
+		}
 		rid, _ := e.Resource["id"].(string)
 		bundleEntries = append(bundleEntries, map[string]any{
-			"fullUrl":  fmt.Sprintf("%s/%s/%s/_history/%d", h.baseURL, rt, rid, e.VersionID),
+			"fullUrl":  fmt.Sprintf("%s/%s/%s/_history/%d", h.baseURL, entryRT, rid, e.VersionID),
 			"resource": e.Resource,
-			"request":  map[string]any{"method": e.Operation, "url": fmt.Sprintf("%s/%s/%s", h.baseURL, rt, rid)},
+			"request":  map[string]any{"method": e.Operation, "url": fmt.Sprintf("%s/%s/%s", h.baseURL, entryRT, rid)},
 		})
 	}
 
@@ -839,7 +851,12 @@ func (h *fhirHandler) typeHistory(w http.ResponseWriter, r *http.Request) {
 		lastPage = 1
 	}
 
-	base := fmt.Sprintf("%s/%s/_history", h.baseURL, rt)
+	var base string
+	if rt == "" {
+		base = h.baseURL + "/_history"
+	} else {
+		base = fmt.Sprintf("%s/%s/_history", h.baseURL, rt)
+	}
 	params := map[string][]string(q)
 	links := []any{
 		map[string]any{"relation": "self", "url": base + "?" + pageQuery(params, page, pageSize)},
@@ -1074,6 +1091,7 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 			"interaction": []any{
 				map[string]any{"code": "transaction"},
 				map[string]any{"code": "batch"},
+				map[string]any{"code": "history-system"},
 			},
 			"operation": []any{
 				map[string]any{"name": "everything", "definition": "http://hl7.org/fhir/OperationDefinition/Patient-everything"},

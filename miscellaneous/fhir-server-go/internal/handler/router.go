@@ -44,6 +44,9 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, b
 		// Capability statement
 		r.Get("/metadata", h.metadata)
 
+		// System-level history
+		r.Get("/_history", h.systemHistory)
+
 		// System-level transaction / batch Bundle (trailing-slash form)
 		r.Post("/", h.bundle)
 

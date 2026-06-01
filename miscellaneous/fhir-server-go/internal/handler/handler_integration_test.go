@@ -662,6 +662,25 @@ func TestIntegration_CapabilityStatement_SearchRevInclude(t *testing.T) {
 
 // ─── Type-level history ───────────────────────────────────────────────────────
 
+func TestIntegration_SystemHistory(t *testing.T) {
+	srv := newRealServer(t)
+	iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})
+	iCreate(t, srv, "Organization", map[string]any{"resourceType": "Organization", "name": "Acme"})
+
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/_history", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("system history: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	b := iJSON(t, resp)
+	if b["type"] != "history" {
+		t.Errorf("bundle.type: want history, got %v", b["type"])
+	}
+	if total, _ := b["total"].(float64); total < 2 {
+		t.Errorf("system history should include both Patient and Organization, got total=%v", total)
+	}
+}
+
 func TestIntegration_TypeHistory_Basic(t *testing.T) {
 	srv := newRealServer(t)
 

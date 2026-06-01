@@ -393,6 +393,8 @@ type HistoryResult struct {
 	Entries []HistoryEntry
 }
 
+// GetTypeHistory returns paged history for a single resource type. When
+// p.ResourceType is empty it returns cross-type (system-level) history.
 func (s *Store) GetTypeHistory(ctx context.Context, p HistoryParams) (HistoryResult, error) {
 	if p.PageSize <= 0 {
 		p.PageSize = 20
@@ -409,13 +411,26 @@ func (s *Store) GetTypeHistory(ctx context.Context, p HistoryParams) (HistoryRes
 		args   []any
 	)
 
-	if p.Since.IsZero() {
+	system := p.ResourceType == ""
+	switch {
+	case system && p.Since.IsZero():
+		countQ = `SELECT COUNT(*) FROM resource_history`
+		fetchQ = `SELECT version_id, operation, resource_json, recorded_at
+		           FROM resource_history ORDER BY recorded_at DESC LIMIT $1 OFFSET $2`
+		args = []any{}
+	case system && !p.Since.IsZero():
+		countQ = `SELECT COUNT(*) FROM resource_history WHERE recorded_at > $1`
+		fetchQ = `SELECT version_id, operation, resource_json, recorded_at
+		           FROM resource_history WHERE recorded_at > $1
+		           ORDER BY recorded_at DESC LIMIT $2 OFFSET $3`
+		args = []any{p.Since}
+	case !system && p.Since.IsZero():
 		countQ = `SELECT COUNT(*) FROM resource_history WHERE resource_type = $1`
 		fetchQ = `SELECT version_id, operation, resource_json, recorded_at
 		           FROM resource_history WHERE resource_type = $1
 		           ORDER BY recorded_at DESC LIMIT $2 OFFSET $3`
 		args = []any{p.ResourceType}
-	} else {
+	default:
 		countQ = `SELECT COUNT(*) FROM resource_history WHERE resource_type = $1 AND recorded_at > $2`
 		fetchQ = `SELECT version_id, operation, resource_json, recorded_at
 		           FROM resource_history WHERE resource_type = $1 AND recorded_at > $2
@@ -427,7 +442,10 @@ func (s *Store) GetTypeHistory(ctx context.Context, p HistoryParams) (HistoryRes
 		return HistoryResult{}, err
 	}
 
-	fetchArgs := append(args, p.PageSize, offset)
+	// append makes a copy so countQ args are not mutated.
+	fetchArgs := make([]any, len(args), len(args)+2)
+	copy(fetchArgs, args)
+	fetchArgs = append(fetchArgs, p.PageSize, offset)
 	rows, err := s.pool.Query(ctx, fetchQ, fetchArgs...)
 	if err != nil {
 		return HistoryResult{}, err
