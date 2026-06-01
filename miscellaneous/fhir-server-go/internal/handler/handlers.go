@@ -1075,7 +1075,11 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 				map[string]any{"code": "transaction"},
 				map[string]any{"code": "batch"},
 			},
-			"operation": []any{map[string]any{"name": "everything", "definition": "http://hl7.org/fhir/OperationDefinition/Patient-everything"}},
+			"operation": []any{
+				map[string]any{"name": "everything", "definition": "http://hl7.org/fhir/OperationDefinition/Patient-everything"},
+				map[string]any{"name": "everything", "definition": "http://hl7.org/fhir/OperationDefinition/Encounter-everything"},
+				map[string]any{"name": "everything", "definition": "http://hl7.org/fhir/OperationDefinition/Group-everything"},
+			},
 		}},
 	}
 	writeJSON(w, http.StatusOK, cs)

@@ -569,6 +569,54 @@ func TestIntegration_Validate_415_WrongContentType(t *testing.T) {
 	}
 }
 
+// ─── $everything for Encounter and Group ─────────────────────────────────────
+
+func TestIntegration_Everything_Encounter(t *testing.T) {
+	srv := newRealServer(t)
+
+	// Create a Patient and an Encounter referencing it.
+	patID, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})
+	encID, _ := iCreate(t, srv, "Encounter", map[string]any{
+		"resourceType": "Encounter", "status": "finished",
+		"class":   map[string]any{"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "AMB"},
+		"subject": map[string]any{"reference": "Patient/" + patID},
+	})
+
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/Encounter/"+encID+"/$everything", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("Encounter/$everything: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	bundle := iJSON(t, resp)
+	if bundle["type"] != "searchset" {
+		t.Errorf("bundle.type: want searchset, got %v", bundle["type"])
+	}
+	total, _ := bundle["total"].(float64)
+	if total < 2 {
+		t.Errorf("Encounter/$everything should include the Encounter + Patient, got total=%v", total)
+	}
+}
+
+func TestIntegration_Everything_Group(t *testing.T) {
+	srv := newRealServer(t)
+
+	// Create a Group. $everything with no related resources should still return the Group itself.
+	grpID, _ := iCreate(t, srv, "Group", map[string]any{
+		"resourceType": "Group", "type": "person", "actual": true,
+	})
+
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/Group/"+grpID+"/$everything", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("Group/$everything: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	bundle := iJSON(t, resp)
+	total, _ := bundle["total"].(float64)
+	if total < 1 {
+		t.Errorf("Group/$everything should return at least the Group itself, got total=%v", total)
+	}
+}
+
 // ─── searchRevInclude in CapabilityStatement ──────────────────────────────────
 
 func TestIntegration_CapabilityStatement_SearchRevInclude(t *testing.T) {
