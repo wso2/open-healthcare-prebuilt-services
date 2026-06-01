@@ -133,8 +133,87 @@ func ApplyFHIRPatch(doc map[string]any, params map[string]any) (map[string]any, 
 			if err := jsonPatchRemove(result, ptr); err != nil {
 				return nil, fmt.Errorf("FHIR Patch delete %s: %w", path, err)
 			}
-		case "move", "insert", "reorder":
-			return nil, fmt.Errorf("FHIR Patch operation type %q is not yet supported", opType)
+		case "move":
+			// move: remove value at source path (parts["source"]) and insert at ptr.
+			// source may be a FHIRPath string or an integer array index.
+			var srcPtr string
+			switch sv := parts["source"].(type) {
+			case string:
+				if sv == "" {
+					return nil, fmt.Errorf("FHIR Patch move: missing source part")
+				}
+				srcPtr = fhirPathToPointer(sv)
+			case float64:
+				srcPtr = fmt.Sprintf("%s/%d", ptr, int(sv))
+			default:
+				return nil, fmt.Errorf("FHIR Patch move: source must be a path string or integer index")
+			}
+			val, err := jsonPatchGet(result, srcPtr)
+			if err != nil {
+				return nil, fmt.Errorf("FHIR Patch move source %s: %w", srcPtr, err)
+			}
+			if err := jsonPatchRemove(result, srcPtr); err != nil {
+				return nil, fmt.Errorf("FHIR Patch move remove %s: %w", srcPtr, err)
+			}
+			// Destination: if parts["index"] is an integer, use ptr/index;
+			// otherwise treat ptr as the full destination path.
+			dstPtr := ptr
+			if dstIdxRaw, ok := parts["index"]; ok {
+				switch v := dstIdxRaw.(type) {
+				case float64:
+					dstPtr = fmt.Sprintf("%s/%d", ptr, int(v))
+				}
+			}
+			if err := jsonPatchAdd(result, dstPtr, val); err != nil {
+				return nil, fmt.Errorf("FHIR Patch move insert %s: %w", dstPtr, err)
+			}
+		case "insert":
+			// insert: add value at a specific array index. parts["index"] is the
+			// position (integer), parts["value"] is the value to insert.
+			val := fhirParamValue(parts)
+			idxRaw, _ := parts["index"]
+			var idx int
+			switch v := idxRaw.(type) {
+			case float64:
+				idx = int(v)
+			case string:
+				fmt.Sscanf(v, "%d", &idx)
+			}
+			// Build a JSON-Pointer path with the index appended.
+			indexedPtr := fmt.Sprintf("%s/%d", ptr, idx)
+			if err := jsonPatchAdd(result, indexedPtr, val); err != nil {
+				return nil, fmt.Errorf("FHIR Patch insert %s[%d]: %w", ptr, idx, err)
+			}
+		case "reorder":
+			// reorder: parts["index"] is the new position for the element currently
+			// at parts["source"] index. Move from source to destination index.
+			srcIdxRaw, _ := parts["source"]
+			dstIdxRaw, _ := parts["index"]
+			var srcIdx, dstIdx int
+			switch v := srcIdxRaw.(type) {
+			case float64:
+				srcIdx = int(v)
+			case string:
+				fmt.Sscanf(v, "%d", &srcIdx)
+			}
+			switch v := dstIdxRaw.(type) {
+			case float64:
+				dstIdx = int(v)
+			case string:
+				fmt.Sscanf(v, "%d", &dstIdx)
+			}
+			srcPtr := fmt.Sprintf("%s/%d", ptr, srcIdx)
+			val, err := jsonPatchGet(result, srcPtr)
+			if err != nil {
+				return nil, fmt.Errorf("FHIR Patch reorder source %s[%d]: %w", path, srcIdx, err)
+			}
+			if err := jsonPatchRemove(result, srcPtr); err != nil {
+				return nil, fmt.Errorf("FHIR Patch reorder remove: %w", err)
+			}
+			dstPtr := fmt.Sprintf("%s/%d", ptr, dstIdx)
+			if err := jsonPatchAdd(result, dstPtr, val); err != nil {
+				return nil, fmt.Errorf("FHIR Patch reorder insert: %w", err)
+			}
 		default:
 			return nil, fmt.Errorf("unknown FHIR Patch operation type %q", opType)
 		}
@@ -302,7 +381,7 @@ func parseIndex(key string, length int) (int, error) {
 		return length, nil
 	}
 	idx, err := strconv.Atoi(key)
-	if err != nil || idx < 0 || idx >= length {
+	if err != nil || idx < 0 || idx > length {
 		return 0, fmt.Errorf("array index %q out of range (len=%d)", key, length)
 	}
 	return idx, nil

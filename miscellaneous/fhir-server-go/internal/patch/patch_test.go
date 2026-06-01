@@ -118,6 +118,72 @@ func TestFHIRPatch_Replace(t *testing.T) {
 	}
 }
 
+func TestFHIRPatch_Move(t *testing.T) {
+	params := map[string]any{
+		"resourceType": "Parameters",
+		"parameter": []any{map[string]any{
+			"name": "operation",
+			"part": []any{
+				map[string]any{"name": "type", "valueCode": "move"},
+				map[string]any{"name": "path", "valueString": "Patient.name"},
+				map[string]any{"name": "source", "valueInteger": float64(0)},
+				map[string]any{"name": "index", "valueInteger": float64(1)},
+			},
+		}},
+	}
+	d := map[string]any{
+		"resourceType": "Patient",
+		"id":           "p1",
+		"name": []any{
+			map[string]any{"family": "Smith"},
+			map[string]any{"family": "Jones"},
+		},
+	}
+	out, err := ApplyFHIRPatch(d, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names, _ := out["name"].([]any)
+	if len(names) != 2 {
+		t.Fatalf("expected 2 names after move, got %d", len(names))
+	}
+	// After moving index 0 to index 1: [Jones, Smith]
+	if n0, _ := names[0].(map[string]any); n0["family"] != "Jones" {
+		t.Errorf("after move: names[0] should be Jones, got %v", n0["family"])
+	}
+}
+
+func TestFHIRPatch_Insert(t *testing.T) {
+	params := map[string]any{
+		"resourceType": "Parameters",
+		"parameter": []any{map[string]any{
+			"name": "operation",
+			"part": []any{
+				map[string]any{"name": "type", "valueCode": "insert"},
+				map[string]any{"name": "path", "valueString": "Patient.name"},
+				map[string]any{"name": "index", "valueInteger": float64(0)},
+				map[string]any{"name": "value", "valueHumanName": map[string]any{"family": "New"}},
+			},
+		}},
+	}
+	d := map[string]any{
+		"resourceType": "Patient",
+		"id":           "p1",
+		"name":         []any{map[string]any{"family": "Smith"}},
+	}
+	out, err := ApplyFHIRPatch(d, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names, _ := out["name"].([]any)
+	if len(names) != 2 {
+		t.Fatalf("expected 2 names after insert, got %d", len(names))
+	}
+	if n0, _ := names[0].(map[string]any); n0["family"] != "New" {
+		t.Errorf("after insert at 0: names[0] should be New, got %v", n0["family"])
+	}
+}
+
 func TestFHIRPatch_Delete(t *testing.T) {
 	params := map[string]any{
 		"resourceType": "Parameters",
