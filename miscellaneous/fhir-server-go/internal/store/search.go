@@ -207,7 +207,9 @@ func (b *queryBuilder) applySearchParam(param, modifier, value string) {
 		// reported as missing. Fall back to sp_string for params the registry
 		// doesn't know.
 		table := "sp_string"
-		if b.reg != nil {
+		if pt, ok := universalParamType[param]; ok {
+			table = tableForType(pt)
+		} else if b.reg != nil {
 			if def, ok := b.reg.Lookup(b.rt, param); ok {
 				t := tableForType(def.ParamType)
 				if t == "" {
@@ -270,12 +272,28 @@ func (b *queryBuilder) combinedExists(param, modifier, value string) string {
 // param is unknown to the registry (e.g. a custom param not yet loaded) it falls
 // back to a best-effort guess from the value format.
 func (b *queryBuilder) buildExistsForValue(param, modifier, value string) (string, bool) {
+	// Universal meta params have a fixed type and aren't in the per-resource
+	// registry; resolve them first so they route to the right sp_* table.
+	if pt, ok := universalParamType[param]; ok {
+		return b.buildTypedExists(pt, param, modifier, value)
+	}
 	if b.reg != nil {
 		if def, ok := b.reg.Lookup(b.rt, param); ok {
 			return b.buildTypedExists(def.ParamType, param, modifier, value)
 		}
 	}
 	return b.buildHeuristicExists(param, modifier, value)
+}
+
+// universalParamType maps the meta.* search params (indexed for every resource
+// type by index.indexMeta) to their FHIR search param type. _id/_lastUpdated/
+// _text/_content are handled separately in applyParam.
+var universalParamType = map[string]string{
+	"_tag":      "token",
+	"_security": "token",
+	"_profile":  "uri",
+	"_source":   "uri",
+	"_language": "token",
 }
 
 // buildTypedExists routes a value match to the sp_* table for the given FHIR

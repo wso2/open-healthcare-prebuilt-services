@@ -559,6 +559,48 @@ func TestSearch_SeededBinaryAndObservationDefinition(t *testing.T) {
 	}
 }
 
+func TestSearch_MetaParams(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient",
+		"language":     "en-US",
+		"meta": map[string]any{
+			"profile":  []any{"http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"},
+			"source":   "http://example.org/feed",
+			"tag":      []any{map[string]any{"system": "http://example.org/tags", "code": "vip"}},
+			"security": []any{map[string]any{"system": "http://terminology.hl7.org/CodeSystem/v3-Confidentiality", "code": "R"}},
+		},
+	})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "language": "fr"})
+
+	cases := []struct {
+		name   string
+		params map[string][]string
+		want   int
+	}{
+		{"_tag", map[string][]string{"_tag": {"http://example.org/tags|vip"}}, 1},
+		{"_tag code-only", map[string][]string{"_tag": {"vip"}}, 1},
+		{"_profile", map[string][]string{"_profile": {"http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"}}, 1},
+		{"_source", map[string][]string{"_source": {"http://example.org/feed"}}, 1},
+		{"_security", map[string][]string{"_security": {"R"}}, 1},
+		{"_language", map[string][]string{"_language": {"en-US"}}, 1},
+		{"_language fr", map[string][]string{"_language": {"fr"}}, 1},
+		{"_profile:below", map[string][]string{"_profile:below": {"http://hl7.org/fhir/us/core"}}, 1},
+	}
+	for _, tc := range cases {
+		res, err := s.Search(ctx, store.SearchParams{ResourceType: "Patient", Params: tc.params})
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		if res.Total != tc.want {
+			t.Errorf("%s: expected %d, got %d", tc.name, tc.want, res.Total)
+		}
+	}
+}
+
 func TestSearch_Pagination(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

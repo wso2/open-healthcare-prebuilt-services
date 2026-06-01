@@ -764,6 +764,11 @@ var universalSearchParams = []struct {
 	{"_lastUpdated", "date"},
 	{"_text", "string"},
 	{"_content", "string"},
+	{"_tag", "token"},
+	{"_profile", "uri"},
+	{"_security", "token"},
+	{"_source", "uri"},
+	{"_language", "token"},
 }
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────
