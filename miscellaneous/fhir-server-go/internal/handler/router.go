@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/obs"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/searchparam"
 )
 
@@ -19,6 +20,11 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, b
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
+	r.Use(obs.Middleware)
+
+	// Prometheus metrics endpoint — outside the FHIR base path so it can be
+	// scraped without traversing the FHIR middleware stack.
+	r.Get("/metrics", obs.MetricsHandler().ServeHTTP)
 
 	vow := len(validateOnWrite) > 0 && validateOnWrite[0]
 	h := &fhirHandler{store: s, pool: pool, registry: registry, baseURL: baseURL, igReady: igReady, validateOnWrite: vow}

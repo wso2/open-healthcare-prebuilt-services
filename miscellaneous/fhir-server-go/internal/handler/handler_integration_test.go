@@ -901,3 +901,22 @@ func TestMetadata_AdvertisesSearchParams(t *testing.T) {
 		t.Errorf("Encounter.searchInclude missing 'Encounter:patient'; got %v", incs)
 	}
 }
+
+func TestIntegration_Metrics_Endpoint(t *testing.T) {
+	srv := newRealServer(t)
+	// Make a request to populate the histogram.
+	iDo(t, srv, http.MethodGet, "/fhir/r4/Patient/does-not-exist", nil).Body.Close()
+
+	resp := iDo(t, srv, http.MethodGet, "/metrics", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("metrics: want 200, got %d", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "http_request_duration_seconds") {
+		t.Error("metrics should contain http_request_duration_seconds")
+	}
+	if !strings.Contains(string(body), "fhir_request_total") {
+		t.Error("metrics should contain fhir_request_total")
+	}
+}
