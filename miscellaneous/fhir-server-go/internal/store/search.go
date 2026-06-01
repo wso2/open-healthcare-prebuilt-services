@@ -297,6 +297,122 @@ func (b *queryBuilder) applyHas(modifier, value string) {
 	))
 }
 
+// buildCompositeExists builds an AND of two component EXISTS subqueries for a
+// composite search param (e.g. code-value-quantity=8480-6$gt110).
+// The value is split on "$" to get the two component values. Each component's
+// expression maps to a sub-param name in the registry.
+func (b *queryBuilder) buildCompositeExists(def searchparam.Definition, param, value string) (string, bool) {
+	if len(def.Components) < 2 {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("composite param %q has no component definitions — cannot execute", param)}
+		return "", false
+	}
+	// Split on "$" to separate component values. Only two-component composites
+	// are supported.
+	dollarIdx := strings.IndexByte(value, '$')
+	if dollarIdx < 0 {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("composite param %q value %q must contain '$' separating the two component values", param, value)}
+		return "", false
+	}
+	val1, val2 := value[:dollarIdx], value[dollarIdx+1:]
+
+	// Resolve component expressions to param names in the registry.
+	comp1Name := resolveComponentName(b.rt, def.Components[0].Expression, b.reg)
+	comp2Name := resolveComponentName(b.rt, def.Components[1].Expression, b.reg)
+	if comp1Name == "" || comp2Name == "" {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("composite param %q: cannot resolve component params from expressions %q / %q", param, def.Components[0].Expression, def.Components[1].Expression)}
+		return "", false
+	}
+
+	// Build the component EXISTS subqueries directly (not via combinedExists which
+	// wraps them in EXISTS again) so the composite becomes AND(cond1, cond2)
+	// at the same level as other predicates rather than EXISTS(EXISTS AND EXISTS).
+	cond1, ok1 := b.buildExistsForValue(comp1Name, "", val1)
+	cond2, ok2 := b.buildExistsForValue(comp2Name, "", val2)
+	if !ok1 || !ok2 || cond1 == "" || cond2 == "" {
+		return "", false
+	}
+	// Return a raw AND of the two EXISTS subqueries. The caller in
+	// buildTypedExists → combinedExists will wrap it in EXISTS(...) again,
+	// so we must NOT add EXISTS here — we return the inner content for the
+	// EXISTS wrapper to wrap.
+	// Actually: the caller adds EXISTS around our return value. So we should
+	// return a SELECT that yields 1 when both match. Use INTERSECT:
+	return cond1 + " INTERSECT " + cond2, true
+}
+
+// resolveComponentName converts a component expression like "code",
+// "value.as(Quantity)", or "interpretation" to the search param name
+// registered in the registry for the given resource type.
+// It tries: exact match, then strips ".as(Type)" suffix to get the base field,
+// then looks for a param whose FHIRPath starts with the expression.
+func resolveComponentName(rt, expr string, reg *searchparam.Registry) string {
+	if expr == "" || reg == nil {
+		return ""
+	}
+	// Exact match by FHIRPath.
+	for _, d := range reg.ForResource(rt) {
+		if d.FHIRPath == expr {
+			return d.ParamName
+		}
+	}
+
+	// Extract the type hint from "value.as(Quantity)" → typeHint="Quantity"
+	// and the base field: "value".
+	typeHint := ""
+	plain := expr
+	if i := strings.Index(plain, ".as("); i >= 0 {
+		end := strings.IndexByte(plain[i:], ')')
+		if end >= 0 {
+			typeHint = plain[i+4 : i+end]
+		}
+		plain = plain[:i]
+	}
+	// Strip leading resource-type prefix: "Observation.code" → "code".
+	if dot := strings.IndexByte(plain, '.'); dot >= 0 {
+		plain = plain[dot+1:]
+	}
+	if plain == "" {
+		plain = expr
+	}
+
+	// Type hint → expected search param type mapping.
+	expectedType := ""
+	switch typeHint {
+	case "Quantity", "SampledData":
+		expectedType = "quantity"
+	case "CodeableConcept":
+		expectedType = "token"
+	case "dateTime", "Period", "Date", "Instant":
+		expectedType = "date"
+	case "string", "string+":
+		expectedType = "string"
+	case "Reference":
+		expectedType = "reference"
+	}
+
+	// 1. Exact name match (possibly filtered by type hint).
+	for _, d := range reg.ForResource(rt) {
+		if d.ParamName == plain {
+			if expectedType == "" || d.ParamType == expectedType {
+				return d.ParamName
+			}
+		}
+	}
+	// 2. FHIRPath contains the plain segment, filtered by type hint if available.
+	for _, d := range reg.ForResource(rt) {
+		pathMatch := strings.Contains(d.FHIRPath, "."+plain+".") ||
+			strings.HasSuffix(d.FHIRPath, "."+plain) ||
+			strings.HasPrefix(d.FHIRPath, plain+".") ||
+			d.FHIRPath == plain
+		if pathMatch {
+			if expectedType == "" || d.ParamType == expectedType {
+				return d.ParamName
+			}
+		}
+	}
+	return ""
+}
+
 // parseChain detects a chained-search parameter and splits it into the
 // reference param on the current resource, an optional explicit target type,
 // and the search param on the target resource. Two forms are recognised:
@@ -391,11 +507,11 @@ func (b *queryBuilder) buildExistsForValue(param, modifier, value string) (strin
 	// Universal meta params have a fixed type and aren't in the per-resource
 	// registry; resolve them first so they route to the right sp_* table.
 	if pt, ok := universalParamType[param]; ok {
-		return b.buildTypedExists(pt, param, modifier, value)
+		return b.buildTypedExists(searchparam.Definition{ParamType: pt, ParamName: param}, param, modifier, value)
 	}
 	if b.reg != nil {
 		if def, ok := b.reg.Lookup(b.rt, param); ok {
-			return b.buildTypedExists(def.ParamType, param, modifier, value)
+			return b.buildTypedExists(def, param, modifier, value)
 		}
 	}
 	return b.buildHeuristicExists(param, modifier, value)
@@ -415,8 +531,12 @@ var universalParamType = map[string]string{
 // buildTypedExists routes a value match to the sp_* table for the given FHIR
 // search param type. Returns (subquery, false) for types we don't yet support
 // (composite, special) so the caller can skip the filter rather than misroute it.
-func (b *queryBuilder) buildTypedExists(paramType, param, modifier, value string) (string, bool) {
+func (b *queryBuilder) buildTypedExists(def searchparam.Definition, param, modifier, value string) (string, bool) {
+	paramType := def.ParamType
 	switch paramType {
+	case "composite":
+		sub, ok := b.buildCompositeExists(def, param, value)
+		return sub, ok
 	case "string":
 		return b.buildStringExists(param, modifier, value), true
 	case "token":
@@ -440,9 +560,8 @@ func (b *queryBuilder) buildTypedExists(paramType, param, modifier, value string
 	case "reference":
 		return b.buildReferenceExists(param, modifier, value), true
 	default:
-		// composite / special — not yet supported. Fail the request rather
-		// than silently dropping the predicate (which would broaden results
-		// and could surprise callers).
+		// special (e.g. Location.near) — not supported. Fail closed rather
+		// than silently dropping the predicate (which would broaden results).
 		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("param %q on %s has type %q which is not yet supported", param, b.rt, paramType)}
 		slog.Warn("unsupported search param type; failing request",
 			"resourceType", b.rt, "param", param, "paramType", paramType)

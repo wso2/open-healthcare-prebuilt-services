@@ -229,6 +229,7 @@ CREATE TABLE IF NOT EXISTS search_param_definitions (
 -- Idempotent migrations: add columns to existing deployments.
 ALTER TABLE search_param_definitions ADD COLUMN IF NOT EXISTS ig_source TEXT NOT NULL DEFAULT '';
 ALTER TABLE search_param_definitions ADD COLUMN IF NOT EXISTS target_types TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_param_definitions ADD COLUMN IF NOT EXISTS components_json TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_spd_resource ON search_param_definitions (resource_type);
 CREATE INDEX IF NOT EXISTS idx_spd_custom   ON search_param_definitions (resource_type) WHERE is_custom = TRUE;

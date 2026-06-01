@@ -601,6 +601,42 @@ func TestSearch_MetaParams(t *testing.T) {
 	}
 }
 
+func TestSearch_CompositeParam(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Observation with code 8480-6 and a quantity value of 120 mm[Hg]
+	s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"code":          map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8480-6"}}},
+		"valueQuantity": map[string]any{"value": float64(120), "system": "http://unitsofmeasure.org", "code": "mm[Hg]"},
+	})
+	// Observation with same code but different value
+	s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"code":          map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8480-6"}}},
+		"valueQuantity": map[string]any{"value": float64(80), "system": "http://unitsofmeasure.org", "code": "mm[Hg]"},
+	})
+	// Observation with a different code
+	s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"code":          map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "9999-9"}}},
+		"valueQuantity": map[string]any{"value": float64(120), "system": "http://unitsofmeasure.org", "code": "mm[Hg]"},
+	})
+
+	// code-value-quantity=http://loinc.org|8480-6$120 should match only the first.
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Observation",
+		Params:       map[string][]string{"code-value-quantity": {"http://loinc.org|8480-6$120"}},
+	})
+	if err != nil {
+		t.Fatalf("composite search: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("code-value-quantity=...8480-6$120: expected 1, got %d", res.Total)
+	}
+}
+
 func TestSearch_PreviouslyBlankExpressions(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

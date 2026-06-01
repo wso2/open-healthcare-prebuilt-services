@@ -4,6 +4,7 @@ package searchparam
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -13,14 +14,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// ComponentDef describes one component of a composite search parameter.
+type ComponentDef struct {
+	Definition string `json:"definition"` // canonical URL of the component SearchParameter
+	Expression string `json:"expression"` // FHIRPath relative to the composite's context path
+}
+
 type Definition struct {
 	ResourceType string
 	ParamName    string
-	ParamType    string   // string|token|date|number|quantity|uri|reference|composite|special
+	ParamType    string         // string|token|date|number|quantity|uri|reference|composite|special
 	FHIRPath     string
 	IsCustom     bool
-	IGSource     string   // '' = base FHIR R4, 'user' = user-defined, 'name@ver' = IG package
-	Targets      []string // reference params only: allowed target resource types (from SearchParameter.target)
+	IGSource     string         // '' = base FHIR R4, 'user' = user-defined, 'name@ver' = IG package
+	Targets      []string       // reference params: allowed target resource types
+	Components   []ComponentDef // composite params: component descriptors
 }
 
 type Registry struct {
@@ -57,7 +65,7 @@ func (r *Registry) Load(ctx context.Context, pool *pgxpool.Pool) error {
 	slog.Info("loading search param definitions from database")
 	rows, err := pool.Query(ctx, `
 		SELECT resource_type, param_name, param_type, fhirpath_expr, is_custom, ig_source,
-		       COALESCE(target_types, '')
+		       COALESCE(target_types, ''), COALESCE(components_json, '')
 		FROM search_param_definitions
 		ORDER BY resource_type, param_name
 	`)
@@ -72,12 +80,15 @@ func (r *Registry) Load(ctx context.Context, pool *pgxpool.Pool) error {
 
 	for rows.Next() {
 		var d Definition
-		var targetTypes string
-		if err := rows.Scan(&d.ResourceType, &d.ParamName, &d.ParamType, &d.FHIRPath, &d.IsCustom, &d.IGSource, &targetTypes); err != nil {
+		var targetTypes, componentsJSON string
+		if err := rows.Scan(&d.ResourceType, &d.ParamName, &d.ParamType, &d.FHIRPath, &d.IsCustom, &d.IGSource, &targetTypes, &componentsJSON); err != nil {
 			return fmt.Errorf("scan definition row: %w", err)
 		}
 		if targetTypes != "" {
 			d.Targets = strings.Split(targetTypes, "|")
+		}
+		if componentsJSON != "" {
+			_ = json.Unmarshal([]byte(componentsJSON), &d.Components)
 		}
 		byRes[d.ResourceType] = append(byRes[d.ResourceType], d)
 		byKey[d.ResourceType+"."+d.ParamName] = d
