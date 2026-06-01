@@ -640,6 +640,51 @@ func TestSearch_PreviouslyBlankExpressions(t *testing.T) {
 	}
 }
 
+func TestSearch_Has(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	pat, _ := s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "name": []any{map[string]any{"family": "Has-Target"}}})
+	patID := pat["id"].(string)
+
+	// An Encounter with status=finished referencing the patient.
+	s.Create(ctx, "Encounter", map[string]any{
+		"resourceType": "Encounter", "status": "finished",
+		"subject": map[string]any{"reference": "Patient/" + patID},
+	})
+	// A second Encounter with status=planned referencing the same patient.
+	s.Create(ctx, "Encounter", map[string]any{
+		"resourceType": "Encounter", "status": "planned",
+		"subject": map[string]any{"reference": "Patient/" + patID},
+	})
+	// An unrelated patient with no encounters.
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+
+	// Find Patients that have a finished Encounter referencing them via subject.
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_has:Encounter:subject:status": {"finished"}},
+	})
+	if err != nil {
+		t.Fatalf("_has search: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("_has:Encounter:subject:status=finished: expected 1, got %d", res.Total)
+	} else if id, _ := res.Entries[0]["id"].(string); id != patID {
+		t.Errorf("expected patient %s, got %s", patID, id)
+	}
+
+	// Bad modifier (missing segment) → error.
+	_, err = s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_has:Encounter:subject": {"x"}},
+	})
+	var unsup *store.UnsupportedParamError
+	if !errors.As(err, &unsup) {
+		t.Errorf("malformed _has: expected UnsupportedParamError, got %v", err)
+	}
+}
+
 func TestSearch_Chained(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

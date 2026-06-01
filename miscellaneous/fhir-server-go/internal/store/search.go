@@ -182,6 +182,14 @@ func (b *queryBuilder) and(cond string) {
 func (b *queryBuilder) applyParam(rawKey, value string) {
 	paramName, modifier := splitModifier(rawKey)
 
+	// _has reverse chaining: _has:SourceType:refParam:valueParam=value
+	// "give me resources of b.rt referenced by a SourceType resource via refParam
+	// whose valueParam matches value".
+	if paramName == "_has" {
+		b.applyHas(modifier, value)
+		return
+	}
+
 	// Chained search: organization.name=… or subject:Patient.name=… — a dot in
 	// the param name (or in a type modifier) walks a reference to the target
 	// resource's own search params.
@@ -253,6 +261,40 @@ func (b *queryBuilder) applySearchParam(param, modifier, value string) {
 	if expr := b.combinedExists(param, modifier, value); expr != "" {
 		b.and(expr)
 	}
+}
+
+// applyHas implements _has reverse chaining.
+// rawKey form: "_has:SourceType:refParam:valueParam", value = search value.
+// The modifier contains "SourceType:refParam:valueParam".
+// Result: add a predicate that the current resource is referenced by a
+// SourceType resource (via refParam) that also satisfies valueParam=value.
+func (b *queryBuilder) applyHas(modifier, value string) {
+	parts := strings.SplitN(modifier, ":", 3)
+	if len(parts) != 3 {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("_has modifier must be SourceType:refParam:valueParam, got %q", modifier)}
+		return
+	}
+	sourceType, refParam, valueParam := parts[0], parts[1], parts[2]
+
+	// Build the inner predicate for valueParam=value on sourceType, shadowing
+	// the outer 'r' alias with the source resource row.
+	saved := b.rt
+	b.rt = sourceType
+	inner := b.combinedExists(valueParam, "", value)
+	b.rt = saved
+	if inner == "" {
+		return
+	}
+
+	rtP := b.next(b.rt)
+	srcP := b.next(sourceType)
+	refP := b.next(refParam)
+
+	// The source resource references the current resource via sp_reference.
+	b.and(fmt.Sprintf(
+		"EXISTS (SELECT 1 FROM sp_reference sr WHERE sr.target_id = r.fhir_id AND sr.target_type = %s AND sr.resource_type = %s AND sr.param_name = %s AND EXISTS (SELECT 1 FROM resources r WHERE r.fhir_id = sr.resource_id AND r.resource_type = %s AND r.is_deleted = FALSE AND %s))",
+		rtP, srcP, refP, srcP, inner,
+	))
 }
 
 // parseChain detects a chained-search parameter and splits it into the
