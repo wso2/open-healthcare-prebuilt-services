@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/compartment"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/fhirxml"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/ig"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/patch"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
@@ -76,20 +78,79 @@ func readBody(r *http.Request) (map[string]any, error) {
 	return body, nil
 }
 
+// wantsXML returns true when the request prefers XML over JSON, as indicated
+// by Accept: application/fhir+xml, _format=xml, _format=application/fhir+xml,
+// or Content-Type: application/fhir+xml on writes.
+func wantsXML(r *http.Request) bool {
+	if f := r.URL.Query().Get("_format"); f != "" {
+		switch strings.ToLower(f) {
+		case "xml", "application/fhir+xml", "application/xml":
+			return true
+		}
+	}
+	accept := r.Header.Get("Accept")
+	if strings.Contains(accept, "application/fhir+xml") || strings.Contains(accept, "application/xml") {
+		return true
+	}
+	return false
+}
+
+// writeFHIR writes a FHIR resource as JSON or XML depending on the request's
+// Accept header / _format query param.
+func writeFHIR(w http.ResponseWriter, r *http.Request, status int, body map[string]any) {
+	if wantsXML(r) {
+		xmlBytes, err := fhirxml.ToXML(body)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{
+				"resourceType": "OperationOutcome",
+				"issue": []any{map[string]any{"severity": "error", "code": "exception",
+					"diagnostics": "XML serialisation failed: " + err.Error()}},
+			})
+			return
+		}
+		w.Header().Set("Content-Type", "application/fhir+xml")
+		w.WriteHeader(status)
+		w.Write(xmlBytes) //nolint:errcheck
+		return
+	}
+	writeJSON(w, status, body)
+}
+
 // requireFHIRContent returns false (and writes 415) only when Content-Type is
-// explicitly set to a non-JSON type. Missing Content-Type is allowed.
+// explicitly set to an unsupported type. Both JSON and XML are accepted;
+// missing Content-Type is allowed (defaults to JSON).
 func requireFHIRContent(w http.ResponseWriter, r *http.Request) bool {
 	ct := r.Header.Get("Content-Type")
 	if ct == "" {
 		return true
 	}
 	base := strings.TrimSpace(strings.SplitN(ct, ";", 2)[0])
-	if base != "application/fhir+json" && base != "application/json" {
-		operationOutcome(w, http.StatusUnsupportedMediaType, "error", "not-supported",
-			"Content-Type must be application/fhir+json")
-		return false
+	switch base {
+	case "application/fhir+json", "application/json",
+		"application/fhir+xml", "application/xml":
+		return true
 	}
-	return true
+	operationOutcome(w, http.StatusUnsupportedMediaType, "error", "not-supported",
+		"Content-Type must be application/fhir+json or application/fhir+xml")
+	return false
+}
+
+// readFHIRBody parses a request body that may be JSON or XML.
+func readFHIRBody(r *http.Request) (map[string]any, error) {
+	ct := r.Header.Get("Content-Type")
+	base := strings.TrimSpace(strings.SplitN(ct, ";", 2)[0])
+	if base == "application/fhir+xml" || base == "application/xml" {
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			return nil, err
+		}
+		return fhirxml.FromXML(b)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return nil, err
+	}
+	return body, nil
 }
 
 func firstVal(params map[string][]string, key string) string {
@@ -121,7 +182,7 @@ func (h *fhirHandler) read(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(resource)))
-	writeJSON(w, http.StatusOK, resource)
+	writeFHIR(w, r, http.StatusOK, resource)
 }
 
 // ─── VRead ────────────────────────────────────────────────────────────────────
@@ -140,7 +201,7 @@ func (h *fhirHandler) vread(w http.ResponseWriter, r *http.Request) {
 		handleError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resource)
+	writeFHIR(w, r, http.StatusOK, resource)
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────
@@ -176,7 +237,7 @@ func (h *fhirHandler) search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bundle := h.buildBundle(rt, result, params, page, pageSize, summary, elements)
-	writeJSON(w, http.StatusOK, bundle)
+	writeFHIR(w, r, http.StatusOK, bundle)
 }
 
 func (h *fhirHandler) searchPost(w http.ResponseWriter, r *http.Request) {
@@ -220,7 +281,7 @@ func (h *fhirHandler) searchPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bundle := h.buildBundle(rt, result, params, page, pageSize, summary, elements)
-	writeJSON(w, http.StatusOK, bundle)
+	writeFHIR(w, r, http.StatusOK, bundle)
 }
 
 func (h *fhirHandler) buildBundle(rt string, result store.SearchResult, params map[string][]string, page, pageSize int, summary string, elements []string) map[string]any {
@@ -462,7 +523,7 @@ func (h *fhirHandler) everything(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeFHIR(w, r, http.StatusOK, map[string]any{
 		"resourceType": "Bundle",
 		"type":         "searchset",
 		"total":        len(entries),
@@ -479,7 +540,7 @@ func (h *fhirHandler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := readBody(r)
+	body, err := readFHIRBody(r)
 	if err != nil {
 		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
 		return
@@ -518,7 +579,7 @@ func (h *fhirHandler) create(w http.ResponseWriter, r *http.Request) {
 			}
 			w.Header().Set("Location", fmt.Sprintf("%s/%s/%s", h.baseURL, rt, existingID))
 			w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(existing)))
-			writeJSON(w, http.StatusOK, existing)
+			writeFHIR(w, r, http.StatusOK, existing)
 			return
 		}
 		// count == 0 → fall through to a normal create.
@@ -547,7 +608,7 @@ func (h *fhirHandler) create(w http.ResponseWriter, r *http.Request) {
 	id, _ := resource["id"].(string)
 	w.Header().Set("Location", fmt.Sprintf("%s/%s/%s/_history/1", h.baseURL, rt, id))
 	w.Header().Set("ETag", `W/"1"`)
-	writeJSON(w, http.StatusCreated, resource)
+	writeFHIR(w, r, http.StatusCreated, resource)
 }
 
 // ─── Update ───────────────────────────────────────────────────────────────────
@@ -560,7 +621,7 @@ func (h *fhirHandler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := readBody(r)
+	body, err := readFHIRBody(r)
 	if err != nil {
 		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
 		return
@@ -611,7 +672,7 @@ func (h *fhirHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(resource)))
-	writeJSON(w, http.StatusOK, resource)
+	writeFHIR(w, r, http.StatusOK, resource)
 }
 
 // ─── Patch ────────────────────────────────────────────────────────────────────
@@ -632,7 +693,7 @@ func (h *fhirHandler) patch(w http.ResponseWriter, r *http.Request) {
 	case "application/fhir+json":
 		h.fhirPatch(w, r, rt, id)
 	default: // application/merge-patch+json or empty
-		body, err := readBody(r)
+		body, err := readFHIRBody(r)
 		if err != nil {
 			operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
 			return
@@ -643,7 +704,7 @@ func (h *fhirHandler) patch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(resource)))
-		writeJSON(w, http.StatusOK, resource)
+		writeFHIR(w, r, http.StatusOK, resource)
 	}
 }
 
@@ -671,7 +732,7 @@ func (h *fhirHandler) jsonPatch(w http.ResponseWriter, r *http.Request, rt, id s
 		return
 	}
 	w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(updated)))
-	writeJSON(w, http.StatusOK, updated)
+	writeFHIR(w, r, http.StatusOK, updated)
 }
 
 func (h *fhirHandler) fhirPatch(w http.ResponseWriter, r *http.Request, rt, id string) {
@@ -698,7 +759,7 @@ func (h *fhirHandler) fhirPatch(w http.ResponseWriter, r *http.Request, rt, id s
 		return
 	}
 	w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(updated)))
-	writeJSON(w, http.StatusOK, updated)
+	writeFHIR(w, r, http.StatusOK, updated)
 }
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
@@ -732,7 +793,7 @@ func (h *fhirHandler) conditionalUpdate(w http.ResponseWriter, r *http.Request) 
 	if !requireFHIRContent(w, r) {
 		return
 	}
-	body, err := readBody(r)
+	body, err := readFHIRBody(r)
 	if err != nil {
 		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
 		return
@@ -769,7 +830,7 @@ func (h *fhirHandler) conditionalUpdate(w http.ResponseWriter, r *http.Request) 
 			_ = h.store.SyncSearchParameter(r.Context(), resource)
 		}
 		w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(resource)))
-		writeJSON(w, http.StatusOK, resource)
+		writeFHIR(w, r, http.StatusOK, resource)
 		return
 	}
 
@@ -786,7 +847,7 @@ func (h *fhirHandler) conditionalUpdate(w http.ResponseWriter, r *http.Request) 
 	id, _ := resource["id"].(string)
 	w.Header().Set("Location", fmt.Sprintf("%s/%s/%s/_history/1", h.baseURL, rt, id))
 	w.Header().Set("ETag", `W/"1"`)
-	writeJSON(w, http.StatusCreated, resource)
+	writeFHIR(w, r, http.StatusCreated, resource)
 }
 
 // conditionalDelete handles DELETE /{resourceType}?<search> — delete the single
@@ -849,7 +910,7 @@ func (h *fhirHandler) history(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeFHIR(w, r, http.StatusOK, map[string]any{
 		"resourceType": "Bundle",
 		"type":         "history",
 		"total":        len(bundleEntries),
@@ -944,7 +1005,7 @@ func (h *fhirHandler) serveHistory(w http.ResponseWriter, r *http.Request, rt st
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeFHIR(w, r, http.StatusOK, map[string]any{
 		"resourceType": "Bundle",
 		"type":         "history",
 		"total":        result.Total,
@@ -960,7 +1021,7 @@ func (h *fhirHandler) validate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := readBody(r)
+	body, err := readFHIRBody(r)
 	if err != nil {
 		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
 		return
@@ -990,7 +1051,7 @@ func (h *fhirHandler) validate(w http.ResponseWriter, r *http.Request) {
 
 	issues := h.validateAgainstProfiles(r, body, profileURLs)
 	if len(issues) == 0 {
-		writeJSON(w, http.StatusOK, map[string]any{
+		writeFHIR(w, r, http.StatusOK, map[string]any{
 			"resourceType": "OperationOutcome",
 			"issue": []any{map[string]any{
 				"severity":    "information",
@@ -1010,7 +1071,7 @@ func (h *fhirHandler) validate(w http.ResponseWriter, r *http.Request) {
 			"expression":  []string{iss.Expression},
 		})
 	}
-	writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+	writeFHIR(w, r, http.StatusUnprocessableEntity, map[string]any{
 		"resourceType": "OperationOutcome",
 		"issue":        fhirIssues,
 	})
@@ -1147,7 +1208,7 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 		"status":              "active",
 		"kind":                "instance",
 		"fhirVersion":         "4.0.1",
-		"format":              []string{"application/fhir+json"},
+		"format":              []string{"application/fhir+json", "application/fhir+xml"},
 		"patchFormat": []string{
 			"application/json-patch+json",
 			"application/merge-patch+json",
@@ -1173,7 +1234,7 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 			},
 		}},
 	}
-	writeJSON(w, http.StatusOK, cs)
+	writeFHIR(w, r, http.StatusOK, cs)
 }
 
 // validateRequiredFields returns a non-empty error message if key required
@@ -1226,7 +1287,7 @@ func (h *fhirHandler) enforceProfiles(w http.ResponseWriter, r *http.Request, bo
 			"expression":  []string{iss.Expression},
 		})
 	}
-	writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+	writeFHIR(w, r, http.StatusUnprocessableEntity, map[string]any{
 		"resourceType": "OperationOutcome",
 		"issue":        fhirIssues,
 	})
@@ -1271,7 +1332,7 @@ func (h *fhirHandler) compartmentSearch(w http.ResponseWriter, r *http.Request) 
 				handleError(w, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{
+			writeFHIR(w, r, http.StatusOK, map[string]any{
 				"resourceType": "Bundle", "type": "searchset", "total": 1,
 				"entry": []any{map[string]any{
 					"fullUrl": fmt.Sprintf("%s/%s/%s", h.baseURL, ownerType, ownerID),
@@ -1279,7 +1340,7 @@ func (h *fhirHandler) compartmentSearch(w http.ResponseWriter, r *http.Request) 
 				}},
 			})
 		} else {
-			writeJSON(w, http.StatusOK, map[string]any{"resourceType": "Bundle", "type": "searchset", "total": 0, "entry": []any{}})
+			writeFHIR(w, r, http.StatusOK, map[string]any{"resourceType": "Bundle", "type": "searchset", "total": 0, "entry": []any{}})
 		}
 		return
 	}
@@ -1357,7 +1418,7 @@ func (h *fhirHandler) compartmentSearch(w http.ResponseWriter, r *http.Request) 
 			"search":   map[string]any{"mode": "match"},
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeFHIR(w, r, http.StatusOK, map[string]any{
 		"resourceType": "Bundle",
 		"type":         "searchset",
 		"total":        total,

@@ -906,6 +906,51 @@ func TestMetadata_AdvertisesSearchParams(t *testing.T) {
 
 // ─── Compartment search ───────────────────────────────────────────────────────
 
+// ─── XML wire format ──────────────────────────────────────────────────────────
+
+func TestIntegration_XML_CreateAndRead(t *testing.T) {
+	srv := newRealServer(t)
+
+	// Create via XML body.
+	xmlBody := `<?xml version="1.0" encoding="UTF-8"?>
+<Patient xmlns="http://hl7.org/fhir">
+  <gender value="female"/>
+</Patient>`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/fhir/r4/Patient", strings.NewReader(xmlBody))
+	req.Header.Set("Content-Type", "application/fhir+xml")
+	req.Header.Set("Accept", "application/fhir+json") // respond in JSON for easy assertion
+	resp, _ := srv.Client().Do(req)
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("XML create: want 201, got %d: %s", resp.StatusCode, string(body))
+	}
+	created := iJSON(t, resp)
+	id, _ := created["id"].(string)
+	if id == "" {
+		t.Fatal("no id returned")
+	}
+
+	// Read back requesting XML via _format.
+	resp = iDo(t, srv, http.MethodGet, "/fhir/r4/Patient/"+id+"?_format=xml", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("XML read: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	defer resp.Body.Close()
+	xmlResp, _ := io.ReadAll(resp.Body)
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "xml") {
+		t.Errorf("XML read: want application/fhir+xml Content-Type, got %q", ct)
+	}
+	if !strings.Contains(string(xmlResp), "<Patient") {
+		t.Errorf("XML read: response should contain <Patient, got: %s", string(xmlResp[:min(len(xmlResp), 200)]))
+	}
+	if !strings.Contains(string(xmlResp), `value="female"`) {
+		t.Errorf("XML read: expected gender female in XML response")
+	}
+}
+
 func TestIntegration_CompartmentSearch_Patient_Observation(t *testing.T) {
 	srv := newRealServer(t)
 	patID, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})
