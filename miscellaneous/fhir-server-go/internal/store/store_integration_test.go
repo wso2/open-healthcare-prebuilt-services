@@ -601,6 +601,83 @@ func TestSearch_MetaParams(t *testing.T) {
 	}
 }
 
+func TestSearch_Chained(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Organization "Acme" referenced by a Patient via managingOrganization.
+	org, _ := s.Create(ctx, "Organization", map[string]any{"resourceType": "Organization", "name": "Acme"})
+	orgID := org["id"].(string)
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType":         "Patient",
+		"name":                 []any{map[string]any{"family": "Smith"}},
+		"managingOrganization": map[string]any{"reference": "Organization/" + orgID},
+	})
+	// A second Patient pointing at a different org, to prove the chain filters.
+	org2, _ := s.Create(ctx, "Organization", map[string]any{"resourceType": "Organization", "name": "Globex"})
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType":         "Patient",
+		"name":                 []any{map[string]any{"family": "Jones"}},
+		"managingOrganization": map[string]any{"reference": "Organization/" + org2["id"].(string)},
+	})
+
+	// Untyped chain, ref name == target type: organization.name=Acme.
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"organization.name": {"Acme"}},
+	})
+	if err != nil {
+		t.Fatalf("organization.name: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("Patient?organization.name=Acme: expected 1, got %d", res.Total)
+	} else if fam := res.Entries[0]["name"].([]any)[0].(map[string]any)["family"]; fam != "Smith" {
+		t.Errorf("expected Smith, got %v", fam)
+	}
+
+	// Encounter.subject typed chain to Patient.
+	pat, _ := s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient", "name": []any{map[string]any{"family": "Targaryen"}},
+	})
+	s.Create(ctx, "Encounter", map[string]any{
+		"resourceType": "Encounter", "status": "finished",
+		"subject": map[string]any{"reference": "Patient/" + pat["id"].(string)},
+	})
+
+	typed, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Encounter",
+		Params:       map[string][]string{"subject:Patient.family": {"Targaryen"}},
+	})
+	if err != nil {
+		t.Fatalf("subject:Patient.family: %v", err)
+	}
+	if typed.Total != 1 {
+		t.Errorf("Encounter?subject:Patient.family=Targaryen: expected 1, got %d", typed.Total)
+	}
+
+	// Untyped chain inferred from ref name "patient" → Patient.
+	inferred, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Encounter",
+		Params:       map[string][]string{"patient.family": {"Targaryen"}},
+	})
+	if err != nil {
+		t.Fatalf("patient.family: %v", err)
+	}
+	if inferred.Total != 1 {
+		t.Errorf("Encounter?patient.family=Targaryen: expected 1, got %d", inferred.Total)
+	}
+
+	// Multi-hop is rejected (fail closed).
+	_, err = s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"organization.partof.name": {"x"}},
+	})
+	var unsup *store.UnsupportedParamError
+	if !errors.As(err, &unsup) {
+		t.Errorf("expected UnsupportedParamError for multi-hop chain, got %v", err)
+	}
+}
+
 func TestSearch_Pagination(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

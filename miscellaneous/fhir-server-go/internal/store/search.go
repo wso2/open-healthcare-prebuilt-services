@@ -182,6 +182,14 @@ func (b *queryBuilder) and(cond string) {
 func (b *queryBuilder) applyParam(rawKey, value string) {
 	paramName, modifier := splitModifier(rawKey)
 
+	// Chained search: organization.name=… or subject:Patient.name=… — a dot in
+	// the param name (or in a type modifier) walks a reference to the target
+	// resource's own search params.
+	if ref, targetType, targetParam, targetMod, ok := parseChain(paramName, modifier); ok {
+		b.applyChained(ref, targetType, targetParam, targetMod, value)
+		return
+	}
+
 	switch paramName {
 	case "_id":
 		p := b.next(value)
@@ -245,6 +253,72 @@ func (b *queryBuilder) applySearchParam(param, modifier, value string) {
 	if expr := b.combinedExists(param, modifier, value); expr != "" {
 		b.and(expr)
 	}
+}
+
+// parseChain detects a chained-search parameter and splits it into the
+// reference param on the current resource, an optional explicit target type,
+// and the search param on the target resource. Two forms are recognised:
+//
+//	organization.name      → ref=organization, type="",      target=name   (modifier applies to target)
+//	subject:Patient.name   → ref=subject,      type=Patient, target=name
+//
+// Returns ok=false when the key is not a chain.
+func parseChain(paramName, modifier string) (ref, targetType, targetParam, targetModifier string, ok bool) {
+	if i := strings.IndexByte(paramName, '.'); i >= 0 {
+		return paramName[:i], "", paramName[i+1:], modifier, true
+	}
+	if i := strings.IndexByte(modifier, '.'); i >= 0 {
+		return paramName, modifier[:i], modifier[i+1:], "", true
+	}
+	return "", "", "", "", false
+}
+
+// applyChained builds the predicate for a single-hop chained search: the
+// resource has a `ref` reference to a `targetType` resource that itself matches
+// `targetParam`=value. The inner match reuses the normal value builders by
+// shadowing the `r` alias with the target resource inside an IN-subquery.
+func (b *queryBuilder) applyChained(ref, targetType, targetParam, targetModifier, value string) {
+	// Multi-hop (a.b.c) is not supported yet; fail closed rather than silently
+	// matching nothing.
+	if strings.Contains(targetParam, ".") {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("multi-hop chained search %q is not supported", ref+"."+targetParam)}
+		return
+	}
+
+	// Resolve the target type. When it isn't given explicitly, infer it from the
+	// reference param name (organization → Organization); if that isn't a known
+	// type, require the explicit ref:Type.param form.
+	if targetType == "" {
+		guess := strings.ToUpper(ref[:1]) + ref[1:]
+		if b.reg != nil && len(b.reg.ForResource(guess)) > 0 {
+			targetType = guess
+		}
+	}
+	if targetType == "" {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("chained search %q requires an explicit target type, e.g. %s:Type.%s=…", ref+"."+targetParam, ref, targetParam)}
+		return
+	}
+
+	refP := b.next(ref)
+	rtP := b.next(b.rt)
+	ttP := b.next(targetType)
+
+	// Build the inner target predicate against targetType. Temporarily switch
+	// b.rt so registry lookups and the s.resource_type filter target the right
+	// type; the generated SQL correlates on alias r, which the IN-subquery's
+	// `resources r` shadows to mean the target resource.
+	saved := b.rt
+	b.rt = targetType
+	inner := b.combinedExists(targetParam, targetModifier, value)
+	b.rt = saved
+	if inner == "" {
+		return
+	}
+
+	b.and(fmt.Sprintf(
+		"EXISTS (SELECT 1 FROM sp_reference sr WHERE sr.resource_id = r.fhir_id AND sr.resource_type = %s AND sr.param_name = %s AND sr.target_type = %s AND sr.target_id IN (SELECT r.fhir_id FROM resources r WHERE r.is_deleted = FALSE AND r.resource_type = %s AND %s))",
+		rtP, refP, ttP, ttP, inner,
+	))
 }
 
 // combinedExists builds the EXISTS predicate for a (possibly comma-separated)
