@@ -423,6 +423,108 @@ func TestSearch_TotalNone_SkipsCount(t *testing.T) {
 	}
 }
 
+func TestSearch_NotModifier(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "male"})
+
+	result, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"gender:not": {"male"}},
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("gender:not=male: expected 1 (the female), got %d", result.Total)
+	}
+	if g, _ := result.Entries[0]["gender"].(string); g != "female" {
+		t.Errorf("expected female, got %q", g)
+	}
+}
+
+func TestSearch_TextModifier(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// clinical-status (token, CodeableConcept with display) is indexed, so its
+	// display text is available for the :text modifier.
+	s.Create(ctx, "Condition", map[string]any{
+		"resourceType": "Condition",
+		"clinicalStatus": map[string]any{"coding": []any{map[string]any{
+			"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "active", "display": "Active and ongoing",
+		}}},
+	})
+	s.Create(ctx, "Condition", map[string]any{
+		"resourceType": "Condition",
+		"clinicalStatus": map[string]any{"coding": []any{map[string]any{
+			"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "resolved", "display": "Resolved",
+		}}},
+	})
+
+	result, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Condition",
+		Params:       map[string][]string{"clinical-status:text": {"ongoing"}},
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("clinical-status:text=ongoing: expected 1, got %d", result.Total)
+	}
+}
+
+func TestSearch_URIModifiers(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	for _, u := range []string{"http://acme.org/cs", "http://acme.org/cs/child", "http://other.org/cs"} {
+		s.Create(ctx, "CodeSystem", map[string]any{
+			"resourceType": "CodeSystem", "url": u, "status": "active", "content": "complete",
+		})
+	}
+
+	below, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "CodeSystem",
+		Params:       map[string][]string{"url:below": {"http://acme.org/cs"}},
+	})
+	if err != nil {
+		t.Fatalf("below: %v", err)
+	}
+	if below.Total != 2 {
+		t.Errorf("url:below=http://acme.org/cs: expected 2, got %d", below.Total)
+	}
+
+	above, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "CodeSystem",
+		Params:       map[string][]string{"url:above": {"http://acme.org/cs/child"}},
+	})
+	if err != nil {
+		t.Fatalf("above: %v", err)
+	}
+	// Stored URIs that are prefixes of the search value: the cs and cs/child.
+	if above.Total != 2 {
+		t.Errorf("url:above=http://acme.org/cs/child: expected 2, got %d", above.Total)
+	}
+}
+
+func TestSearch_UnsupportedTokenModifier(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+
+	_, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"gender:above": {"x"}},
+	})
+	var unsup *store.UnsupportedParamError
+	if !errors.As(err, &unsup) {
+		t.Fatalf("expected UnsupportedParamError for token :above, got %v", err)
+	}
+}
+
 func TestSearch_Pagination(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

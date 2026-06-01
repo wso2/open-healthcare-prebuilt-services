@@ -230,25 +230,38 @@ func (b *queryBuilder) applySearchParam(param, modifier, value string) {
 		return
 	}
 
-	// OR: comma-separated
-	parts := strings.Split(value, ",")
-	if len(parts) > 1 {
-		var ors []string
-		for _, p := range parts {
-			cond, ok := b.buildExistsForValue(param, modifier, strings.TrimSpace(p))
-			if ok {
-				ors = append(ors, fmt.Sprintf("EXISTS (%s)", cond))
-			}
-		}
-		if len(ors) > 0 {
-			b.and("(" + strings.Join(ors, " OR ") + ")")
+	// :not negates the match: the resource must have NO value satisfying the
+	// (comma-OR'd) criteria. Build the positive condition with the modifier
+	// cleared, then negate the whole thing.
+	if modifier == "not" {
+		if expr := b.combinedExists(param, "", value); expr != "" {
+			b.and("NOT " + expr)
 		}
 		return
 	}
 
-	cond, ok := b.buildExistsForValue(param, modifier, value)
-	if ok {
-		b.and(fmt.Sprintf("EXISTS (%s)", cond))
+	if expr := b.combinedExists(param, modifier, value); expr != "" {
+		b.and(expr)
+	}
+}
+
+// combinedExists builds the EXISTS predicate for a (possibly comma-separated)
+// value, OR-joining the parts. Returns "" when no part produced a condition.
+func (b *queryBuilder) combinedExists(param, modifier, value string) string {
+	var ors []string
+	for _, p := range strings.Split(value, ",") {
+		cond, ok := b.buildExistsForValue(param, modifier, strings.TrimSpace(p))
+		if ok {
+			ors = append(ors, fmt.Sprintf("EXISTS (%s)", cond))
+		}
+	}
+	switch len(ors) {
+	case 0:
+		return ""
+	case 1:
+		return ors[0]
+	default:
+		return "(" + strings.Join(ors, " OR ") + ")"
 	}
 }
 
@@ -273,6 +286,14 @@ func (b *queryBuilder) buildTypedExists(paramType, param, modifier, value string
 	case "string":
 		return b.buildStringExists(param, modifier, value), true
 	case "token":
+		// :above/:below/:in/:not-in walk a code-system or ValueSet hierarchy and
+		// :of-type matches Identifier.type — all of which need terminology or
+		// type indexing we don't have here. Fail closed rather than mismatch.
+		switch modifier {
+		case "above", "below", "in", "not-in", "of-type":
+			b.err = &UnsupportedParamError{Msg: fmt.Sprintf("modifier :%s on token param %q is not supported by the repository (needs a terminology server)", modifier, param)}
+			return "", false
+		}
 		return b.buildTokenExists(param, modifier, value), true
 	case "date", "dateTime", "instant", "Period":
 		return b.buildDateExists(param, value), true
@@ -357,6 +378,12 @@ func (b *queryBuilder) buildStringExists(param, modifier, value string) string {
 func (b *queryBuilder) buildTokenExists(param, modifier, value string) string {
 	rtP := b.next(b.rt)
 	pP := b.next(param)
+	// :text matches the human-readable display/text of the token (case-insensitive
+	// substring), not its code.
+	if modifier == "text" {
+		vP := b.next("%" + strings.ToLower(value) + "%")
+		return fmt.Sprintf("SELECT 1 FROM sp_token s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND LOWER(s.display) LIKE %s", rtP, pP, vP)
+	}
 	parts := strings.SplitN(value, "|", 2)
 	if len(parts) == 2 {
 		sys, code := parts[0], parts[1]
@@ -521,13 +548,36 @@ func (b *queryBuilder) buildQuantityExists(param, value string) string {
 	return q
 }
 
-// buildURIExists matches a uri param against sp_uri (exact match). The :above /
-// :below hierarchy modifiers are not yet handled.
-func (b *queryBuilder) buildURIExists(param, _, value string) string {
+// buildURIExists matches a uri param against sp_uri. Default is an exact match.
+// :below matches stored URIs at or beneath the search value in the path
+// hierarchy (stored value has the search value as a prefix); :above matches
+// stored URIs at or above it (the stored value is a prefix of the search value).
+func (b *queryBuilder) buildURIExists(param, modifier, value string) string {
 	rtP := b.next(b.rt)
 	pP := b.next(param)
-	vP := b.next(value)
-	return fmt.Sprintf("SELECT 1 FROM sp_uri s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value = %s", rtP, pP, vP)
+	switch modifier {
+	case "below":
+		// Stored value has the search value as a path prefix. LIKE 'prefix%'
+		// uses the text_pattern_ops index; escape the literal's metacharacters.
+		vP := b.next(escapeLike(value) + "%")
+		return fmt.Sprintf("SELECT 1 FROM sp_uri s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value LIKE %s", rtP, pP, vP)
+	case "above":
+		// Stored value is a prefix of the search value. Compared with left()/
+		// length() so the per-row stored value needs no LIKE escaping.
+		vP := b.next(value)
+		return fmt.Sprintf("SELECT 1 FROM sp_uri s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND left(%s, length(s.value)) = s.value", rtP, pP, vP)
+	default:
+		vP := b.next(value)
+		return fmt.Sprintf("SELECT 1 FROM sp_uri s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND s.value = %s", rtP, pP, vP)
+	}
+}
+
+// escapeLike escapes the LIKE metacharacters %, _ and \ in a literal so it can
+// be used as a prefix in a LIKE pattern without the value's own characters
+// acting as wildcards.
+func escapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
 }
 
 // parseSearchReference splits a reference search value into (type, id). It
