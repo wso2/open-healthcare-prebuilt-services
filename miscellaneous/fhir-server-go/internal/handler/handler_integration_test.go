@@ -904,6 +904,44 @@ func TestMetadata_AdvertisesSearchParams(t *testing.T) {
 
 // ─── Patch formats ────────────────────────────────────────────────────────────
 
+// ─── Compartment search ───────────────────────────────────────────────────────
+
+func TestIntegration_CompartmentSearch_Patient_Observation(t *testing.T) {
+	srv := newRealServer(t)
+	patID, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})
+	otherPatID, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})
+
+	// Observation for our patient.
+	iCreate(t, srv, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"subject": map[string]any{"reference": "Patient/" + patID},
+		"code":    map[string]any{"text": "BP"},
+	})
+	// Observation for a different patient — should NOT appear.
+	iCreate(t, srv, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"subject": map[string]any{"reference": "Patient/" + otherPatID},
+		"code":    map[string]any{"text": "HR"},
+	})
+
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/Patient/"+patID+"/Observation", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("compartment search: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	bundle := iJSON(t, resp)
+	if total, _ := bundle["total"].(float64); total != 1 {
+		t.Errorf("Patient/%s/Observation: expected 1, got %v", patID, total)
+	}
+
+	// Unknown compartment type → 404.
+	resp = iDo(t, srv, http.MethodGet, "/fhir/r4/Medication/some-id/Observation", nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown compartment type: want 404, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
 func TestIntegration_JSONPatch_RFC6902(t *testing.T) {
 	srv := newRealServer(t)
 	id, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})

@@ -74,6 +74,11 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, b
 				r.Get("/_history", h.history)
 				r.Get("/_history/{vid}", h.vread)
 				r.Get("/$everything", h.everything)
+
+				// Compartment search: /Patient/{id}/Observation etc.
+				// Determined at runtime by checking if the URL's resourceType
+				// is a known compartment type.
+				r.Get("/{targetResourceType}", h.compartmentSearch)
 			})
 		})
 	})

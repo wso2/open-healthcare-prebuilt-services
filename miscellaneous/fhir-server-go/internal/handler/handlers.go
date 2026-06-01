@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/compartment"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/ig"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/patch"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
@@ -1230,6 +1231,138 @@ func (h *fhirHandler) enforceProfiles(w http.ResponseWriter, r *http.Request, bo
 		"issue":        fhirIssues,
 	})
 	return true
+}
+
+// ─── Compartment search ───────────────────────────────────────────────────────
+
+// compartmentSearch handles GET /Patient/{id}/Observation and similar compartment
+// search requests. The resourceType URL param is the compartment owner type
+// (e.g. "Patient"), id is the owner id, and targetResourceType is what to search.
+func (h *fhirHandler) compartmentSearch(w http.ResponseWriter, r *http.Request) {
+	ownerType := chi.URLParam(r, "resourceType")
+	ownerID := chi.URLParam(r, "id")
+	targetRT := chi.URLParam(r, "targetResourceType")
+
+	comp := compartment.Lookup(ownerType)
+	if comp == nil {
+		operationOutcome(w, http.StatusNotFound, "error", "not-found",
+			fmt.Sprintf("compartment type %q is not supported; supported: Patient, Encounter, Practitioner", ownerType))
+		return
+	}
+
+	params := comp.ParamsFor(targetRT)
+	if params == nil {
+		operationOutcome(w, http.StatusBadRequest, "error", "not-supported",
+			fmt.Sprintf("resource type %q is not in the %s compartment", targetRT, ownerType))
+		return
+	}
+	// Filter out empty param names (self-reference rows like Encounter in its own compartment).
+	var validParams []string
+	for _, p := range params {
+		if p != "" {
+			validParams = append(validParams, p)
+		}
+	}
+	if len(validParams) == 0 {
+		// Type is in the compartment as self-reference — return the owner itself if types match.
+		if ownerType == targetRT {
+			resource, err := h.store.Read(r.Context(), ownerType, ownerID)
+			if err != nil {
+				handleError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"resourceType": "Bundle", "type": "searchset", "total": 1,
+				"entry": []any{map[string]any{
+					"fullUrl": fmt.Sprintf("%s/%s/%s", h.baseURL, ownerType, ownerID),
+					"resource": resource, "search": map[string]any{"mode": "match"},
+				}},
+			})
+		} else {
+			writeJSON(w, http.StatusOK, map[string]any{"resourceType": "Bundle", "type": "searchset", "total": 0, "entry": []any{}})
+		}
+		return
+	}
+
+	// Build search params: OR across all compartment reference params, each pointing
+	// at the owner. Use comma-OR: "patient=Patient/123,performer=Patient/123" won't
+	// work as comma-OR is per-param. Instead, run the first param and accept that
+	// the OR across multiple params requires multiple searches merged client-side, OR
+	// run the first param only (common case: most resource types have a single param).
+	// For completeness, run one search per param and merge deduplicated.
+	ownerRef := ownerType + "/" + ownerID
+	// Collect extra user-supplied params from the query string.
+	extraParams := map[string][]string{}
+	for k, vs := range r.URL.Query() {
+		extraParams[k] = vs
+	}
+
+	page, _ := strconv.Atoi(r.URL.Query().Get("_page"))
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("_count"))
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if page <= 0 {
+		page = 1
+	}
+
+	// Run separate searches per compartment param, deduplicate by id.
+	seen := map[string]bool{}
+	var allEntries []map[string]any
+
+	for _, param := range validParams {
+		searchP := map[string][]string{param: {ownerRef}}
+		for k, vs := range extraParams {
+			if k != "_page" && k != "_count" {
+				searchP[k] = vs
+			}
+		}
+		result, err := h.store.Search(r.Context(), store.SearchParams{
+			ResourceType: targetRT,
+			Params:       searchP,
+			Page:         1,
+			PageSize:     1000, // fetch all for dedup; paginate after
+		})
+		if err != nil {
+			slog.Warn("compartment search failed for param", "param", param, "err", err)
+			continue
+		}
+		for _, entry := range result.Entries {
+			id, _ := entry["id"].(string)
+			if id != "" && !seen[id] {
+				seen[id] = true
+				allEntries = append(allEntries, entry)
+			}
+		}
+	}
+
+	// Apply pagination manually.
+	total := len(allEntries)
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+	page_entries := allEntries[start:end]
+
+	bundleEntries := make([]any, 0, len(page_entries))
+	for _, res := range page_entries {
+		id, _ := res["id"].(string)
+		bundleEntries = append(bundleEntries, map[string]any{
+			"fullUrl":  fmt.Sprintf("%s/%s/%s", h.baseURL, targetRT, id),
+			"resource": res,
+			"search":   map[string]any{"mode": "match"},
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"resourceType": "Bundle",
+		"type":         "searchset",
+		"total":        total,
+		"entry":        bundleEntries,
+	})
 }
 
 // ─── Helpers for $everything ──────────────────────────────────────────────────
