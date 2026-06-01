@@ -1118,6 +1118,7 @@ var universalSearchParams = []struct {
 	{"_security", "token"},
 	{"_source", "uri"},
 	{"_language", "token"},
+	{"_list", "reference"},
 }
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────

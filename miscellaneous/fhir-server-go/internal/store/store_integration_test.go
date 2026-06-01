@@ -798,6 +798,35 @@ func TestSearch_Chained(t *testing.T) {
 	}
 }
 
+func TestSearch_List(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	p1, _ := s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+	p2, _ := s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"}) // not in list
+
+	list, _ := s.Create(ctx, "List", map[string]any{
+		"resourceType": "List", "status": "current", "mode": "working",
+		"entry": []any{
+			map[string]any{"item": map[string]any{"reference": "Patient/" + p1["id"].(string)}},
+			map[string]any{"item": map[string]any{"reference": "Patient/" + p2["id"].(string)}},
+		},
+	})
+	listID := list["id"].(string)
+
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_list": {listID}},
+	})
+	if err != nil {
+		t.Fatalf("_list search: %v", err)
+	}
+	if res.Total != 2 {
+		t.Errorf("_list: expected 2, got %d", res.Total)
+	}
+}
+
 func TestSearch_Filter(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

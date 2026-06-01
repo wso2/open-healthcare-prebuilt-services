@@ -54,6 +54,27 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 	}
 	offset := (sp.Page - 1) * sp.PageSize
 
+	// _list=<id>: resolve the named List resource and inject its entry IDs as
+	// additional _id filters so only listed resources are returned.
+	if listIDs, ok := sp.Params["_list"]; ok && len(listIDs) > 0 {
+		ids, err := s.resolveListIDs(ctx, listIDs)
+		if err != nil {
+			return SearchResult{}, err
+		}
+		if len(ids) == 0 {
+			return SearchResult{Total: 0}, nil
+		}
+		params := make(map[string][]string, len(sp.Params))
+		for k, v := range sp.Params {
+			if k != "_list" {
+				params[k] = v
+			}
+		}
+		// Inject as a single comma-joined value so _id's comma-OR logic applies.
+		params["_id"] = []string{strings.Join(ids, ",")}
+		sp.Params = params
+	}
+
 	b := &queryBuilder{rt: sp.ResourceType, reg: s.registry}
 	b.writeBase()
 
@@ -111,6 +132,44 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 	}
 
 	return result, nil
+}
+
+// resolveListIDs fetches the List resources named by listIDs and returns the
+// set of resource IDs they reference via entry[].item.reference. The returned
+// IDs are the bare resource IDs (e.g. "abc-123", not "Patient/abc-123").
+func (s *Store) resolveListIDs(ctx context.Context, listIDs []string) ([]string, error) {
+	seen := map[string]bool{}
+	var out []string
+	for _, listID := range listIDs {
+		list, err := s.Read(ctx, "List", listID)
+		if err != nil {
+			return nil, fmt.Errorf("_list: read List/%s: %w", listID, err)
+		}
+		entries, _ := list["entry"].([]any)
+		for _, raw := range entries {
+			entry, _ := raw.(map[string]any)
+			if entry == nil {
+				continue
+			}
+			item, _ := entry["item"].(map[string]any)
+			if item == nil {
+				continue
+			}
+			ref, _ := item["reference"].(string)
+			if ref == "" {
+				continue
+			}
+			// Strip resource type prefix: "Patient/123" → "123", bare "123" stays.
+			if idx := strings.LastIndex(ref, "/"); idx >= 0 {
+				ref = ref[idx+1:]
+			}
+			if ref != "" && !seen[ref] {
+				seen[ref] = true
+				out = append(out, ref)
+			}
+		}
+	}
+	return out, nil
 }
 
 // resolveIncludes fetches include/revinclude resources for a set of matched entries.
@@ -200,8 +259,18 @@ func (b *queryBuilder) applyParam(rawKey, value string) {
 
 	switch paramName {
 	case "_id":
-		p := b.next(value)
-		b.and(fmt.Sprintf("r.fhir_id = %s", p))
+		parts := strings.Split(value, ",")
+		if len(parts) == 1 {
+			p := b.next(strings.TrimSpace(value))
+			b.and(fmt.Sprintf("r.fhir_id = %s", p))
+		} else {
+			var ors []string
+			for _, part := range parts {
+				p := b.next(strings.TrimSpace(part))
+				ors = append(ors, fmt.Sprintf("r.fhir_id = %s", p))
+			}
+			b.and("(" + strings.Join(ors, " OR ") + ")")
+		}
 	case "_lastUpdated":
 		b.applyLastUpdated(value)
 	case "_text", "_content":
@@ -211,7 +280,7 @@ func (b *queryBuilder) applyParam(rawKey, value string) {
 		b.addSort(value)
 	case "_filter":
 		b.applyFilter(value)
-	case "_count", "_page", "_include", "_revinclude", "_format", "_summary", "_elements", "_total":
+	case "_count", "_page", "_include", "_revinclude", "_format", "_summary", "_elements", "_total", "_list":
 		// control params — handled at the HTTP layer
 	default:
 		b.applySearchParam(paramName, modifier, value)
