@@ -818,14 +818,15 @@ func TestSearch_Chained(t *testing.T) {
 		t.Errorf("Encounter?patient.family=Targaryen: expected 1, got %d", inferred.Total)
 	}
 
-	// Multi-hop is rejected (fail closed).
+	// Multi-hop now works (see TestSearch_MultiHopChain for the full test).
+	// Just confirm it doesn't error on a 2-hop chain — TestSearch_MultiHopChain
+	// tests correctness.
 	_, err = s.Search(ctx, store.SearchParams{
 		ResourceType: "Patient",
 		Params:       map[string][]string{"organization.partof.name": {"x"}},
 	})
-	var unsup *store.UnsupportedParamError
-	if !errors.As(err, &unsup) {
-		t.Errorf("expected UnsupportedParamError for multi-hop chain, got %v", err)
+	if err != nil {
+		t.Errorf("multi-hop chain should not error (returns 0 results), got %v", err)
 	}
 }
 
