@@ -209,6 +209,8 @@ func (b *queryBuilder) applyParam(rawKey, value string) {
 		b.and(fmt.Sprintf("r.search_text @@ plainto_tsquery('english', %s)", p))
 	case "_sort":
 		b.addSort(value)
+	case "_filter":
+		b.applyFilter(value)
 	case "_count", "_page", "_include", "_revinclude", "_format", "_summary", "_elements", "_total":
 		// control params — handled at the HTTP layer
 	default:

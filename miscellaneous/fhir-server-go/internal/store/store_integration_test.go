@@ -798,6 +798,51 @@ func TestSearch_Chained(t *testing.T) {
 	}
 }
 
+func TestSearch_Filter(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "female", "active": true})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "male", "active": true})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "female", "active": false})
+
+	// eq filter: gender eq female → 2 results.
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_filter": {"gender eq female"}},
+	})
+	if err != nil {
+		t.Fatalf("_filter gender eq female: %v", err)
+	}
+	if res.Total != 2 {
+		t.Errorf("gender eq female: expected 2, got %d", res.Total)
+	}
+
+	// and combiner: gender eq female and active eq true → 1 result.
+	res, err = s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_filter": {"gender eq female and active eq true"}},
+	})
+	if err != nil {
+		t.Fatalf("_filter and: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("gender eq female and active eq true: expected 1, got %d", res.Total)
+	}
+
+	// ne: gender ne female → 1 result (the male).
+	res, err = s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_filter": {"gender ne female"}},
+	})
+	if err != nil {
+		t.Fatalf("_filter ne: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("gender ne female: expected 1 (male), got %d", res.Total)
+	}
+}
+
 func TestSearch_Pagination(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
