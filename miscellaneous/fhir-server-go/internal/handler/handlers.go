@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/ig"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/validate"
 )
 
 // pageQuery returns an encoded query string that preserves all of `params`
@@ -521,6 +522,12 @@ func (h *fhirHandler) create(w http.ResponseWriter, r *http.Request) {
 		// count == 0 → fall through to a normal create.
 	}
 
+	if h.validateOnWrite {
+		if stop := h.enforceProfiles(w, r, body); stop {
+			return
+		}
+	}
+
 	resource, err := h.store.Create(r.Context(), rt, body)
 	if err != nil {
 		slog.Error("create failed", "resourceType", rt, "err", err)
@@ -583,6 +590,12 @@ func (h *fhirHandler) update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ifMatchVersion = v
+	}
+
+	if h.validateOnWrite {
+		if stop := h.enforceProfiles(w, r, body); stop {
+			return
+		}
 	}
 
 	resource, err := h.store.Update(r.Context(), rt, id, body, ifMatchVersion)
@@ -874,19 +887,72 @@ func (h *fhirHandler) validate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if msg := validateRequiredFields(rt, body); msg != "" {
-		operationOutcome(w, http.StatusUnprocessableEntity, "error", "required", msg)
+	// Determine which profiles to validate against:
+	//   ?profile=<url>  → the named profile only
+	//   no param        → all profiles declared in meta.profile on the resource
+	var profileURLs []string
+	if p := r.URL.Query().Get("profile"); p != "" {
+		profileURLs = []string{p}
+	} else if meta, ok := body["meta"].(map[string]any); ok {
+		if profs, ok := meta["profile"].([]any); ok {
+			for _, pr := range profs {
+				if s, ok := pr.(string); ok && s != "" {
+					profileURLs = append(profileURLs, s)
+				}
+			}
+		}
+	}
+
+	issues := h.validateAgainstProfiles(r, body, profileURLs)
+	if len(issues) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"resourceType": "OperationOutcome",
+			"issue": []any{map[string]any{
+				"severity":    "information",
+				"code":        "informational",
+				"diagnostics": "Resource is valid",
+			}},
+		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	fhirIssues := make([]any, 0, len(issues))
+	for _, iss := range issues {
+		fhirIssues = append(fhirIssues, map[string]any{
+			"severity":    iss.Severity,
+			"code":        iss.Code,
+			"diagnostics": iss.Diagnostics,
+			"expression":  []string{iss.Expression},
+		})
+	}
+	writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 		"resourceType": "OperationOutcome",
-		"issue": []any{map[string]any{
-			"severity":    "information",
-			"code":        "informational",
-			"diagnostics": "Resource is valid",
-		}},
+		"issue":        fhirIssues,
 	})
+}
+
+// validateAgainstProfiles looks up each profile URL in ig_profiles and runs
+// the StructureDefinition validator. Returns an empty slice when no profiles
+// are loaded (soft-fail: unrecognised profiles are skipped with a warning).
+func (h *fhirHandler) validateAgainstProfiles(r *http.Request, resource map[string]any, profileURLs []string) []validate.Issue {
+	if h.pool == nil || len(profileURLs) == 0 {
+		return nil
+	}
+	ctx := r.Context()
+	var all []validate.Issue
+	for _, profileURL := range profileURLs {
+		sd, err := ig.LookupProfile(ctx, h.pool, profileURL)
+		if err != nil {
+			slog.Warn("profile lookup failed", "url", profileURL, "err", err)
+			continue
+		}
+		if sd == nil {
+			slog.Debug("profile not loaded, skipping validation", "url", profileURL)
+			continue
+		}
+		all = append(all, validate.AgainstProfile(resource, sd)...)
+	}
+	return all
 }
 
 // universalSearchParams are the search params the store implements for every
@@ -1030,6 +1096,43 @@ func validateRequiredFields(rt string, body map[string]any) string {
 		}
 	}
 	return ""
+}
+
+// enforceProfiles runs profile validation on a write (create/update) when
+// validateOnWrite is enabled. Writes the OperationOutcome and returns true
+// when the caller should abort. Profiles are taken from meta.profile.
+func (h *fhirHandler) enforceProfiles(w http.ResponseWriter, r *http.Request, body map[string]any) bool {
+	var profileURLs []string
+	if meta, ok := body["meta"].(map[string]any); ok {
+		if profs, ok := meta["profile"].([]any); ok {
+			for _, pr := range profs {
+				if s, ok := pr.(string); ok && s != "" {
+					profileURLs = append(profileURLs, s)
+				}
+			}
+		}
+	}
+	if len(profileURLs) == 0 {
+		return false
+	}
+	issues := h.validateAgainstProfiles(r, body, profileURLs)
+	if len(issues) == 0 {
+		return false
+	}
+	fhirIssues := make([]any, 0, len(issues))
+	for _, iss := range issues {
+		fhirIssues = append(fhirIssues, map[string]any{
+			"severity":    iss.Severity,
+			"code":        iss.Code,
+			"diagnostics": iss.Diagnostics,
+			"expression":  []string{iss.Expression},
+		})
+	}
+	writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+		"resourceType": "OperationOutcome",
+		"issue":        fhirIssues,
+	})
+	return true
 }
 
 // ─── Helpers for $everything ──────────────────────────────────────────────────

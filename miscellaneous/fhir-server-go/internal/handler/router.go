@@ -11,13 +11,17 @@ import (
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/searchparam"
 )
 
-func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, baseURL string, igReady *atomic.Int32) http.Handler {
+// NewRouter constructs the chi router. validateOnWrite enables profile
+// validation on create/update (default off in production; controlled by
+// FHIR_VALIDATE_ON_WRITE).
+func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, baseURL string, igReady *atomic.Int32, validateOnWrite ...bool) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
 
-	h := &fhirHandler{store: s, pool: pool, registry: registry, baseURL: baseURL, igReady: igReady}
+	vow := len(validateOnWrite) > 0 && validateOnWrite[0]
+	h := &fhirHandler{store: s, pool: pool, registry: registry, baseURL: baseURL, igReady: igReady, validateOnWrite: vow}
 
 	// Health probes
 	r.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
@@ -69,9 +73,10 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, b
 }
 
 type fhirHandler struct {
-	store    StoreAPI
-	pool     *pgxpool.Pool
-	registry *searchparam.Registry
-	baseURL  string
-	igReady  *atomic.Int32
+	store           StoreAPI
+	pool            *pgxpool.Pool
+	registry        *searchparam.Registry
+	baseURL         string
+	igReady         *atomic.Int32
+	validateOnWrite bool // enforce profile validation on create/update when true
 }

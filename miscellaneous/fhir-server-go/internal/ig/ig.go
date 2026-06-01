@@ -172,16 +172,20 @@ func LoadPackage(
 		}
 	}
 
-	// Persist StructureDefinition profiles
+	// Persist StructureDefinition profiles (with full SD JSON for validation).
 	for _, profile := range pkg.Profiles {
 		if profile.URL == "" || profile.Kind != "resource" || profile.Derivation != "constraint" {
 			continue
 		}
+		var sdJSON []byte
+		if profile.RawJSON != nil {
+			sdJSON, _ = json.Marshal(profile.RawJSON)
+		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO ig_profiles (package_name, profile_url, resource_type)
-			VALUES ($1, $2, $3)
-			ON CONFLICT (profile_url) DO NOTHING`,
-			name, profile.URL, profile.BaseType,
+			INSERT INTO ig_profiles (package_name, profile_url, resource_type, sd_json)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (profile_url) DO UPDATE SET sd_json = EXCLUDED.sd_json`,
+			name, profile.URL, profile.BaseType, sdJSON,
 		); err != nil {
 			return nil, fmt.Errorf("insert ig_profiles (%s): %w", profile.URL, err)
 		}
@@ -237,6 +241,27 @@ func SupportedProfiles(ctx context.Context, pool *pgxpool.Pool) (map[string][]st
 		m[rt] = append(m[rt], url)
 	}
 	return m, rows.Err()
+}
+
+// LookupProfile retrieves the full StructureDefinition JSON for the given
+// profile URL. Returns (nil, nil) when no such profile is loaded.
+func LookupProfile(ctx context.Context, pool *pgxpool.Pool, profileURL string) (map[string]any, error) {
+	var raw []byte
+	err := pool.QueryRow(ctx,
+		`SELECT sd_json FROM ig_profiles WHERE profile_url = $1 AND sd_json IS NOT NULL`,
+		profileURL,
+	).Scan(&raw)
+	if err != nil {
+		if strings.Contains(err.Error(), "no rows") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var sd map[string]any
+	if err := json.Unmarshal(raw, &sd); err != nil {
+		return nil, err
+	}
+	return sd, nil
 }
 
 // ─── Spec parsing ─────────────────────────────────────────────────────────────
@@ -338,10 +363,11 @@ type fhirSearchParam struct {
 }
 
 type fhirProfile struct {
-	URL        string `json:"url"`
-	Kind       string `json:"kind"`       // "resource", "complex-type", etc.
-	Derivation string `json:"derivation"` // "constraint" = a profile
-	BaseType   string `json:"type"`       // e.g. "Patient"
+	URL        string         `json:"url"`
+	Kind       string         `json:"kind"`       // "resource", "complex-type", etc.
+	Derivation string         `json:"derivation"` // "constraint" = a profile
+	BaseType   string         `json:"type"`       // e.g. "Patient"
+	RawJSON    map[string]any // full StructureDefinition for validation
 }
 
 func parsePackage(data []byte) (*fhirPackage, error) {
@@ -429,6 +455,7 @@ func parsePackage(data []byte) (*fhirPackage, error) {
 			profile.Kind, _ = m["kind"].(string)
 			profile.Derivation, _ = m["derivation"].(string)
 			profile.BaseType, _ = m["type"].(string)
+			profile.RawJSON = m
 			if profile.URL != "" {
 				pkg.Profiles = append(pkg.Profiles, profile)
 			}

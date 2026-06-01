@@ -453,17 +453,107 @@ func TestIntegration_Validate_Valid(t *testing.T) {
 	}
 }
 
-func TestIntegration_Validate_Invalid_MissingRequired(t *testing.T) {
+func TestIntegration_Validate_NoProfileLoaded_Passes(t *testing.T) {
+	// $validate with no profile loaded is soft-fail: returns 200 informational.
+	// Real enforcement happens only when a StructureDefinition is in ig_profiles.
 	srv := newRealServer(t)
-
-	// Observation without code
 	resp := iDo(t, srv, http.MethodPost, "/fhir/r4/Observation/$validate",
 		map[string]any{"resourceType": "Observation", "status": "final"},
 	)
 	body := iJSON(t, resp)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("want 422, got %d: %v", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 (no profile loaded), got %d: %v", resp.StatusCode, body)
 	}
+}
+
+func TestIntegration_Validate_ProfileDriven(t *testing.T) {
+	pool := testutil.MustSeededDB(t)
+	// Inject a synthetic StructureDefinition that requires Patient.name (min=1).
+	sd := map[string]any{
+		"resourceType": "StructureDefinition",
+		"url":          "http://example.org/fhir/StructureDefinition/must-have-name",
+		"kind":         "resource", "derivation": "constraint", "type": "Patient",
+		"snapshot": map[string]any{"element": []any{
+			map[string]any{"path": "Patient", "min": float64(1), "max": "*"},
+			map[string]any{"path": "Patient.name", "min": float64(1), "max": "*"},
+		}},
+	}
+	sdJSON, _ := json.Marshal(sd)
+	_, err := pool.Exec(
+		t.Context(),
+		`INSERT INTO ig_profiles (package_name, profile_url, resource_type, sd_json)
+		 VALUES ('test', 'http://example.org/fhir/StructureDefinition/must-have-name', 'Patient', $1)
+		 ON CONFLICT (profile_url) DO UPDATE SET sd_json = EXCLUDED.sd_json`,
+		sdJSON,
+	)
+	if err != nil {
+		t.Fatalf("inject profile: %v", err)
+	}
+
+	reg := testutil.MustRegistry(t, pool)
+	s := store.New(pool, reg)
+	var ready atomic.Int32
+	ready.Store(1)
+	srv := httptest.NewServer(handler.NewRouter(s, pool, reg, "http://test-server/fhir/r4", &ready))
+	t.Cleanup(srv.Close)
+
+	profileURL := "http://example.org/fhir/StructureDefinition/must-have-name"
+
+	// Validate with ?profile=: invalid (missing name) → 422.
+	resp := iDo(t, srv, http.MethodPost, "/fhir/r4/Patient/$validate?profile="+profileURL,
+		map[string]any{"resourceType": "Patient"},
+	)
+	body := iJSON(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for profile violation, got %d: %v", resp.StatusCode, body)
+	}
+	issues, _ := body["issue"].([]any)
+	if len(issues) == 0 {
+		t.Fatal("expected at least one validation issue")
+	}
+
+	// Validate with meta.profile: valid (name present) → 200.
+	resp = iDo(t, srv, http.MethodPost, "/fhir/r4/Patient/$validate",
+		map[string]any{
+			"resourceType": "Patient",
+			"name":         []any{map[string]any{"family": "OK"}},
+			"meta":         map[string]any{"profile": []any{profileURL}},
+		},
+	)
+	body = iJSON(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 for valid resource, got %d: %v", resp.StatusCode, body)
+	}
+
+	// Auto-validate on write (validateOnWrite=true): create without name → 422.
+	srvStrict := httptest.NewServer(handler.NewRouter(s, pool, reg, "http://test-server/fhir/r4", &ready, true))
+	t.Cleanup(srvStrict.Close)
+
+	resp = iDo(t, srvStrict, http.MethodPost, "/fhir/r4/Patient",
+		map[string]any{
+			"resourceType": "Patient",
+			"meta":         map[string]any{"profile": []any{profileURL}},
+		},
+	)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		body = iJSON(t, resp)
+		t.Fatalf("auto-validate: want 422, got %d: %v", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+
+	// Auto-validate on write: create with name → 201.
+	resp = iDo(t, srvStrict, http.MethodPost, "/fhir/r4/Patient",
+		map[string]any{
+			"resourceType": "Patient",
+			"name":         []any{map[string]any{"family": "Valid"}},
+			"meta":         map[string]any{"profile": []any{profileURL}},
+		},
+	)
+	if resp.StatusCode != http.StatusCreated {
+		body = iJSON(t, resp)
+		t.Fatalf("auto-validate: want 201 for valid write, got %d: %v", resp.StatusCode, body)
+	}
+	resp.Body.Close()
 }
 
 func TestIntegration_Validate_415_WrongContentType(t *testing.T) {

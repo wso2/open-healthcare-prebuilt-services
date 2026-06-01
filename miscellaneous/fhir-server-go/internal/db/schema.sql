@@ -246,12 +246,16 @@ CREATE TABLE IF NOT EXISTS ig_packages (
 );
 
 CREATE TABLE IF NOT EXISTS ig_profiles (
-    id            SERIAL PRIMARY KEY,
-    package_name  TEXT   NOT NULL,
-    profile_url   TEXT   NOT NULL,
-    resource_type TEXT   NOT NULL DEFAULT '',
+    id            SERIAL  PRIMARY KEY,
+    package_name  TEXT    NOT NULL,
+    profile_url   TEXT    NOT NULL,
+    resource_type TEXT    NOT NULL DEFAULT '',
+    sd_json       JSONB,
     UNIQUE (profile_url)
 );
+
+-- Idempotent migration: add sd_json to existing deployments.
+ALTER TABLE ig_profiles ADD COLUMN IF NOT EXISTS sd_json JSONB;
 
 -- ─── FHIR Terminology: closure tables ─────────────────────────────────────────
 -- Unchanged from previous schema version.

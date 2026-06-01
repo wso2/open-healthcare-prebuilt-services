@@ -86,7 +86,7 @@ func run() error {
 		igReady.Store(1)
 	}
 
-	router := handler.NewRouter(s, pool, registry, cfg.BaseURL, &igReady)
+	router := handler.NewRouter(s, pool, registry, cfg.BaseURL, &igReady, cfg.ValidateOnWrite)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
