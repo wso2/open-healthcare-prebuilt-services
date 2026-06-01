@@ -507,16 +507,25 @@ func parseChain(paramName, modifier string) (ref, targetType, targetParam, targe
 // `targetParam`=value. The inner match reuses the normal value builders by
 // shadowing the `r` alias with the target resource inside an IN-subquery.
 func (b *queryBuilder) applyChained(ref, targetType, targetParam, targetModifier, value string) {
-	// Multi-hop (a.b.c) is not supported yet; fail closed rather than silently
-	// matching nothing.
-	if strings.Contains(targetParam, ".") {
-		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("multi-hop chained search %q is not supported", ref+"."+targetParam)}
-		return
+	cond := b.buildChainedCondition(b.rt, ref, targetType, targetParam, targetModifier, value, 0)
+	if cond != "" {
+		b.and(cond)
+	}
+}
+
+const maxChainDepth = 5 // prevent pathological queries
+
+// buildChainedCondition builds the EXISTS…IN SQL fragment for one hop of a
+// chained search, recursing for multi-hop chains.
+// sourceType is the type of the resource at the current hop (the one we're
+// filtering by the sp_reference table).
+func (b *queryBuilder) buildChainedCondition(sourceType, ref, targetType, targetParam, targetModifier, value string, depth int) string {
+	if depth > maxChainDepth {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("chained search exceeds maximum depth %d", maxChainDepth)}
+		return ""
 	}
 
-	// Resolve the target type. When it isn't given explicitly, infer it from the
-	// reference param name (organization → Organization); if that isn't a known
-	// type, require the explicit ref:Type.param form.
+	// Resolve the target type for this hop.
 	if targetType == "" {
 		guess := strings.ToUpper(ref[:1]) + ref[1:]
 		if b.reg != nil && len(b.reg.ForResource(guess)) > 0 {
@@ -524,30 +533,57 @@ func (b *queryBuilder) applyChained(ref, targetType, targetParam, targetModifier
 		}
 	}
 	if targetType == "" {
-		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("chained search %q requires an explicit target type, e.g. %s:Type.%s=…", ref+"."+targetParam, ref, targetParam)}
-		return
+		// Try to infer from the registry Targets of the ref param.
+		if b.reg != nil {
+			if def, ok := b.reg.Lookup(sourceType, ref); ok && len(def.Targets) == 1 {
+				targetType = def.Targets[0]
+			}
+		}
+	}
+	if targetType == "" {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("chained search: cannot infer target type for %s.%s — use explicit Type, e.g. %s:Type.%s", sourceType, ref, ref, targetParam)}
+		return ""
 	}
 
 	refP := b.next(ref)
-	rtP := b.next(b.rt)
+	stP := b.next(sourceType)
 	ttP := b.next(targetType)
 
-	// Build the inner target predicate against targetType. Temporarily switch
-	// b.rt so registry lookups and the s.resource_type filter target the right
-	// type; the generated SQL correlates on alias r, which the IN-subquery's
-	// `resources r` shadows to mean the target resource.
+	// If targetParam still contains a dot, this is a further hop.
+	if dot := strings.IndexByte(targetParam, '.'); dot >= 0 {
+		nextRef := targetParam[:dot]
+		rest := targetParam[dot+1:]
+		// Determine next explicit type from the modifier if present.
+		nextType, nextParam := "", rest
+		if i := strings.IndexByte(rest, '.'); i >= 0 {
+			// rest could be "nextType.finalParam" if we were given explicit types
+			// but that's handled by the outer parseChain — here rest is just the
+			// remaining chain without type qualifiers.
+			_ = i
+		}
+		inner := b.buildChainedCondition(targetType, nextRef, nextType, nextParam, targetModifier, value, depth+1)
+		if inner == "" {
+			return ""
+		}
+		return fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM sp_reference sr WHERE sr.resource_id = r.fhir_id AND sr.resource_type = %s AND sr.param_name = %s AND sr.target_type = %s AND sr.target_id IN (SELECT r.fhir_id FROM resources r WHERE r.is_deleted = FALSE AND r.resource_type = %s AND %s))",
+			stP, refP, ttP, ttP, inner,
+		)
+	}
+
+	// Leaf hop: build the value predicate on the final target type.
 	saved := b.rt
 	b.rt = targetType
 	inner := b.combinedExists(targetParam, targetModifier, value)
 	b.rt = saved
 	if inner == "" {
-		return
+		return ""
 	}
 
-	b.and(fmt.Sprintf(
+	return fmt.Sprintf(
 		"EXISTS (SELECT 1 FROM sp_reference sr WHERE sr.resource_id = r.fhir_id AND sr.resource_type = %s AND sr.param_name = %s AND sr.target_type = %s AND sr.target_id IN (SELECT r.fhir_id FROM resources r WHERE r.is_deleted = FALSE AND r.resource_type = %s AND %s))",
-		rtP, refP, ttP, ttP, inner,
-	))
+		stP, refP, ttP, ttP, inner,
+	)
 }
 
 // combinedExists builds the EXISTS predicate for a (possibly comma-separated)

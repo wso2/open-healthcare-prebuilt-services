@@ -721,6 +721,37 @@ func TestSearch_Has(t *testing.T) {
 	}
 }
 
+func TestSearch_MultiHopChain(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Hierarchy: Patient → org1 (partOf) → org2 "TopOrg"
+	org2, _ := s.Create(ctx, "Organization", map[string]any{"resourceType": "Organization", "name": "TopOrg"})
+	org1, _ := s.Create(ctx, "Organization", map[string]any{
+		"resourceType": "Organization", "name": "SubOrg",
+		"partOf":       map[string]any{"reference": "Organization/" + org2["id"].(string)},
+	})
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType":        "Patient",
+		"name":                []any{map[string]any{"family": "TargetPatient"}},
+		"managingOrganization": map[string]any{"reference": "Organization/" + org1["id"].(string)},
+	})
+	// Unrelated patient with no org link.
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+
+	// Two-hop: Patient?organization.partof.name=TopOrg
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"organization.partof.name": {"TopOrg"}},
+	})
+	if err != nil {
+		t.Fatalf("2-hop chain: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("organization.partof.name=TopOrg: expected 1, got %d", res.Total)
+	}
+}
+
 func TestSearch_Chained(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
