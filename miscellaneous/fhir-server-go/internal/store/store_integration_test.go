@@ -525,6 +525,40 @@ func TestSearch_UnsupportedTokenModifier(t *testing.T) {
 	}
 }
 
+func TestSearch_SeededBinaryAndObservationDefinition(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	s.Create(ctx, "Binary", map[string]any{"resourceType": "Binary", "contentType": "application/pdf"})
+	s.Create(ctx, "Binary", map[string]any{"resourceType": "Binary", "contentType": "image/png"})
+
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Binary",
+		Params:       map[string][]string{"contenttype": {"application/pdf"}},
+	})
+	if err != nil {
+		t.Fatalf("Binary contenttype search: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("Binary?contenttype=application/pdf: expected 1, got %d", res.Total)
+	}
+
+	s.Create(ctx, "ObservationDefinition", map[string]any{
+		"resourceType": "ObservationDefinition",
+		"code":         map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "1234-5"}}},
+	})
+	res, err = s.Search(ctx, store.SearchParams{
+		ResourceType: "ObservationDefinition",
+		Params:       map[string][]string{"code": {"http://loinc.org|1234-5"}},
+	})
+	if err != nil {
+		t.Fatalf("ObservationDefinition code search: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("ObservationDefinition?code=...: expected 1, got %d", res.Total)
+	}
+}
+
 func TestSearch_Pagination(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

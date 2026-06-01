@@ -1705,3 +1705,6 @@ target,VerificationResult,reference,VerificationResult.target
 datewritten,VisionPrescription,date,VisionPrescription.dateWritten
 prescriber,VisionPrescription,reference,VisionPrescription.prescriber
 status,VisionPrescription,token,VisionPrescription.status
+contenttype,Binary,token,Binary.contentType
+code,ObservationDefinition,token,ObservationDefinition.code
+category,ObservationDefinition,token,ObservationDefinition.category
