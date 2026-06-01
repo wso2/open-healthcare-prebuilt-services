@@ -316,8 +316,8 @@ func TestConformance_ErrorOutcomes(t *testing.T) {
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 
-	// Unsupported Content-Type → 415.
-	resp = postRaw(t, "/Patient", `{"resourceType":"Patient"}`, "application/xml")
+	// Unsupported Content-Type (server now accepts JSON and XML; text/plain is still 415).
+	resp = postRaw(t, "/Patient", `{"resourceType":"Patient"}`, "text/plain")
 	wantStatus(t, resp, http.StatusUnsupportedMediaType)
 	resp.Body.Close()
 
