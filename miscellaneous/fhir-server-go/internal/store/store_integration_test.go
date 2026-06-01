@@ -383,6 +383,46 @@ func TestSearch_Sort(t *testing.T) {
 	}
 }
 
+func TestSearch_CountOnly(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+	}
+
+	result, err := s.Search(ctx, store.SearchParams{ResourceType: "Patient", CountOnly: true})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Total != 3 {
+		t.Errorf("_summary=count: expected total=3, got %d", result.Total)
+	}
+	if len(result.Entries) != 0 {
+		t.Errorf("_summary=count: expected no entries, got %d", len(result.Entries))
+	}
+}
+
+func TestSearch_TotalNone_SkipsCount(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+	}
+
+	result, err := s.Search(ctx, store.SearchParams{ResourceType: "Patient", Total: "none"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Total != -1 {
+		t.Errorf("_total=none: expected total=-1 (not computed), got %d", result.Total)
+	}
+	if len(result.Entries) != 3 {
+		t.Errorf("_total=none: expected entries still returned, got %d", len(result.Entries))
+	}
+}
+
 func TestSearch_Pagination(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

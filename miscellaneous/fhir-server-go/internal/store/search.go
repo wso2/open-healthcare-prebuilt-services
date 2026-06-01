@@ -20,9 +20,16 @@ type SearchParams struct {
 	Params       map[string][]string // raw query params
 	Page         int
 	PageSize     int
+	// Total is the _total mode: "none" skips the (potentially expensive) count
+	// query. Any other value (including "") computes an accurate count.
+	Total string
+	// CountOnly is set for _summary=count: compute the total but skip fetching
+	// and including the matching resources.
+	CountOnly bool
 }
 
 type SearchResult struct {
+	// Total is the number of matches, or -1 when not computed (_total=none).
 	Total    int
 	Entries  []map[string]any
 	Included []map[string]any // _include / _revinclude results
@@ -63,10 +70,21 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 		return SearchResult{}, b.err
 	}
 
-	total, err := b.count(ctx, s.pool)
-	if err != nil {
-		slog.Error("search count failed", "resourceType", sp.ResourceType, "err", err)
-		return SearchResult{}, err
+	// _total=none skips the count for performance; _summary=count always needs
+	// it. Total stays -1 (sentinel "not computed") when skipped.
+	total := -1
+	if sp.Total != "none" || sp.CountOnly {
+		n, err := b.count(ctx, s.pool)
+		if err != nil {
+			slog.Error("search count failed", "resourceType", sp.ResourceType, "err", err)
+			return SearchResult{}, err
+		}
+		total = n
+	}
+
+	// _summary=count returns only the total — skip fetching matches and includes.
+	if sp.CountOnly {
+		return SearchResult{Total: total}, nil
 	}
 
 	entries, err := b.fetch(ctx, s.pool, sp.PageSize, offset)

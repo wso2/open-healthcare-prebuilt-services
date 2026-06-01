@@ -153,11 +153,14 @@ func (h *fhirHandler) search(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("_page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("_count"))
 
+	summary, elements := projectionFromParams(params)
 	result, err := h.store.Search(r.Context(), store.SearchParams{
 		ResourceType: rt,
 		Params:       params,
 		Page:         page,
 		PageSize:     pageSize,
+		Total:        firstVal(params, "_total"),
+		CountOnly:    summary == "count",
 	})
 	if err != nil {
 		var unsup *store.UnsupportedParamError
@@ -169,7 +172,7 @@ func (h *fhirHandler) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bundle := h.buildBundle(rt, result, params, page, pageSize)
+	bundle := h.buildBundle(rt, result, params, page, pageSize, summary, elements)
 	writeJSON(w, http.StatusOK, bundle)
 }
 
@@ -194,11 +197,14 @@ func (h *fhirHandler) searchPost(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(firstVal(params, "_page"))
 	pageSize, _ := strconv.Atoi(firstVal(params, "_count"))
 
+	summary, elements := projectionFromParams(params)
 	result, err := h.store.Search(r.Context(), store.SearchParams{
 		ResourceType: rt,
 		Params:       params,
 		Page:         page,
 		PageSize:     pageSize,
+		Total:        firstVal(params, "_total"),
+		CountOnly:    summary == "count",
 	})
 	if err != nil {
 		var unsup *store.UnsupportedParamError
@@ -210,11 +216,11 @@ func (h *fhirHandler) searchPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bundle := h.buildBundle(rt, result, params, page, pageSize)
+	bundle := h.buildBundle(rt, result, params, page, pageSize, summary, elements)
 	writeJSON(w, http.StatusOK, bundle)
 }
 
-func (h *fhirHandler) buildBundle(rt string, result store.SearchResult, params map[string][]string, page, pageSize int) map[string]any {
+func (h *fhirHandler) buildBundle(rt string, result store.SearchResult, params map[string][]string, page, pageSize int, summary string, elements []string) map[string]any {
 	if pageSize <= 0 {
 		pageSize = 20
 	}
@@ -227,7 +233,7 @@ func (h *fhirHandler) buildBundle(rt string, result store.SearchResult, params m
 		id, _ := res["id"].(string)
 		entries = append(entries, map[string]any{
 			"fullUrl":  fmt.Sprintf("%s/%s/%s", h.baseURL, rt, id),
-			"resource": res,
+			"resource": applyProjection(res, summary, elements),
 			"search":   map[string]any{"mode": "match"},
 		})
 	}
@@ -236,30 +242,33 @@ func (h *fhirHandler) buildBundle(rt string, result store.SearchResult, params m
 		id, _ := res["id"].(string)
 		entries = append(entries, map[string]any{
 			"fullUrl":  fmt.Sprintf("%s/%s/%s", h.baseURL, inclRT, id),
-			"resource": res,
+			"resource": applyProjection(res, summary, elements),
 			"search":   map[string]any{"mode": "include"},
 		})
-	}
-
-	lastPage := result.Total / pageSize
-	if result.Total%pageSize != 0 {
-		lastPage++
-	}
-	if lastPage < 1 {
-		lastPage = 1
 	}
 
 	base := fmt.Sprintf("%s/%s", h.baseURL, rt)
 	links := []any{
 		map[string]any{"relation": "self", "url": base + "?" + pageQuery(params, page, pageSize)},
 		map[string]any{"relation": "first", "url": base + "?" + pageQuery(params, 1, pageSize)},
-		map[string]any{"relation": "last", "url": base + "?" + pageQuery(params, lastPage, pageSize)},
 	}
-	if page*pageSize < result.Total {
-		links = append(links, map[string]any{
-			"relation": "next",
-			"url":      base + "?" + pageQuery(params, page+1, pageSize),
-		})
+	// result.Total < 0 means the count was skipped (_total=none): we can't
+	// compute the last page or a count-based next link.
+	if result.Total >= 0 {
+		lastPage := result.Total / pageSize
+		if result.Total%pageSize != 0 {
+			lastPage++
+		}
+		if lastPage < 1 {
+			lastPage = 1
+		}
+		links = append(links, map[string]any{"relation": "last", "url": base + "?" + pageQuery(params, lastPage, pageSize)})
+		if page*pageSize < result.Total {
+			links = append(links, map[string]any{
+				"relation": "next",
+				"url":      base + "?" + pageQuery(params, page+1, pageSize),
+			})
+		}
 	}
 	if page > 1 {
 		links = append(links, map[string]any{
@@ -268,13 +277,111 @@ func (h *fhirHandler) buildBundle(rt string, result store.SearchResult, params m
 		})
 	}
 
-	return map[string]any{
+	bundle := map[string]any{
 		"resourceType": "Bundle",
 		"type":         "searchset",
-		"total":        result.Total,
 		"link":         links,
 		"entry":        entries,
 	}
+	if result.Total >= 0 {
+		bundle["total"] = result.Total
+	}
+	return bundle
+}
+
+// projectionFromParams extracts the _summary mode and the _elements list from
+// the request's query params.
+func projectionFromParams(params map[string][]string) (summary string, elements []string) {
+	summary = firstVal(params, "_summary")
+	if e := firstVal(params, "_elements"); e != "" {
+		for _, p := range strings.Split(e, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				elements = append(elements, p)
+			}
+		}
+	}
+	return
+}
+
+// alwaysKept are the elements every projected resource must retain regardless
+// of _summary / _elements, per the FHIR spec.
+var alwaysKept = map[string]bool{"resourceType": true, "id": true, "meta": true}
+
+// applyProjection returns a view of resource reduced according to _summary and
+// _elements. _elements takes precedence. Any reduced resource is tagged with
+// the SUBSETTED meta tag so clients know not to persist it as authoritative.
+//
+// _summary=true is approximated by dropping the narrative (text) and contained
+// resources: precise per-element summary filtering needs StructureDefinition
+// isSummary flags, which are not yet loaded (tracked for the validation phase).
+func applyProjection(resource map[string]any, summary string, elements []string) map[string]any {
+	switch {
+	case len(elements) > 0:
+		out := make(map[string]any, len(elements)+len(alwaysKept))
+		for k := range alwaysKept {
+			if v, ok := resource[k]; ok {
+				out[k] = v
+			}
+		}
+		for _, e := range elements {
+			if v, ok := resource[e]; ok {
+				out[e] = v
+			}
+		}
+		return tagSubsetted(out)
+	case summary == "text":
+		out := make(map[string]any, 4)
+		for k := range alwaysKept {
+			if v, ok := resource[k]; ok {
+				out[k] = v
+			}
+		}
+		if v, ok := resource["text"]; ok {
+			out["text"] = v
+		}
+		return tagSubsetted(out)
+	case summary == "data":
+		out := shallowCopy(resource)
+		delete(out, "text")
+		return tagSubsetted(out)
+	case summary == "true":
+		out := shallowCopy(resource)
+		delete(out, "text")
+		delete(out, "contained")
+		return tagSubsetted(out)
+	default: // "", "false", "count" (count never reaches here — no entries)
+		return resource
+	}
+}
+
+func shallowCopy(m map[string]any) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+// tagSubsetted adds the SUBSETTED tag to meta.tag (creating meta/tag as needed),
+// idempotently.
+func tagSubsetted(resource map[string]any) map[string]any {
+	const system = "http://terminology.hl7.org/CodeSystem/v3-ObservationValue"
+	meta, _ := resource["meta"].(map[string]any)
+	if meta == nil {
+		meta = map[string]any{}
+	} else {
+		meta = shallowCopy(meta)
+	}
+	tags, _ := meta["tag"].([]any)
+	for _, t := range tags {
+		if tm, ok := t.(map[string]any); ok && tm["system"] == system && tm["code"] == "SUBSETTED" {
+			resource["meta"] = meta
+			return resource
+		}
+	}
+	meta["tag"] = append(tags, map[string]any{"system": system, "code": "SUBSETTED"})
+	resource["meta"] = meta
+	return resource
 }
 
 // ─── $everything ──────────────────────────────────────────────────────────────
