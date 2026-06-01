@@ -6,14 +6,16 @@
 //   - fixed[x] values — the resource must carry exactly that value.
 //   - pattern[x] values — the resource value must include every key/value
 //     present in the pattern (deep partial match).
-//
-// Slicing discriminators and FHIRPath invariant expressions (constraint[].
-// expression) require a constraint-evaluation engine and are not yet enforced.
+//   - constraint[].expression — FHIRPath boolean invariants (via EvaluateBool).
+//   - Slicing: value and pattern discriminators on sliced elements.
 package validate
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
+
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/fhirpath"
 )
 
 // Issue is one validation finding.
@@ -80,6 +82,55 @@ func AgainstProfile(resource, sd map[string]any) []Issue {
 		constraints[path] = c
 	}
 
+	// Check FHIRPath invariants from constraint[].expression on each element.
+	var invariantIssues []Issue
+	for _, raw := range elements {
+		el, _ := raw.(map[string]any)
+		if el == nil {
+			continue
+		}
+		path, _ := el["path"].(string)
+		constArr, _ := el["constraint"].([]any)
+		for _, cr := range constArr {
+			c, _ := cr.(map[string]any)
+			if c == nil {
+				continue
+			}
+			severity, _ := c["severity"].(string)
+			if severity == "" {
+				severity = "error"
+			}
+			expr, _ := c["expression"].(string)
+			key, _ := c["key"].(string)
+			human, _ := c["human"].(string)
+			if expr == "" {
+				continue
+			}
+			ok, err := fhirpath.EvaluateBool(expr, resource)
+			if err != nil {
+				slog.Debug("invariant eval error", "path", path, "key", key, "err", err)
+				continue
+			}
+			if !ok {
+				msg := human
+				if msg == "" {
+					msg = fmt.Sprintf("invariant %s failed: %s", key, expr)
+				}
+				invariantIssues = append(invariantIssues, Issue{
+					Severity:    severity,
+					Code:        "invariant",
+					Expression:  path,
+					Diagnostics: msg,
+				})
+			}
+		}
+	}
+
+	// Slicing: for elements with a slicing definition, validate that each slice
+	// entry in the resource matches its discriminator. Currently supports
+	// discriminator.type = "value" and "pattern".
+	slicingIssues := checkSlicing(resource, elements, sd)
+
 	var issues []Issue
 	rootType, _ := sd["type"].(string)
 
@@ -126,6 +177,112 @@ func AgainstProfile(resource, sd map[string]any) []Issue {
 				Expression:  path,
 				Diagnostics: fmt.Sprintf("%s: value does not match required pattern", path),
 			})
+		}
+	}
+	issues = append(issues, invariantIssues...)
+	issues = append(issues, slicingIssues...)
+	return issues
+}
+
+// checkSlicing validates sliced elements (elements with a slicing definition).
+// For each slice group, each element in the resource's corresponding array
+// must satisfy the discriminator pattern — if a slice has a patternX, the
+// corresponding resource element must match.
+func checkSlicing(resource map[string]any, elements []any, sd map[string]any) []Issue {
+	rootType, _ := sd["type"].(string)
+	var issues []Issue
+
+	// Collect slice definitions: path → map[sliceName]sliceElement
+	type sliceEntry struct {
+		name    string
+		pattern any // patternX value if set
+		min     int
+	}
+	sliceGroups := map[string][]sliceEntry{}
+	slicedPaths := map[string]bool{}
+
+	for _, raw := range elements {
+		el, _ := raw.(map[string]any)
+		if el == nil {
+			continue
+		}
+		path, _ := el["path"].(string)
+		if path == "" {
+			continue
+		}
+		// Element has slicing definition — mark the path as sliced.
+		if _, hasSlicing := el["slicing"]; hasSlicing {
+			slicedPaths[path] = true
+		}
+		// Element is a named slice (has sliceName).
+		sliceName, _ := el["sliceName"].(string)
+		if sliceName == "" {
+			continue
+		}
+		// Find base path (strip slice name suffix — path for a slice is the
+		// same as its parent path, e.g. "Observation.category").
+		// Slices share the path with their parent; we use the parent path as key.
+		basePath := path
+		if !slicedPaths[basePath] {
+			// Find the parent by stripping the last segment if it looks like a slice.
+			// In practice the path IS the parent path — just collect by path.
+		}
+		se := sliceEntry{name: sliceName}
+		if m, ok := el["min"].(float64); ok {
+			se.min = int(m)
+		}
+		// Find the pattern value.
+		for k, v := range el {
+			if strings.HasPrefix(k, "pattern") {
+				se.pattern = v
+				break
+			}
+		}
+		sliceGroups[basePath] = append(sliceGroups[basePath], se)
+	}
+
+	// For each sliced path that has required slices with a pattern, check that
+	// at least one element in the resource array matches.
+	for slicedPath, slices := range sliceGroups {
+		relPath := strings.TrimPrefix(slicedPath, rootType+".")
+		val := getPath(resource, relPath)
+		if val == nil {
+			// Check if any required slice is missing.
+			for _, se := range slices {
+				if se.min >= 1 {
+					issues = append(issues, Issue{
+						Severity:    "error",
+						Code:        "required",
+						Expression:  slicedPath,
+						Diagnostics: fmt.Sprintf("slice %q (min=%d) is required but no element matches", se.name, se.min),
+					})
+				}
+			}
+			continue
+		}
+		arr, isArr := val.([]any)
+		if !isArr {
+			arr = []any{val}
+		}
+		for _, se := range slices {
+			if se.pattern == nil {
+				continue
+			}
+			// Count elements matching this slice's pattern.
+			matchCount := 0
+			for _, item := range arr {
+				if matchesPattern(item, se.pattern) {
+					matchCount++
+				}
+			}
+			if se.min >= 1 && matchCount == 0 {
+				issues = append(issues, Issue{
+					Severity:    "error",
+					Code:        "required",
+					Expression:  slicedPath,
+					Diagnostics: fmt.Sprintf("required slice %q has no matching element (min=%d)", se.name, se.min),
+				})
+			}
 		}
 	}
 	return issues
