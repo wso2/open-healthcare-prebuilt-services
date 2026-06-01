@@ -645,6 +645,20 @@ func (h *fhirHandler) validate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// universalSearchParams are the search params the store implements for every
+// resource type (handled directly in store.applyParam rather than via the
+// per-resource registry). They are advertised on every resource in the
+// CapabilityStatement so capability-driven clients discover them.
+var universalSearchParams = []struct {
+	name      string
+	paramType string
+}{
+	{"_id", "token"},
+	{"_lastUpdated", "date"},
+	{"_text", "string"},
+	{"_content", "string"},
+}
+
 // ─── Metadata ─────────────────────────────────────────────────────────────────
 
 func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
@@ -691,31 +705,35 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 			entry["supportedProfile"] = profs
 		}
 
-		// searchParam: every param the registry knows for this resource type.
+		// searchParam: every param the registry knows for this resource type,
+		// plus the universal params the search layer implements for all types
+		// (_id, _lastUpdated, _text, _content — see store.applyParam). These are
+		// not stored per-resource in the registry, so they are appended here.
 		// searchInclude: reference params can be used as _include targets.
 		// (searchRevInclude is intentionally omitted — it requires per-param
 		// target-type knowledge the registry's FHIRPath strings don't carry
 		// reliably for un-filtered refs like "Encounter.subject".)
+		sps := make([]any, 0, len(universalSearchParams)+8)
+		for _, u := range universalSearchParams {
+			sps = append(sps, map[string]any{"name": u.name, "type": u.paramType})
+		}
 		if h.registry != nil {
 			defs := h.registry.ForResource(rt)
-			if len(defs) > 0 {
-				sps := make([]any, 0, len(defs))
-				var includes []string
-				for _, d := range defs {
-					sps = append(sps, map[string]any{
-						"name": d.ParamName,
-						"type": d.ParamType,
-					})
-					if d.ParamType == "reference" {
-						includes = append(includes, rt+":"+d.ParamName)
-					}
-				}
-				entry["searchParam"] = sps
-				if len(includes) > 0 {
-					entry["searchInclude"] = includes
+			var includes []string
+			for _, d := range defs {
+				sps = append(sps, map[string]any{
+					"name": d.ParamName,
+					"type": d.ParamType,
+				})
+				if d.ParamType == "reference" {
+					includes = append(includes, rt+":"+d.ParamName)
 				}
 			}
+			if len(includes) > 0 {
+				entry["searchInclude"] = includes
+			}
 		}
+		entry["searchParam"] = sps
 		resources = append(resources, entry)
 	}
 
