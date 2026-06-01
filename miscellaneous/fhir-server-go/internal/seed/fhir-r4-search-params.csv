@@ -17,8 +17,8 @@ status,Account,token,Account.status
 subject,Account,reference,Account.subject
 type,Account,token,Account.type
 composed-of,ActivityDefinition,reference,ActivityDefinition.relatedArtifact.where(type='composed-of').resource
-context,ActivityDefinition,token,
-context-quantity,ActivityDefinition,quantity,
+context,ActivityDefinition,token,ActivityDefinition.useContext.value.ofType(CodeableConcept)
+context-quantity,ActivityDefinition,quantity,ActivityDefinition.useContext.value.ofType(Quantity) | ActivityDefinition.useContext.value.ofType(Range)
 context-type,ActivityDefinition,token,ActivityDefinition.useContext.code
 date,ActivityDefinition,date,ActivityDefinition.date
 depends-on,ActivityDefinition,reference,ActivityDefinition.relatedArtifact.where(type='depends-on').resource
@@ -56,15 +56,15 @@ clinical-status,AllergyIntolerance,token,AllergyIntolerance.clinicalStatus
 code,AllergyIntolerance,token,AllergyIntolerance.code
 code,Condition,token,AllergyIntolerance.reaction.substance
 code,DeviceRequest,token,Condition.code
-code,DiagnosticReport,token,
+code,DiagnosticReport,token,DiagnosticReport.code
 code,FamilyMemberHistory,token,DiagnosticReport.code
 code,List,token,FamilyMemberHistory.condition.code
 code,Medication,token,List.code
 code,MedicationAdministration,token,Medication.code
-code,MedicationDispense,token,
-code,MedicationRequest,token,
-code,MedicationStatement,token,
-code,Observation,token,
+code,MedicationDispense,token,MedicationDispense.medication.ofType(CodeableConcept)
+code,MedicationRequest,token,MedicationRequest.medication.ofType(CodeableConcept)
+code,MedicationStatement,token,MedicationStatement.medication.ofType(CodeableConcept)
+code,Observation,token,Observation.code
 code,Procedure,token,Observation.code
 code,ServiceRequest,token,Procedure.code
 criticality,AllergyIntolerance,token,AllergyIntolerance.criticality
@@ -83,7 +83,7 @@ date,Immunization,date,Immunization.occurrence
 date,List,date,List.date
 date,Observation,date,Observation.effective
 date,Procedure,date,Procedure.performed
-date,RiskAssessment,date,
+date,RiskAssessment,date,RiskAssessment.occurrence.ofType(dateTime)
 date,SupplyRequest,date,SupplyRequest.authoredOn
 identifier,AllergyIntolerance,token,AllergyIntolerance.identifier
 identifier,CarePlan,token,CarePlan.identifier
@@ -217,34 +217,34 @@ identifier,Bundle,token,Bundle.identifier
 message,Bundle,reference,Bundle.entry[0].resource
 timestamp,Bundle,date,Bundle.timestamp
 type,Bundle,token,Bundle.type
-context,CapabilityStatement,token,
-context,CodeSystem,token,
-context,CompartmentDefinition,token,
-context,ConceptMap,token,
-context,GraphDefinition,token,
-context,ImplementationGuide,token,
-context,MessageDefinition,token,
-context,NamingSystem,token,
-context,OperationDefinition,token,
-context,SearchParameter,token,
-context,StructureDefinition,token,
-context,StructureMap,token,
-context,TerminologyCapabilities,token,
-context,ValueSet,token,
-context-quantity,CapabilityStatement,quantity,
-context-quantity,CodeSystem,quantity,
-context-quantity,CompartmentDefinition,quantity,
-context-quantity,ConceptMap,quantity,
-context-quantity,GraphDefinition,quantity,
-context-quantity,ImplementationGuide,quantity,
-context-quantity,MessageDefinition,quantity,
-context-quantity,NamingSystem,quantity,
-context-quantity,OperationDefinition,quantity,
-context-quantity,SearchParameter,quantity,
-context-quantity,StructureDefinition,quantity,
-context-quantity,StructureMap,quantity,
-context-quantity,TerminologyCapabilities,quantity,
-context-quantity,ValueSet,quantity,
+context,CapabilityStatement,token,CapabilityStatement.useContext.value.ofType(CodeableConcept)
+context,CodeSystem,token,CodeSystem.useContext.value.ofType(CodeableConcept)
+context,CompartmentDefinition,token,CompartmentDefinition.useContext.value.ofType(CodeableConcept)
+context,ConceptMap,token,ConceptMap.useContext.value.ofType(CodeableConcept)
+context,GraphDefinition,token,GraphDefinition.useContext.value.ofType(CodeableConcept)
+context,ImplementationGuide,token,ImplementationGuide.useContext.value.ofType(CodeableConcept)
+context,MessageDefinition,token,MessageDefinition.useContext.value.ofType(CodeableConcept)
+context,NamingSystem,token,NamingSystem.useContext.value.ofType(CodeableConcept)
+context,OperationDefinition,token,OperationDefinition.useContext.value.ofType(CodeableConcept)
+context,SearchParameter,token,SearchParameter.useContext.value.ofType(CodeableConcept)
+context,StructureDefinition,token,StructureDefinition.useContext.value.ofType(CodeableConcept)
+context,StructureMap,token,StructureMap.useContext.value.ofType(CodeableConcept)
+context,TerminologyCapabilities,token,TerminologyCapabilities.useContext.value.ofType(CodeableConcept)
+context,ValueSet,token,ValueSet.useContext.value.ofType(CodeableConcept)
+context-quantity,CapabilityStatement,quantity,CapabilityStatement.useContext.value.ofType(Quantity) | CapabilityStatement.useContext.value.ofType(Range)
+context-quantity,CodeSystem,quantity,CodeSystem.useContext.value.ofType(Quantity) | CodeSystem.useContext.value.ofType(Range)
+context-quantity,CompartmentDefinition,quantity,CompartmentDefinition.useContext.value.ofType(Quantity) | CompartmentDefinition.useContext.value.ofType(Range)
+context-quantity,ConceptMap,quantity,ConceptMap.useContext.value.ofType(Quantity) | ConceptMap.useContext.value.ofType(Range)
+context-quantity,GraphDefinition,quantity,GraphDefinition.useContext.value.ofType(Quantity) | GraphDefinition.useContext.value.ofType(Range)
+context-quantity,ImplementationGuide,quantity,ImplementationGuide.useContext.value.ofType(Quantity) | ImplementationGuide.useContext.value.ofType(Range)
+context-quantity,MessageDefinition,quantity,MessageDefinition.useContext.value.ofType(Quantity) | MessageDefinition.useContext.value.ofType(Range)
+context-quantity,NamingSystem,quantity,NamingSystem.useContext.value.ofType(Quantity) | NamingSystem.useContext.value.ofType(Range)
+context-quantity,OperationDefinition,quantity,OperationDefinition.useContext.value.ofType(Quantity) | OperationDefinition.useContext.value.ofType(Range)
+context-quantity,SearchParameter,quantity,SearchParameter.useContext.value.ofType(Quantity) | SearchParameter.useContext.value.ofType(Range)
+context-quantity,StructureDefinition,quantity,StructureDefinition.useContext.value.ofType(Quantity) | StructureDefinition.useContext.value.ofType(Range)
+context-quantity,StructureMap,quantity,StructureMap.useContext.value.ofType(Quantity) | StructureMap.useContext.value.ofType(Range)
+context-quantity,TerminologyCapabilities,quantity,TerminologyCapabilities.useContext.value.ofType(Quantity) | TerminologyCapabilities.useContext.value.ofType(Range)
+context-quantity,ValueSet,quantity,ValueSet.useContext.value.ofType(Quantity) | ValueSet.useContext.value.ofType(Range)
 context-type,CapabilityStatement,token,CapabilityStatement.useContext.code
 context-type,CodeSystem,token,CodeSystem.useContext.code
 context-type,CompartmentDefinition,token,CompartmentDefinition.useContext.code
@@ -454,8 +454,8 @@ quantity,ChargeItem,quantity,ChargeItem.quantity
 requesting-organization,ChargeItem,reference,ChargeItem.requestingOrganization
 service,ChargeItem,reference,ChargeItem.service
 subject,ChargeItem,reference,ChargeItem.subject
-context,ChargeItemDefinition,token,
-context-quantity,ChargeItemDefinition,quantity,
+context,ChargeItemDefinition,token,ChargeItemDefinition.useContext.value.ofType(CodeableConcept)
+context-quantity,ChargeItemDefinition,quantity,ChargeItemDefinition.useContext.value.ofType(Quantity) | ChargeItemDefinition.useContext.value.ofType(Range)
 context-type,ChargeItemDefinition,token,ChargeItemDefinition.useContext.code
 date,ChargeItemDefinition,date,ChargeItemDefinition.date
 description,ChargeItemDefinition,string,ChargeItemDefinition.description
@@ -541,7 +541,7 @@ encounter,CommunicationRequest,reference,CommunicationRequest.encounter
 group-identifier,CommunicationRequest,token,CommunicationRequest.groupIdentifier
 identifier,CommunicationRequest,token,CommunicationRequest.identifier
 medium,CommunicationRequest,token,CommunicationRequest.medium
-occurrence,CommunicationRequest,date,
+occurrence,CommunicationRequest,date,CommunicationRequest.occurrence.ofType(dateTime)
 patient,CommunicationRequest,reference,CommunicationRequest.subject.where(resolve() is Patient)
 priority,CommunicationRequest,token,CommunicationRequest.priority
 recipient,CommunicationRequest,reference,CommunicationRequest.recipient
@@ -571,8 +571,8 @@ encounter,ServiceRequest,reference,ServiceRequest.encounter
 encounter,VisionPrescription,reference,VisionPrescription.encounter
 entry,Composition,reference,Composition.section.entry
 period,Composition,date,Composition.event.period
-related-id,Composition,token,
-related-ref,Composition,reference,
+related-id,Composition,token,Composition.relatesTo.target.ofType(Identifier)
+related-ref,Composition,reference,Composition.relatesTo.target.ofType(Reference)
 section,Composition,token,Composition.section.code
 status,Composition,token,Composition.status
 subject,Composition,reference,Composition.subject
@@ -580,14 +580,14 @@ title,Composition,string,Composition.title
 dependson,ConceptMap,uri,ConceptMap.group.element.target.dependsOn.property
 other,ConceptMap,reference,ConceptMap.group.unmapped.url
 product,ConceptMap,uri,ConceptMap.group.element.target.product.property
-source,ConceptMap,reference,
+source,ConceptMap,reference,ConceptMap.source.ofType(canonical)
 source-code,ConceptMap,token,ConceptMap.group.element.code
 source-system,ConceptMap,uri,ConceptMap.group.source
-source-uri,ConceptMap,reference,
-target,ConceptMap,reference,
+source-uri,ConceptMap,reference,ConceptMap.source.ofType(uri)
+target,ConceptMap,reference,ConceptMap.target.ofType(canonical)
 target-code,ConceptMap,token,ConceptMap.group.element.target.code
 target-system,ConceptMap,uri,ConceptMap.group.target
-target-uri,ConceptMap,reference,
+target-uri,ConceptMap,reference,ConceptMap.target.ofType(uri)
 abatement-age,Condition,quantity,Condition.abatement.as
 abatement-date,Condition,date,Condition.abatement.as
 abatement-string,Condition,string,Condition.abatement.as
@@ -681,8 +681,8 @@ source,DeviceMetric,reference,DeviceMetric.source
 type,DeviceMetric,token,DeviceMetric.type
 authored-on,DeviceRequest,date,DeviceRequest.authoredOn
 based-on,DeviceRequest,reference,DeviceRequest.basedOn
-device,DeviceRequest,reference,
-event-date,DeviceRequest,date,
+device,DeviceRequest,reference,DeviceRequest.code.ofType(Reference)
+event-date,DeviceRequest,date,DeviceRequest.occurrence.ofType(dateTime) | DeviceRequest.occurrence.ofType(Period)
 group-identifier,DeviceRequest,token,DeviceRequest.groupIdentifier
 instantiates-canonical,DeviceRequest,reference,DeviceRequest.instantiatesCanonical
 instantiates-uri,DeviceRequest,uri,DeviceRequest.instantiatesUri
@@ -738,8 +738,8 @@ setting,DocumentReference,token,DocumentReference.context.practiceSetting
 status,DocumentReference,token,DocumentReference.status
 subject,DocumentReference,reference,DocumentReference.subject
 relationship,DocumentReference,composite,DocumentReference.relatesTo
-context,EffectEvidenceSynthesis,token,
-context-quantity,EffectEvidenceSynthesis,quantity,
+context,EffectEvidenceSynthesis,token,EffectEvidenceSynthesis.useContext.value.ofType(CodeableConcept)
+context-quantity,EffectEvidenceSynthesis,quantity,EffectEvidenceSynthesis.useContext.value.ofType(Quantity) | EffectEvidenceSynthesis.useContext.value.ofType(Range)
 context-type,EffectEvidenceSynthesis,token,EffectEvidenceSynthesis.useContext.code
 date,EffectEvidenceSynthesis,date,EffectEvidenceSynthesis.date
 description,EffectEvidenceSynthesis,string,EffectEvidenceSynthesis.description
@@ -792,8 +792,8 @@ incoming-referral,EpisodeOfCare,reference,EpisodeOfCare.referralRequest
 organization,EpisodeOfCare,reference,EpisodeOfCare.managingOrganization
 status,EpisodeOfCare,token,EpisodeOfCare.status
 composed-of,EventDefinition,reference,EventDefinition.relatedArtifact.where(type='composed-of').resource
-context,EventDefinition,token,
-context-quantity,EventDefinition,quantity,
+context,EventDefinition,token,EventDefinition.useContext.value.ofType(CodeableConcept)
+context-quantity,EventDefinition,quantity,EventDefinition.useContext.value.ofType(Quantity) | EventDefinition.useContext.value.ofType(Range)
 context-type,EventDefinition,token,EventDefinition.useContext.code
 date,EventDefinition,date,EventDefinition.date
 depends-on,EventDefinition,reference,EventDefinition.relatedArtifact.where(type='depends-on').resource
@@ -814,8 +814,8 @@ version,EventDefinition,token,EventDefinition.version
 context-type-quantity,EventDefinition,composite,EventDefinition.useContext
 context-type-value,EventDefinition,composite,EventDefinition.useContext
 composed-of,Evidence,reference,Evidence.relatedArtifact.where(type='composed-of').resource
-context,Evidence,token,
-context-quantity,Evidence,quantity,
+context,Evidence,token,Evidence.useContext.value.ofType(CodeableConcept)
+context-quantity,Evidence,quantity,Evidence.useContext.value.ofType(Quantity) | Evidence.useContext.value.ofType(Range)
 context-type,Evidence,token,Evidence.useContext.code
 date,Evidence,date,Evidence.date
 depends-on,Evidence,reference,Evidence.relatedArtifact.where(type='depends-on').resource
@@ -836,8 +836,8 @@ version,Evidence,token,Evidence.version
 context-type-quantity,Evidence,composite,Evidence.useContext
 context-type-value,Evidence,composite,Evidence.useContext
 composed-of,EvidenceVariable,reference,EvidenceVariable.relatedArtifact.where(type='composed-of').resource
-context,EvidenceVariable,token,
-context-quantity,EvidenceVariable,quantity,
+context,EvidenceVariable,token,EvidenceVariable.useContext.value.ofType(CodeableConcept)
+context-quantity,EvidenceVariable,quantity,EvidenceVariable.useContext.value.ofType(Quantity) | EvidenceVariable.useContext.value.ofType(Range)
 context-type,EvidenceVariable,token,EvidenceVariable.useContext.code
 date,EvidenceVariable,date,EvidenceVariable.date
 depends-on,EvidenceVariable,reference,EvidenceVariable.relatedArtifact.where(type='depends-on').resource
@@ -857,8 +857,8 @@ url,EvidenceVariable,uri,EvidenceVariable.url
 version,EvidenceVariable,token,EvidenceVariable.version
 context-type-quantity,EvidenceVariable,composite,EvidenceVariable.useContext
 context-type-value,EvidenceVariable,composite,EvidenceVariable.useContext
-context,ExampleScenario,token,
-context-quantity,ExampleScenario,quantity,
+context,ExampleScenario,token,ExampleScenario.useContext.value.ofType(CodeableConcept)
+context-quantity,ExampleScenario,quantity,ExampleScenario.useContext.value.ofType(Quantity) | ExampleScenario.useContext.value.ofType(Range)
 context-type,ExampleScenario,token,ExampleScenario.useContext.code
 date,ExampleScenario,date,ExampleScenario.date
 identifier,ExampleScenario,token,ExampleScenario.identifier
@@ -898,9 +898,9 @@ subject,Flag,reference,Flag.subject
 achievement-status,Goal,token,Goal.achievementStatus
 category,Goal,token,Goal.category
 lifecycle-status,Goal,token,Goal.lifecycleStatus
-start-date,Goal,date,
+start-date,Goal,date,Goal.start.ofType(date)
 subject,Goal,reference,Goal.subject
-target-date,Goal,date,
+target-date,Goal,date,Goal.target.due.ofType(date)
 start,GraphDefinition,token,GraphDefinition.start
 actual,Group,token,Group.actual
 characteristic,Group,token,Group.characteristic.code
@@ -910,7 +910,7 @@ identifier,Group,token,Group.identifier
 managing-entity,Group,reference,Group.managingEntity
 member,Group,reference,Group.member.entity
 type,Group,token,Group.type
-value,Group,token,
+value,Group,token,Group.characteristic.value.ofType(CodeableConcept) | Group.characteristic.value.ofType(boolean)
 characteristic-value,Group,composite,Group.characteristic
 identifier,GuidanceResponse,token,GuidanceResponse.identifier
 patient,GuidanceResponse,reference,GuidanceResponse.subject.where(resolve() is Patient)
@@ -1004,8 +1004,8 @@ totalnet,Invoice,quantity,Invoice.totalNet
 type,Invoice,token,Invoice.type
 composed-of,Library,reference,Library.relatedArtifact.where(type='composed-of').resource
 content-type,Library,token,Library.content.contentType
-context,Library,token,
-context-quantity,Library,quantity,
+context,Library,token,Library.useContext.value.ofType(CodeableConcept)
+context-quantity,Library,quantity,Library.useContext.value.ofType(Quantity) | Library.useContext.value.ofType(Range)
 context-type,Library,token,Library.useContext.code
 date,Library,date,Library.date
 depends-on,Library,reference,Library.relatedArtifact.where(type='depends-on').resource
@@ -1052,8 +1052,8 @@ partof,Location,reference,Location.partOf
 status,Location,token,Location.status
 type,Location,token,Location.type
 composed-of,Measure,reference,Measure.relatedArtifact.where(type='composed-of').resource
-context,Measure,token,
-context-quantity,Measure,quantity,
+context,Measure,token,Measure.useContext.value.ofType(CodeableConcept)
+context-quantity,Measure,quantity,Measure.useContext.value.ofType(Quantity) | Measure.useContext.value.ofType(Range)
 context-type,Measure,token,Measure.useContext.code
 date,Measure,date,Measure.date
 depends-on,Measure,reference,Measure.relatedArtifact.where(type='depends-on').resource
@@ -1098,18 +1098,18 @@ view,Media,token,Media.view
 expiration-date,Medication,date,Medication.batch.expirationDate
 form,Medication,token,Medication.form
 identifier,Medication,token,Medication.identifier
-ingredient,Medication,reference,
-ingredient-code,Medication,token,
+ingredient,Medication,reference,Medication.ingredient.item.ofType(Reference)
+ingredient-code,Medication,token,Medication.ingredient.item.ofType(CodeableConcept)
 lot-number,Medication,token,Medication.batch.lotNumber
 manufacturer,Medication,reference,Medication.manufacturer
 status,Medication,token,Medication.status
 context,MedicationAdministration,reference,MedicationAdministration.context
 device,MedicationAdministration,reference,MedicationAdministration.device
 effective-time,MedicationAdministration,date,MedicationAdministration.effective
-medication,MedicationAdministration,reference,
-medication,MedicationDispense,reference,
-medication,MedicationRequest,reference,
-medication,MedicationStatement,reference,
+medication,MedicationAdministration,reference,MedicationAdministration.medication.ofType(Reference)
+medication,MedicationDispense,reference,MedicationDispense.medication.ofType(Reference)
+medication,MedicationRequest,reference,MedicationRequest.medication.ofType(Reference)
+medication,MedicationStatement,reference,MedicationStatement.medication.ofType(Reference)
 performer,MedicationAdministration,reference,MedicationAdministration.performer.actor
 reason-given,MedicationAdministration,token,MedicationAdministration.reasonCode
 reason-not-given,MedicationAdministration,token,MedicationAdministration.statusReason
@@ -1133,8 +1133,8 @@ classification,MedicationKnowledge,token,MedicationKnowledge.medicineClassificat
 classification-type,MedicationKnowledge,token,MedicationKnowledge.medicineClassification.type
 code,MedicationKnowledge,token,MedicationKnowledge.code
 doseform,MedicationKnowledge,token,MedicationKnowledge.doseForm
-ingredient,MedicationKnowledge,reference,
-ingredient-code,MedicationKnowledge,token,
+ingredient,MedicationKnowledge,reference,MedicationKnowledge.ingredient.item.ofType(Reference)
+ingredient-code,MedicationKnowledge,token,MedicationKnowledge.ingredient.item.ofType(CodeableConcept)
 manufacturer,MedicationKnowledge,reference,MedicationKnowledge.manufacturer
 monitoring-program-name,MedicationKnowledge,token,MedicationKnowledge.monitoringProgram.name
 monitoring-program-type,MedicationKnowledge,token,MedicationKnowledge.monitoringProgram.type
@@ -1228,12 +1228,12 @@ based-on,Observation,reference,Observation.basedOn
 category,Observation,token,Observation.category
 combo-code,Observation,token,Observation.code 
 combo-data-absent-reason,Observation,token,Observation.dataAbsentReason 
-combo-value-concept,Observation,token,
-combo-value-quantity,Observation,quantity,
+combo-value-concept,Observation,token,Observation.value.ofType(CodeableConcept) | Observation.component.value.ofType(CodeableConcept)
+combo-value-quantity,Observation,quantity,Observation.value.ofType(Quantity) | Observation.value.ofType(SampledData) | Observation.component.value.ofType(Quantity) | Observation.component.value.ofType(SampledData)
 component-code,Observation,token,Observation.component.code
 component-data-absent-reason,Observation,token,Observation.component.dataAbsentReason
-component-value-concept,Observation,token,
-component-value-quantity,Observation,quantity,
+component-value-concept,Observation,token,Observation.component.value.ofType(CodeableConcept)
+component-value-quantity,Observation,quantity,Observation.component.value.ofType(Quantity) | Observation.component.value.ofType(SampledData)
 data-absent-reason,Observation,token,Observation.dataAbsentReason
 derived-from,Observation,reference,Observation.derivedFrom
 device,Observation,reference,Observation.device
@@ -1245,10 +1245,10 @@ performer,Observation,reference,Observation.performer
 specimen,Observation,reference,Observation.specimen
 status,Observation,token,Observation.status
 subject,Observation,reference,Observation.subject
-value-concept,Observation,token,
-value-date,Observation,date,
-value-quantity,Observation,quantity,
-value-string,Observation,string,
+value-concept,Observation,token,Observation.value.ofType(CodeableConcept)
+value-date,Observation,date,Observation.value.ofType(dateTime) | Observation.value.ofType(Period)
+value-quantity,Observation,quantity,Observation.value.ofType(Quantity) | Observation.value.ofType(SampledData)
+value-string,Observation,string,Observation.value.ofType(string)
 code-value-concept,Observation,composite,Observation
 code-value-date,Observation,composite,Observation
 code-value-quantity,Observation,composite,Observation
@@ -1320,7 +1320,7 @@ address-use,RelatedPerson,token,RelatedPerson.address.use
 birthdate,Patient,date,Patient.birthDate
 birthdate,Person,date,Person.birthDate
 birthdate,RelatedPerson,date,RelatedPerson.birthDate
-death-date,Patient,date,
+death-date,Patient,date,Patient.deceased.ofType(dateTime)
 deceased,Patient,token,Patient.deceased.exists
 email,Patient,token,Patient.telecom.where(system='email')
 email,Person,token,Person.telecom.where(system='email')
@@ -1378,8 +1378,8 @@ patient,Person,reference,Person.link.target.where(resolve() is Patient)
 practitioner,Person,reference,Person.link.target.where(resolve() is Practitioner)
 relatedperson,Person,reference,Person.link.target.where(resolve() is RelatedPerson)
 composed-of,PlanDefinition,reference,PlanDefinition.relatedArtifact.where(type='composed-of').resource
-context,PlanDefinition,token,
-context-quantity,PlanDefinition,quantity,
+context,PlanDefinition,token,PlanDefinition.useContext.value.ofType(CodeableConcept)
+context-quantity,PlanDefinition,quantity,PlanDefinition.useContext.value.ofType(Quantity) | PlanDefinition.useContext.value.ofType(Range)
 context-type,PlanDefinition,token,PlanDefinition.useContext.code
 date,PlanDefinition,date,PlanDefinition.date
 definition,PlanDefinition,reference,PlanDefinition.action.definition
@@ -1435,10 +1435,10 @@ patient,Provenance,reference,Provenance.target.where(resolve() is Patient)
 recorded,Provenance,date,Provenance.recorded
 signature-type,Provenance,token,Provenance.signature.type
 target,Provenance,reference,Provenance.target
-when,Provenance,date,
+when,Provenance,date,Provenance.occurred.ofType(dateTime)
 code,Questionnaire,token,Questionnaire.item.code
-context,Questionnaire,token,
-context-quantity,Questionnaire,quantity,
+context,Questionnaire,token,Questionnaire.useContext.value.ofType(CodeableConcept)
+context-quantity,Questionnaire,quantity,Questionnaire.useContext.value.ofType(Quantity) | Questionnaire.useContext.value.ofType(Range)
 context-type,Questionnaire,token,Questionnaire.useContext.code
 date,Questionnaire,date,Questionnaire.date
 definition,Questionnaire,uri,Questionnaire.item.definition
@@ -1486,8 +1486,8 @@ priority,RequestGroup,token,RequestGroup.priority
 status,RequestGroup,token,RequestGroup.status
 subject,RequestGroup,reference,RequestGroup.subject
 composed-of,ResearchDefinition,reference,ResearchDefinition.relatedArtifact.where(type='composed-of').resource
-context,ResearchDefinition,token,
-context-quantity,ResearchDefinition,quantity,
+context,ResearchDefinition,token,ResearchDefinition.useContext.value.ofType(CodeableConcept)
+context-quantity,ResearchDefinition,quantity,ResearchDefinition.useContext.value.ofType(Quantity) | ResearchDefinition.useContext.value.ofType(Range)
 context-type,ResearchDefinition,token,ResearchDefinition.useContext.code
 date,ResearchDefinition,date,ResearchDefinition.date
 depends-on,ResearchDefinition,reference,ResearchDefinition.relatedArtifact.where(type='depends-on').resource
@@ -1508,8 +1508,8 @@ version,ResearchDefinition,token,ResearchDefinition.version
 context-type-quantity,ResearchDefinition,composite,ResearchDefinition.useContext
 context-type-value,ResearchDefinition,composite,ResearchDefinition.useContext
 composed-of,ResearchElementDefinition,reference,ResearchElementDefinition.relatedArtifact.where(type='composed-of').resource
-context,ResearchElementDefinition,token,
-context-quantity,ResearchElementDefinition,quantity,
+context,ResearchElementDefinition,token,ResearchElementDefinition.useContext.value.ofType(CodeableConcept)
+context-quantity,ResearchElementDefinition,quantity,ResearchElementDefinition.useContext.value.ofType(Quantity) | ResearchElementDefinition.useContext.value.ofType(Range)
 context-type,ResearchElementDefinition,token,ResearchElementDefinition.useContext.code
 date,ResearchElementDefinition,date,ResearchElementDefinition.date
 depends-on,ResearchElementDefinition,reference,ResearchElementDefinition.relatedArtifact.where(type='depends-on').resource
@@ -1554,8 +1554,8 @@ performer,RiskAssessment,reference,RiskAssessment.performer
 probability,RiskAssessment,number,RiskAssessment.prediction.probability
 risk,RiskAssessment,token,RiskAssessment.prediction.qualitativeRisk
 subject,RiskAssessment,reference,RiskAssessment.subject
-context,RiskEvidenceSynthesis,token,
-context-quantity,RiskEvidenceSynthesis,quantity,
+context,RiskEvidenceSynthesis,token,RiskEvidenceSynthesis.useContext.value.ofType(CodeableConcept)
+context-quantity,RiskEvidenceSynthesis,quantity,RiskEvidenceSynthesis.useContext.value.ofType(Quantity) | RiskEvidenceSynthesis.useContext.value.ofType(Range)
 context-type,RiskEvidenceSynthesis,token,RiskEvidenceSynthesis.useContext.code
 date,RiskEvidenceSynthesis,date,RiskEvidenceSynthesis.date
 description,RiskEvidenceSynthesis,string,RiskEvidenceSynthesis.description
@@ -1647,7 +1647,7 @@ expiry,Substance,date,Substance.instance.expiry
 identifier,Substance,token,Substance.identifier
 quantity,Substance,quantity,Substance.instance.quantity
 status,Substance,token,Substance.status
-substance-reference,Substance,reference,
+substance-reference,Substance,reference,Substance.ingredient.substance.ofType(Reference)
 code,SubstanceSpecification,token,SubstanceSpecification.code.code
 receiver,SupplyDelivery,reference,SupplyDelivery.receiver
 status,SupplyDelivery,token,SupplyDelivery.status
@@ -1682,8 +1682,8 @@ participant,TestReport,uri,TestReport.participant.uri
 result,TestReport,token,TestReport.result
 tester,TestReport,string,TestReport.tester
 testscript,TestReport,reference,TestReport.testScript
-context,TestScript,token,
-context-quantity,TestScript,quantity,
+context,TestScript,token,TestScript.useContext.value.ofType(CodeableConcept)
+context-quantity,TestScript,quantity,TestScript.useContext.value.ofType(Quantity) | TestScript.useContext.value.ofType(Range)
 context-type,TestScript,token,TestScript.useContext.code
 date,TestScript,date,TestScript.date
 description,TestScript,string,TestScript.description

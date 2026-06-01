@@ -601,6 +601,45 @@ func TestSearch_MetaParams(t *testing.T) {
 	}
 }
 
+func TestSearch_PreviouslyBlankExpressions(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Observation.code — its CSV expression was blank, so this returned nothing.
+	s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"code": map[string]any{"coding": []any{map[string]any{
+			"system": "http://loinc.org", "code": "85354-9",
+		}}},
+		"valueQuantity": map[string]any{"value": 120, "system": "http://unitsofmeasure.org", "code": "mm[Hg]"},
+	})
+	// Patient.death-date — polymorphic deceased[x] via ofType(dateTime).
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient", "deceasedDateTime": "2020-03-15T00:00:00Z",
+	})
+
+	cases := []struct {
+		rt     string
+		params map[string][]string
+		want   int
+		label  string
+	}{
+		{"Observation", map[string][]string{"code": {"http://loinc.org|85354-9"}}, 1, "Observation?code"},
+		{"Observation", map[string][]string{"value-quantity": {"120"}}, 1, "Observation?value-quantity"},
+		{"Patient", map[string][]string{"death-date": {"2020-03-15"}}, 1, "Patient?death-date"},
+	}
+	for _, tc := range cases {
+		res, err := s.Search(ctx, store.SearchParams{ResourceType: tc.rt, Params: tc.params})
+		if err != nil {
+			t.Errorf("%s: %v", tc.label, err)
+			continue
+		}
+		if res.Total != tc.want {
+			t.Errorf("%s: expected %d, got %d", tc.label, tc.want, res.Total)
+		}
+	}
+}
+
 func TestSearch_Chained(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
