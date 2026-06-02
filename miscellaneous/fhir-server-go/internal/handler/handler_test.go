@@ -25,6 +25,7 @@ type mockStore struct {
 	getHistoryFn        func(ctx context.Context, rt, id string) ([]store.HistoryEntry, error)
 	getTypeHistoryFn    func(ctx context.Context, p store.HistoryParams) (store.HistoryResult, error)
 	searchFn            func(ctx context.Context, sp store.SearchParams) (store.SearchResult, error)
+	conditionalMatchFn  func(ctx context.Context, rt, rawQuery string) (string, int, error)
 	fetchReferencesFn   func(ctx context.Context, rt, id string, reverse bool) ([]map[string]any, error)
 	syncSearchParamFn   func(ctx context.Context, body map[string]any) error
 	deleteSearchParamFn func(ctx context.Context, id string) error
@@ -61,6 +62,12 @@ func (m *mockStore) GetTypeHistory(ctx context.Context, p store.HistoryParams) (
 func (m *mockStore) Search(ctx context.Context, sp store.SearchParams) (store.SearchResult, error) {
 	return m.searchFn(ctx, sp)
 }
+func (m *mockStore) ConditionalMatch(ctx context.Context, rt, rawQuery string) (string, int, error) {
+	if m.conditionalMatchFn != nil {
+		return m.conditionalMatchFn(ctx, rt, rawQuery)
+	}
+	return "", 0, nil
+}
 func (m *mockStore) FetchReferences(ctx context.Context, rt, id string, reverse bool) ([]map[string]any, error) {
 	return m.fetchReferencesFn(ctx, rt, id, reverse)
 }
@@ -92,6 +99,10 @@ func newRouter(s handler.StoreAPI) http.Handler {
 }
 
 func do(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {
+	return doWithCT(t, h, method, path, body, "application/fhir+json")
+}
+
+func doWithCT(t *testing.T, h http.Handler, method, path string, body any, contentType string) *httptest.ResponseRecorder {
 	t.Helper()
 	var bodyBytes []byte
 	if body != nil {
@@ -103,7 +114,7 @@ func do(t *testing.T, h http.Handler, method, path string, body any) *httptest.R
 	}
 	req := httptest.NewRequest(method, path, bytes.NewReader(bodyBytes))
 	if body != nil {
-		req.Header.Set("Content-Type", "application/fhir+json")
+		req.Header.Set("Content-Type", contentType)
 	}
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -287,7 +298,7 @@ func TestPatch_Success(t *testing.T) {
 
 	h := newRouter(ms)
 	payload := map[string]any{"active": false}
-	w := do(t, h, http.MethodPatch, "/fhir/r4/Patient/p1", payload)
+	w := doWithCT(t, h, http.MethodPatch, "/fhir/r4/Patient/p1", payload, "application/merge-patch+json")
 	if w.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", w.Code)
 	}

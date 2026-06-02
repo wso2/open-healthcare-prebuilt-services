@@ -222,11 +222,14 @@ CREATE TABLE IF NOT EXISTS search_param_definitions (
     fhirpath_expr TEXT         NOT NULL,
     is_custom     BOOLEAN      NOT NULL DEFAULT FALSE,
     ig_source     TEXT         NOT NULL DEFAULT '',
+    target_types  TEXT         NOT NULL DEFAULT '',
     UNIQUE (resource_type, param_name)
 );
 
--- Idempotent migration: add ig_source to existing deployments
+-- Idempotent migrations: add columns to existing deployments.
 ALTER TABLE search_param_definitions ADD COLUMN IF NOT EXISTS ig_source TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_param_definitions ADD COLUMN IF NOT EXISTS target_types TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_param_definitions ADD COLUMN IF NOT EXISTS components_json TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_spd_resource ON search_param_definitions (resource_type);
 CREATE INDEX IF NOT EXISTS idx_spd_custom   ON search_param_definitions (resource_type) WHERE is_custom = TRUE;
@@ -246,12 +249,16 @@ CREATE TABLE IF NOT EXISTS ig_packages (
 );
 
 CREATE TABLE IF NOT EXISTS ig_profiles (
-    id            SERIAL PRIMARY KEY,
-    package_name  TEXT   NOT NULL,
-    profile_url   TEXT   NOT NULL,
-    resource_type TEXT   NOT NULL DEFAULT '',
+    id            SERIAL  PRIMARY KEY,
+    package_name  TEXT    NOT NULL,
+    profile_url   TEXT    NOT NULL,
+    resource_type TEXT    NOT NULL DEFAULT '',
+    sd_json       JSONB,
     UNIQUE (profile_url)
 );
+
+-- Idempotent migration: add sd_json to existing deployments.
+ALTER TABLE ig_profiles ADD COLUMN IF NOT EXISTS sd_json JSONB;
 
 -- ─── FHIR Terminology: closure tables ─────────────────────────────────────────
 -- Unchanged from previous schema version.

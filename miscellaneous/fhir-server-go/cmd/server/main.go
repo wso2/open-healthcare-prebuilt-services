@@ -21,6 +21,7 @@ import (
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/searchparam"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/seed"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/terminology"
 )
 
 func main() {
@@ -78,7 +79,12 @@ func run() error {
 	}
 
 	// Store + HTTP (server starts immediately; IGs load in background)
-	s := store.New(pool, registry)
+	storeOpts := []func(*store.Store){}
+	if tc := terminology.New(cfg.TerminologyURL); tc != nil {
+		storeOpts = append(storeOpts, store.WithTerminology(tc))
+		slog.Info("terminology server configured", "url", cfg.TerminologyURL)
+	}
+	s := store.New(pool, registry, storeOpts...)
 
 	// igReady is set to 1 once all IGs finish loading.
 	var igReady atomic.Int32
@@ -86,7 +92,8 @@ func run() error {
 		igReady.Store(1)
 	}
 
-	router := handler.NewRouter(s, pool, registry, cfg.BaseURL, &igReady)
+	router := handler.NewRouter(s, pool, registry, cfg.BaseURL, &igReady, cfg.ValidateOnWrite)
+	slog.Info("FHIR router initialized", "baseURL", cfg.BaseURL, "validateOnWrite", cfg.ValidateOnWrite, "igPackages", len(cfg.IGPackages))
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),

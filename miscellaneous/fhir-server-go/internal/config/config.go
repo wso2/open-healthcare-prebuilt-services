@@ -25,10 +25,12 @@ type Config struct {
 	Port          int
 	BaseURL       string
 	LogLevel      string
-	IGPackages    []string // e.g. ["hl7.fhir.us.core@6.1.0", "hl7.fhir.us.carin-bb@2.0.0"]
-	IGRegistryURL string   // default: https://packages.fhir.org
-	IGForceReload bool     // re-load IGs even if already recorded in ig_packages
-	IGCacheDir    string   // local .tgz cache dir (default: .fhir-ig-cache)
+	IGPackages      []string // e.g. ["hl7.fhir.us.core@6.1.0", "hl7.fhir.us.carin-bb@2.0.0"]
+	IGRegistryURL   string   // default: https://packages.fhir.org
+	IGForceReload   bool     // re-load IGs even if already recorded in ig_packages
+	IGCacheDir      string   // local .tgz cache dir (default: .fhir-ig-cache)
+	ValidateOnWrite bool     // enforce profile validation on create/update (default off)
+	TerminologyURL  string   // base URL of the FHIR terminology server for :in/:not-in (empty = disabled)
 }
 
 // FileConfig is the on-disk YAML schema. Each field is optional — anything
@@ -118,15 +120,20 @@ func resolve(fc *FileConfig) (*Config, error) {
 		igForceReload = strings.EqualFold(v, "true")
 	}
 
+	validateOnWrite := strings.EqualFold(os.Getenv("FHIR_VALIDATE_ON_WRITE"), "true")
+	terminologyURL := os.Getenv("FHIR_TERMINOLOGY_URL")
+
 	return &Config{
-		DatabaseURL:   dbURL,
-		Port:          serverPort,
-		BaseURL:       baseURL,
-		LogLevel:      logLevel,
-		IGPackages:    igPackages,
-		IGRegistryURL: igRegistry,
-		IGForceReload: igForceReload,
-		IGCacheDir:    igCacheDir,
+		DatabaseURL:     dbURL,
+		Port:            serverPort,
+		BaseURL:         baseURL,
+		LogLevel:        logLevel,
+		IGPackages:      igPackages,
+		IGRegistryURL:   igRegistry,
+		IGForceReload:   igForceReload,
+		IGCacheDir:      igCacheDir,
+		ValidateOnWrite: validateOnWrite,
+		TerminologyURL:  terminologyURL,
 	}, nil
 }
 

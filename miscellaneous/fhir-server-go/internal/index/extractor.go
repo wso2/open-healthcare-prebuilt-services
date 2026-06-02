@@ -36,7 +36,61 @@ func (e *Extractor) Index(ctx context.Context, tx pgx.Tx, resourceType, resource
 			// Non-fatal — continue indexing other params
 		}
 	}
+	// Universal meta.* params (_tag/_security/_profile/_source) and the
+	// resource-level language. These live on Resource/DomainResource and so
+	// aren't in the per-resource registry; index them uniformly for every type.
+	if err := indexMeta(ctx, tx, resourceType, resourceID, resource); err != nil {
+		slog.Warn("index meta failed", "type", resourceType, "err", err)
+	}
 	return nil
+}
+
+// indexMeta indexes the universal meta search params for any resource:
+//
+//	_tag, _security  → sp_token (system|code from meta.tag / meta.security Codings)
+//	_profile, _source → sp_uri  (meta.profile canonical URLs, meta.source URI)
+//	_language        → sp_token (the resource's top-level language code)
+func indexMeta(ctx context.Context, tx pgx.Tx, rt, rid string, resource map[string]any) error {
+	if meta, ok := resource["meta"].(map[string]any); ok {
+		for _, m := range []struct{ field, param string }{{"tag", "_tag"}, {"security", "_security"}} {
+			if arr, ok := meta[m.field].([]any); ok {
+				for _, c := range arr {
+					if err := insertToken(ctx, tx, rt, rid, m.param, c); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		if arr, ok := meta["profile"].([]any); ok {
+			for _, p := range arr {
+				if err := insertURIValue(ctx, tx, rt, rid, "_profile", asString(p)); err != nil {
+					return err
+				}
+			}
+		}
+		if err := insertURIValue(ctx, tx, rt, rid, "_source", asString(meta["source"])); err != nil {
+			return err
+		}
+	}
+	if lang := asString(resource["language"]); lang != "" {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
+			VALUES ($1, $2, '_language', '', $3, '')`, rid, rt, lang); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// insertURIValue inserts a single sp_uri row, skipping empty values.
+func insertURIValue(ctx context.Context, tx pgx.Tx, rt, rid, param, value string) error {
+	if value == "" {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `
+		INSERT INTO sp_uri (resource_id, resource_type, param_name, value)
+		VALUES ($1, $2, $3, $4)`, rid, rt, param, value)
+	return err
 }
 
 // Delete removes all sp_* rows for a resource.
@@ -150,6 +204,11 @@ func indexToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals []an
 	return nil
 }
 
+// OfTypeSuffix is appended to a token param name to store the auxiliary index
+// row used by the :of-type modifier. The row carries the Identifier.type
+// coding (system, code) plus the identifier value in the display column.
+const OfTypeSuffix = ":of-type"
+
 func insertToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, v any) error {
 	m, ok := v.(map[string]any)
 	if !ok {
@@ -158,20 +217,51 @@ func insertToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, v any) e
 	sys := asString(m["system"])
 	code := asString(m["code"])
 	display := asString(m["display"])
+	value := asString(m["value"])
 	// Identifier and ContactPoint carry their token in "value" rather than
 	// "code"; fall back to it so identifier/telecom token searches match.
 	if code == "" {
-		code = asString(m["value"])
+		code = value
 	}
 	if code == "" {
 		return nil
 	}
-	_, err := tx.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
 		rid, rt, param, sys, code, display,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+
+	// :of-type support — only for Identifiers that carry a type.coding and a value.
+	// Store an auxiliary row keyed by "<param>:of-type" with the type's
+	// system/code and the identifier value in display.
+	if value != "" {
+		if typ, ok := m["type"].(map[string]any); ok {
+			if codings, ok := typ["coding"].([]any); ok {
+				for _, c := range codings {
+					cm, _ := c.(map[string]any)
+					if cm == nil {
+						continue
+					}
+					tSys := asString(cm["system"])
+					tCode := asString(cm["code"])
+					if tCode == "" {
+						continue
+					}
+					if _, err := tx.Exec(ctx, `
+						INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
+						VALUES ($1, $2, $3, $4, $5, $6)`,
+						rid, rt, param+OfTypeSuffix, tSys, tCode, value,
+					); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // ─── sp_date ──────────────────────────────────────────────────────────────────

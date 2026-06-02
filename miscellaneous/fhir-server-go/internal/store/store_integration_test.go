@@ -4,12 +4,16 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/terminology"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/testutil"
 )
 
@@ -18,6 +22,54 @@ func newStore(t *testing.T) *store.Store {
 	pool := testutil.MustSeededDB(t)
 	reg := testutil.MustRegistry(t, pool)
 	return store.New(pool, reg)
+}
+
+// TestSearch_InNotIn_EmptyValueSet verifies that an empty ValueSet expansion
+// produces valid SQL (the EXISTS(...) wrapper needs a real subquery, not a bare
+// boolean): :in matches none, :not-in matches all. Regression for the
+// "1=0"/"1=1" → invalid-SQL bug.
+func TestSearch_InNotIn_EmptyValueSet(t *testing.T) {
+	pool := testutil.MustSeededDB(t)
+	reg := testutil.MustRegistry(t, pool)
+
+	// Mock terminology server: every $expand returns an empty expansion.
+	tx := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/fhir+json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"resourceType": "ValueSet",
+			"expansion":    map[string]any{"contains": []any{}},
+		})
+	}))
+	defer tx.Close()
+
+	s := store.New(pool, reg, store.WithTerminology(terminology.New(tx.URL)))
+	ctx := context.Background()
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "male"})
+
+	// :in with empty ValueSet → match none.
+	in, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"gender:in": {"http://example.org/vs/empty"}},
+	})
+	if err != nil {
+		t.Fatalf("gender:in empty VS: %v", err)
+	}
+	if in.Total != 0 {
+		t.Errorf("gender:in (empty VS): expected 0, got %d", in.Total)
+	}
+
+	// :not-in with empty ValueSet → match all.
+	notIn, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"gender:not-in": {"http://example.org/vs/empty"}},
+	})
+	if err != nil {
+		t.Fatalf("gender:not-in empty VS: %v", err)
+	}
+	if notIn.Total != 2 {
+		t.Errorf("gender:not-in (empty VS): expected 2 (all), got %d", notIn.Total)
+	}
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────
@@ -339,6 +391,605 @@ func TestSearch_ByID(t *testing.T) {
 	foundID, _ := result.Entries[0]["id"].(string)
 	if foundID != id {
 		t.Errorf("expected id=%q, got %q", id, foundID)
+	}
+}
+
+func TestSearch_Sort(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Distinct family names; create out of order to prove the sort is real.
+	for _, fam := range []string{"Charlie", "Alice", "Bob"} {
+		s.Create(ctx, "Patient", map[string]any{
+			"resourceType": "Patient",
+			"name":         []any{map[string]any{"family": fam}},
+		})
+	}
+
+	familiesInOrder := func(params map[string][]string) []string {
+		result, err := s.Search(ctx, store.SearchParams{ResourceType: "Patient", Params: params})
+		if err != nil {
+			t.Fatalf("Search: %v", err)
+		}
+		var fams []string
+		for _, e := range result.Entries {
+			names, _ := e["name"].([]any)
+			if len(names) == 0 {
+				continue
+			}
+			n, _ := names[0].(map[string]any)
+			fams = append(fams, n["family"].(string))
+		}
+		return fams
+	}
+
+	asc := familiesInOrder(map[string][]string{"family": {"a,b,c"}, "_sort": {"family"}})
+	// The family search filter matches all three (prefix a/b/c); assert order.
+	if len(asc) != 3 || asc[0] != "Alice" || asc[1] != "Bob" || asc[2] != "Charlie" {
+		t.Fatalf("ascending _sort=family: got %v, want [Alice Bob Charlie]", asc)
+	}
+
+	desc := familiesInOrder(map[string][]string{"family": {"a,b,c"}, "_sort": {"-family"}})
+	if len(desc) != 3 || desc[0] != "Charlie" || desc[1] != "Bob" || desc[2] != "Alice" {
+		t.Fatalf("descending _sort=-family: got %v, want [Charlie Bob Alice]", desc)
+	}
+}
+
+func TestSearch_CountOnly(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+	}
+
+	result, err := s.Search(ctx, store.SearchParams{ResourceType: "Patient", CountOnly: true})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Total != 3 {
+		t.Errorf("_summary=count: expected total=3, got %d", result.Total)
+	}
+	if len(result.Entries) != 0 {
+		t.Errorf("_summary=count: expected no entries, got %d", len(result.Entries))
+	}
+}
+
+func TestSearch_TotalNone_SkipsCount(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+	}
+
+	result, err := s.Search(ctx, store.SearchParams{ResourceType: "Patient", Total: "none"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Total != -1 {
+		t.Errorf("_total=none: expected total=-1 (not computed), got %d", result.Total)
+	}
+	if len(result.Entries) != 3 {
+		t.Errorf("_total=none: expected entries still returned, got %d", len(result.Entries))
+	}
+}
+
+func TestSearch_NotModifier(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "male"})
+
+	result, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"gender:not": {"male"}},
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("gender:not=male: expected 1 (the female), got %d", result.Total)
+	}
+	if g, _ := result.Entries[0]["gender"].(string); g != "female" {
+		t.Errorf("expected female, got %q", g)
+	}
+}
+
+func TestSearch_TextModifier(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// clinical-status (token, CodeableConcept with display) is indexed, so its
+	// display text is available for the :text modifier.
+	s.Create(ctx, "Condition", map[string]any{
+		"resourceType": "Condition",
+		"clinicalStatus": map[string]any{"coding": []any{map[string]any{
+			"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "active", "display": "Active and ongoing",
+		}}},
+	})
+	s.Create(ctx, "Condition", map[string]any{
+		"resourceType": "Condition",
+		"clinicalStatus": map[string]any{"coding": []any{map[string]any{
+			"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "resolved", "display": "Resolved",
+		}}},
+	})
+
+	result, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Condition",
+		Params:       map[string][]string{"clinical-status:text": {"ongoing"}},
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("clinical-status:text=ongoing: expected 1, got %d", result.Total)
+	}
+}
+
+func TestSearch_URIModifiers(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	for _, u := range []string{"http://acme.org/cs", "http://acme.org/cs/child", "http://other.org/cs"} {
+		s.Create(ctx, "CodeSystem", map[string]any{
+			"resourceType": "CodeSystem", "url": u, "status": "active", "content": "complete",
+		})
+	}
+
+	below, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "CodeSystem",
+		Params:       map[string][]string{"url:below": {"http://acme.org/cs"}},
+	})
+	if err != nil {
+		t.Fatalf("below: %v", err)
+	}
+	if below.Total != 2 {
+		t.Errorf("url:below=http://acme.org/cs: expected 2, got %d", below.Total)
+	}
+
+	above, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "CodeSystem",
+		Params:       map[string][]string{"url:above": {"http://acme.org/cs/child"}},
+	})
+	if err != nil {
+		t.Fatalf("above: %v", err)
+	}
+	// Stored URIs that are prefixes of the search value: the cs and cs/child.
+	if above.Total != 2 {
+		t.Errorf("url:above=http://acme.org/cs/child: expected 2, got %d", above.Total)
+	}
+}
+
+func TestSearch_OfTypeModifier(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Patient with an MR-typed identifier.
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient",
+		"identifier": []any{map[string]any{
+			"type": map[string]any{"coding": []any{map[string]any{
+				"system": "http://terminology.hl7.org/CodeSystem/v2-0203", "code": "MR",
+			}}},
+			"system": "urn:oid:1.2.3", "value": "mrn-555",
+		}},
+	})
+	// Patient with a different identifier type.
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient",
+		"identifier": []any{map[string]any{
+			"type": map[string]any{"coding": []any{map[string]any{
+				"system": "http://terminology.hl7.org/CodeSystem/v2-0203", "code": "DL",
+			}}},
+			"value": "DL-999",
+		}},
+	})
+
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"identifier:of-type": {"http://terminology.hl7.org/CodeSystem/v2-0203|MR|mrn-555"}},
+	})
+	if err != nil {
+		t.Fatalf("of-type search: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("identifier:of-type MR|mrn-555: expected 1, got %d", res.Total)
+	}
+}
+
+func TestSearch_UnsupportedTokenModifier(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+
+	_, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"gender:above": {"x"}},
+	})
+	var unsup *store.UnsupportedParamError
+	if !errors.As(err, &unsup) {
+		t.Fatalf("expected UnsupportedParamError for token :above, got %v", err)
+	}
+}
+
+func TestSearch_SeededBinaryAndObservationDefinition(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	s.Create(ctx, "Binary", map[string]any{"resourceType": "Binary", "contentType": "application/pdf"})
+	s.Create(ctx, "Binary", map[string]any{"resourceType": "Binary", "contentType": "image/png"})
+
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Binary",
+		Params:       map[string][]string{"contenttype": {"application/pdf"}},
+	})
+	if err != nil {
+		t.Fatalf("Binary contenttype search: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("Binary?contenttype=application/pdf: expected 1, got %d", res.Total)
+	}
+
+	s.Create(ctx, "ObservationDefinition", map[string]any{
+		"resourceType": "ObservationDefinition",
+		"code":         map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "1234-5"}}},
+	})
+	res, err = s.Search(ctx, store.SearchParams{
+		ResourceType: "ObservationDefinition",
+		Params:       map[string][]string{"code": {"http://loinc.org|1234-5"}},
+	})
+	if err != nil {
+		t.Fatalf("ObservationDefinition code search: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("ObservationDefinition?code=...: expected 1, got %d", res.Total)
+	}
+}
+
+func TestSearch_MetaParams(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient",
+		"language":     "en-US",
+		"meta": map[string]any{
+			"profile":  []any{"http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"},
+			"source":   "http://example.org/feed",
+			"tag":      []any{map[string]any{"system": "http://example.org/tags", "code": "vip"}},
+			"security": []any{map[string]any{"system": "http://terminology.hl7.org/CodeSystem/v3-Confidentiality", "code": "R"}},
+		},
+	})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "language": "fr"})
+
+	cases := []struct {
+		name   string
+		params map[string][]string
+		want   int
+	}{
+		{"_tag", map[string][]string{"_tag": {"http://example.org/tags|vip"}}, 1},
+		{"_tag code-only", map[string][]string{"_tag": {"vip"}}, 1},
+		{"_profile", map[string][]string{"_profile": {"http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"}}, 1},
+		{"_source", map[string][]string{"_source": {"http://example.org/feed"}}, 1},
+		{"_security", map[string][]string{"_security": {"R"}}, 1},
+		{"_language", map[string][]string{"_language": {"en-US"}}, 1},
+		{"_language fr", map[string][]string{"_language": {"fr"}}, 1},
+		{"_profile:below", map[string][]string{"_profile:below": {"http://hl7.org/fhir/us/core"}}, 1},
+	}
+	for _, tc := range cases {
+		res, err := s.Search(ctx, store.SearchParams{ResourceType: "Patient", Params: tc.params})
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		if res.Total != tc.want {
+			t.Errorf("%s: expected %d, got %d", tc.name, tc.want, res.Total)
+		}
+	}
+}
+
+func TestSearch_CompositeParam(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Observation with code 8480-6 and a quantity value of 120 mm[Hg]
+	s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"code":          map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8480-6"}}},
+		"valueQuantity": map[string]any{"value": float64(120), "system": "http://unitsofmeasure.org", "code": "mm[Hg]"},
+	})
+	// Observation with same code but different value
+	s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"code":          map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8480-6"}}},
+		"valueQuantity": map[string]any{"value": float64(80), "system": "http://unitsofmeasure.org", "code": "mm[Hg]"},
+	})
+	// Observation with a different code
+	s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"code":          map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "9999-9"}}},
+		"valueQuantity": map[string]any{"value": float64(120), "system": "http://unitsofmeasure.org", "code": "mm[Hg]"},
+	})
+
+	// code-value-quantity=http://loinc.org|8480-6$120 should match only the first.
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Observation",
+		Params:       map[string][]string{"code-value-quantity": {"http://loinc.org|8480-6$120"}},
+	})
+	if err != nil {
+		t.Fatalf("composite search: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("code-value-quantity=...8480-6$120: expected 1, got %d", res.Total)
+	}
+}
+
+func TestSearch_PreviouslyBlankExpressions(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Observation.code — its CSV expression was blank, so this returned nothing.
+	s.Create(ctx, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"code": map[string]any{"coding": []any{map[string]any{
+			"system": "http://loinc.org", "code": "85354-9",
+		}}},
+		"valueQuantity": map[string]any{"value": 120, "system": "http://unitsofmeasure.org", "code": "mm[Hg]"},
+	})
+	// Patient.death-date — polymorphic deceased[x] via ofType(dateTime).
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient", "deceasedDateTime": "2020-03-15T00:00:00Z",
+	})
+
+	cases := []struct {
+		rt     string
+		params map[string][]string
+		want   int
+		label  string
+	}{
+		{"Observation", map[string][]string{"code": {"http://loinc.org|85354-9"}}, 1, "Observation?code"},
+		{"Observation", map[string][]string{"value-quantity": {"120"}}, 1, "Observation?value-quantity"},
+		{"Patient", map[string][]string{"death-date": {"2020-03-15"}}, 1, "Patient?death-date"},
+	}
+	for _, tc := range cases {
+		res, err := s.Search(ctx, store.SearchParams{ResourceType: tc.rt, Params: tc.params})
+		if err != nil {
+			t.Errorf("%s: %v", tc.label, err)
+			continue
+		}
+		if res.Total != tc.want {
+			t.Errorf("%s: expected %d, got %d", tc.label, tc.want, res.Total)
+		}
+	}
+}
+
+func TestSearch_Has(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	pat, _ := s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "name": []any{map[string]any{"family": "Has-Target"}}})
+	patID := pat["id"].(string)
+
+	// An Encounter with status=finished referencing the patient.
+	s.Create(ctx, "Encounter", map[string]any{
+		"resourceType": "Encounter", "status": "finished",
+		"subject": map[string]any{"reference": "Patient/" + patID},
+	})
+	// A second Encounter with status=planned referencing the same patient.
+	s.Create(ctx, "Encounter", map[string]any{
+		"resourceType": "Encounter", "status": "planned",
+		"subject": map[string]any{"reference": "Patient/" + patID},
+	})
+	// An unrelated patient with no encounters.
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+
+	// Find Patients that have a finished Encounter referencing them via subject.
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_has:Encounter:subject:status": {"finished"}},
+	})
+	if err != nil {
+		t.Fatalf("_has search: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("_has:Encounter:subject:status=finished: expected 1, got %d", res.Total)
+	} else if id, _ := res.Entries[0]["id"].(string); id != patID {
+		t.Errorf("expected patient %s, got %s", patID, id)
+	}
+
+	// Bad modifier (missing segment) → error.
+	_, err = s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_has:Encounter:subject": {"x"}},
+	})
+	var unsup *store.UnsupportedParamError
+	if !errors.As(err, &unsup) {
+		t.Errorf("malformed _has: expected UnsupportedParamError, got %v", err)
+	}
+}
+
+func TestSearch_MultiHopChain(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Hierarchy: Patient → org1 (partOf) → org2 "TopOrg"
+	org2, _ := s.Create(ctx, "Organization", map[string]any{"resourceType": "Organization", "name": "TopOrg"})
+	org1, _ := s.Create(ctx, "Organization", map[string]any{
+		"resourceType": "Organization", "name": "SubOrg",
+		"partOf":       map[string]any{"reference": "Organization/" + org2["id"].(string)},
+	})
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType":        "Patient",
+		"name":                []any{map[string]any{"family": "TargetPatient"}},
+		"managingOrganization": map[string]any{"reference": "Organization/" + org1["id"].(string)},
+	})
+	// Unrelated patient with no org link.
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+
+	// Two-hop: Patient?organization.partof.name=TopOrg
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"organization.partof.name": {"TopOrg"}},
+	})
+	if err != nil {
+		t.Fatalf("2-hop chain: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("organization.partof.name=TopOrg: expected 1, got %d", res.Total)
+	}
+}
+
+func TestSearch_Chained(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Organization "Acme" referenced by a Patient via managingOrganization.
+	org, _ := s.Create(ctx, "Organization", map[string]any{"resourceType": "Organization", "name": "Acme"})
+	orgID := org["id"].(string)
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType":         "Patient",
+		"name":                 []any{map[string]any{"family": "Smith"}},
+		"managingOrganization": map[string]any{"reference": "Organization/" + orgID},
+	})
+	// A second Patient pointing at a different org, to prove the chain filters.
+	org2, _ := s.Create(ctx, "Organization", map[string]any{"resourceType": "Organization", "name": "Globex"})
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType":         "Patient",
+		"name":                 []any{map[string]any{"family": "Jones"}},
+		"managingOrganization": map[string]any{"reference": "Organization/" + org2["id"].(string)},
+	})
+
+	// Untyped chain, ref name == target type: organization.name=Acme.
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"organization.name": {"Acme"}},
+	})
+	if err != nil {
+		t.Fatalf("organization.name: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("Patient?organization.name=Acme: expected 1, got %d", res.Total)
+	} else if fam := res.Entries[0]["name"].([]any)[0].(map[string]any)["family"]; fam != "Smith" {
+		t.Errorf("expected Smith, got %v", fam)
+	}
+
+	// Encounter.subject typed chain to Patient.
+	pat, _ := s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient", "name": []any{map[string]any{"family": "Targaryen"}},
+	})
+	s.Create(ctx, "Encounter", map[string]any{
+		"resourceType": "Encounter", "status": "finished",
+		"subject": map[string]any{"reference": "Patient/" + pat["id"].(string)},
+	})
+
+	typed, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Encounter",
+		Params:       map[string][]string{"subject:Patient.family": {"Targaryen"}},
+	})
+	if err != nil {
+		t.Fatalf("subject:Patient.family: %v", err)
+	}
+	if typed.Total != 1 {
+		t.Errorf("Encounter?subject:Patient.family=Targaryen: expected 1, got %d", typed.Total)
+	}
+
+	// Untyped chain inferred from ref name "patient" → Patient.
+	inferred, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Encounter",
+		Params:       map[string][]string{"patient.family": {"Targaryen"}},
+	})
+	if err != nil {
+		t.Fatalf("patient.family: %v", err)
+	}
+	if inferred.Total != 1 {
+		t.Errorf("Encounter?patient.family=Targaryen: expected 1, got %d", inferred.Total)
+	}
+
+	// Multi-hop now works (see TestSearch_MultiHopChain for the full test).
+	// Just confirm it doesn't error on a 2-hop chain — TestSearch_MultiHopChain
+	// tests correctness.
+	_, err = s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"organization.partof.name": {"x"}},
+	})
+	if err != nil {
+		t.Errorf("multi-hop chain should not error (returns 0 results), got %v", err)
+	}
+}
+
+func TestSearch_List(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	p1, _ := s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+	p2, _ := s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient"}) // not in list
+
+	list, _ := s.Create(ctx, "List", map[string]any{
+		"resourceType": "List", "status": "current", "mode": "working",
+		"entry": []any{
+			map[string]any{"item": map[string]any{"reference": "Patient/" + p1["id"].(string)}},
+			map[string]any{"item": map[string]any{"reference": "Patient/" + p2["id"].(string)}},
+		},
+	})
+	listID := list["id"].(string)
+
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_list": {listID}},
+	})
+	if err != nil {
+		t.Fatalf("_list search: %v", err)
+	}
+	if res.Total != 2 {
+		t.Errorf("_list: expected 2, got %d", res.Total)
+	}
+}
+
+func TestSearch_Filter(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "female", "active": true})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "male", "active": true})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "female", "active": false})
+
+	// eq filter: gender eq female → 2 results.
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_filter": {"gender eq female"}},
+	})
+	if err != nil {
+		t.Fatalf("_filter gender eq female: %v", err)
+	}
+	if res.Total != 2 {
+		t.Errorf("gender eq female: expected 2, got %d", res.Total)
+	}
+
+	// and combiner: gender eq female and active eq true → 1 result.
+	res, err = s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_filter": {"gender eq female and active eq true"}},
+	})
+	if err != nil {
+		t.Fatalf("_filter and: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("gender eq female and active eq true: expected 1, got %d", res.Total)
+	}
+
+	// ne: gender ne female → 1 result (the male).
+	res, err = s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"_filter": {"gender ne female"}},
+	})
+	if err != nil {
+		t.Fatalf("_filter ne: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("gender ne female: expected 1 (male), got %d", res.Total)
 	}
 }
 

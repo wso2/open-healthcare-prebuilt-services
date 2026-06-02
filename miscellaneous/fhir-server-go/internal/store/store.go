@@ -14,20 +14,31 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/index"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/searchparam"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/terminology"
 )
 
 type Store struct {
-	pool      *pgxpool.Pool
-	extractor *index.Extractor
-	registry  *searchparam.Registry
+	pool        *pgxpool.Pool
+	extractor   *index.Extractor
+	registry    *searchparam.Registry
+	terminology *terminology.Client // may be nil if FHIR_TERMINOLOGY_URL is unset
 }
 
-func New(pool *pgxpool.Pool, registry *searchparam.Registry) *Store {
-	return &Store{
+func New(pool *pgxpool.Pool, registry *searchparam.Registry, opts ...func(*Store)) *Store {
+	s := &Store{
 		pool:      pool,
 		extractor: index.New(registry),
 		registry:  registry,
 	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
+}
+
+// WithTerminology configures the store to call tc for :in/:not-in expansion.
+func WithTerminology(tc *terminology.Client) func(*Store) {
+	return func(s *Store) { s.terminology = tc }
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────
@@ -393,6 +404,8 @@ type HistoryResult struct {
 	Entries []HistoryEntry
 }
 
+// GetTypeHistory returns paged history for a single resource type. When
+// p.ResourceType is empty it returns cross-type (system-level) history.
 func (s *Store) GetTypeHistory(ctx context.Context, p HistoryParams) (HistoryResult, error) {
 	if p.PageSize <= 0 {
 		p.PageSize = 20
@@ -409,13 +422,26 @@ func (s *Store) GetTypeHistory(ctx context.Context, p HistoryParams) (HistoryRes
 		args   []any
 	)
 
-	if p.Since.IsZero() {
+	system := p.ResourceType == ""
+	switch {
+	case system && p.Since.IsZero():
+		countQ = `SELECT COUNT(*) FROM resource_history`
+		fetchQ = `SELECT version_id, operation, resource_json, recorded_at
+		           FROM resource_history ORDER BY recorded_at DESC LIMIT $1 OFFSET $2`
+		args = []any{}
+	case system && !p.Since.IsZero():
+		countQ = `SELECT COUNT(*) FROM resource_history WHERE recorded_at > $1`
+		fetchQ = `SELECT version_id, operation, resource_json, recorded_at
+		           FROM resource_history WHERE recorded_at > $1
+		           ORDER BY recorded_at DESC LIMIT $2 OFFSET $3`
+		args = []any{p.Since}
+	case !system && p.Since.IsZero():
 		countQ = `SELECT COUNT(*) FROM resource_history WHERE resource_type = $1`
 		fetchQ = `SELECT version_id, operation, resource_json, recorded_at
 		           FROM resource_history WHERE resource_type = $1
 		           ORDER BY recorded_at DESC LIMIT $2 OFFSET $3`
 		args = []any{p.ResourceType}
-	} else {
+	default:
 		countQ = `SELECT COUNT(*) FROM resource_history WHERE resource_type = $1 AND recorded_at > $2`
 		fetchQ = `SELECT version_id, operation, resource_json, recorded_at
 		           FROM resource_history WHERE resource_type = $1 AND recorded_at > $2
@@ -427,7 +453,10 @@ func (s *Store) GetTypeHistory(ctx context.Context, p HistoryParams) (HistoryRes
 		return HistoryResult{}, err
 	}
 
-	fetchArgs := append(args, p.PageSize, offset)
+	// append makes a copy so countQ args are not mutated.
+	fetchArgs := make([]any, len(args), len(args)+2)
+	copy(fetchArgs, args)
+	fetchArgs = append(fetchArgs, p.PageSize, offset)
 	rows, err := s.pool.Query(ctx, fetchQ, fetchArgs...)
 	if err != nil {
 		return HistoryResult{}, err
@@ -616,16 +645,28 @@ func (s *Store) SyncSearchParameter(ctx context.Context, body map[string]any) er
 		return err
 	}
 
+	// Collect target types if this is a reference param.
+	var targets []string
+	if targetArr, ok := body["target"].([]any); ok {
+		for _, t := range targetArr {
+			if s, ok := t.(string); ok && s != "" {
+				targets = append(targets, s)
+			}
+		}
+	}
+	targetTypes := strings.Join(targets, "|")
+
 	var defs []searchparam.Definition
 	for rt := range newBases {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO search_param_definitions (resource_type, param_name, param_type, fhirpath_expr, is_custom)
-			VALUES ($1, $2, $3, $4, TRUE)
+			INSERT INTO search_param_definitions (resource_type, param_name, param_type, fhirpath_expr, is_custom, target_types)
+			VALUES ($1, $2, $3, $4, TRUE, $5)
 			ON CONFLICT (resource_type, param_name)
 			DO UPDATE SET param_type = EXCLUDED.param_type,
-			              fhirpath_expr = EXCLUDED.fhirpath_expr
+			              fhirpath_expr = EXCLUDED.fhirpath_expr,
+			              target_types = EXCLUDED.target_types
 			WHERE search_param_definitions.is_custom = TRUE`,
-			rt, code, paramType, expression,
+			rt, code, paramType, expression, targetTypes,
 		); err != nil {
 			return fmt.Errorf("upsert search param %s.%s: %w", rt, code, err)
 		}
@@ -635,6 +676,7 @@ func (s *Store) SyncSearchParameter(ctx context.Context, body map[string]any) er
 			ParamType:    paramType,
 			FHIRPath:     expression,
 			IsCustom:     true,
+			Targets:      targets,
 		})
 	}
 

@@ -453,17 +453,107 @@ func TestIntegration_Validate_Valid(t *testing.T) {
 	}
 }
 
-func TestIntegration_Validate_Invalid_MissingRequired(t *testing.T) {
+func TestIntegration_Validate_NoProfileLoaded_Passes(t *testing.T) {
+	// $validate with no profile loaded is soft-fail: returns 200 informational.
+	// Real enforcement happens only when a StructureDefinition is in ig_profiles.
 	srv := newRealServer(t)
-
-	// Observation without code
 	resp := iDo(t, srv, http.MethodPost, "/fhir/r4/Observation/$validate",
 		map[string]any{"resourceType": "Observation", "status": "final"},
 	)
 	body := iJSON(t, resp)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("want 422, got %d: %v", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 (no profile loaded), got %d: %v", resp.StatusCode, body)
 	}
+}
+
+func TestIntegration_Validate_ProfileDriven(t *testing.T) {
+	pool := testutil.MustSeededDB(t)
+	// Inject a synthetic StructureDefinition that requires Patient.name (min=1).
+	sd := map[string]any{
+		"resourceType": "StructureDefinition",
+		"url":          "http://example.org/fhir/StructureDefinition/must-have-name",
+		"kind":         "resource", "derivation": "constraint", "type": "Patient",
+		"snapshot": map[string]any{"element": []any{
+			map[string]any{"path": "Patient", "min": float64(1), "max": "*"},
+			map[string]any{"path": "Patient.name", "min": float64(1), "max": "*"},
+		}},
+	}
+	sdJSON, _ := json.Marshal(sd)
+	_, err := pool.Exec(
+		t.Context(),
+		`INSERT INTO ig_profiles (package_name, profile_url, resource_type, sd_json)
+		 VALUES ('test', 'http://example.org/fhir/StructureDefinition/must-have-name', 'Patient', $1)
+		 ON CONFLICT (profile_url) DO UPDATE SET sd_json = EXCLUDED.sd_json`,
+		sdJSON,
+	)
+	if err != nil {
+		t.Fatalf("inject profile: %v", err)
+	}
+
+	reg := testutil.MustRegistry(t, pool)
+	s := store.New(pool, reg)
+	var ready atomic.Int32
+	ready.Store(1)
+	srv := httptest.NewServer(handler.NewRouter(s, pool, reg, "http://test-server/fhir/r4", &ready))
+	t.Cleanup(srv.Close)
+
+	profileURL := "http://example.org/fhir/StructureDefinition/must-have-name"
+
+	// Validate with ?profile=: invalid (missing name) → 422.
+	resp := iDo(t, srv, http.MethodPost, "/fhir/r4/Patient/$validate?profile="+profileURL,
+		map[string]any{"resourceType": "Patient"},
+	)
+	body := iJSON(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422 for profile violation, got %d: %v", resp.StatusCode, body)
+	}
+	issues, _ := body["issue"].([]any)
+	if len(issues) == 0 {
+		t.Fatal("expected at least one validation issue")
+	}
+
+	// Validate with meta.profile: valid (name present) → 200.
+	resp = iDo(t, srv, http.MethodPost, "/fhir/r4/Patient/$validate",
+		map[string]any{
+			"resourceType": "Patient",
+			"name":         []any{map[string]any{"family": "OK"}},
+			"meta":         map[string]any{"profile": []any{profileURL}},
+		},
+	)
+	body = iJSON(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 for valid resource, got %d: %v", resp.StatusCode, body)
+	}
+
+	// Auto-validate on write (validateOnWrite=true): create without name → 422.
+	srvStrict := httptest.NewServer(handler.NewRouter(s, pool, reg, "http://test-server/fhir/r4", &ready, true))
+	t.Cleanup(srvStrict.Close)
+
+	resp = iDo(t, srvStrict, http.MethodPost, "/fhir/r4/Patient",
+		map[string]any{
+			"resourceType": "Patient",
+			"meta":         map[string]any{"profile": []any{profileURL}},
+		},
+	)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		body = iJSON(t, resp)
+		t.Fatalf("auto-validate: want 422, got %d: %v", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+
+	// Auto-validate on write: create with name → 201.
+	resp = iDo(t, srvStrict, http.MethodPost, "/fhir/r4/Patient",
+		map[string]any{
+			"resourceType": "Patient",
+			"name":         []any{map[string]any{"family": "Valid"}},
+			"meta":         map[string]any{"profile": []any{profileURL}},
+		},
+	)
+	if resp.StatusCode != http.StatusCreated {
+		body = iJSON(t, resp)
+		t.Fatalf("auto-validate: want 201 for valid write, got %d: %v", resp.StatusCode, body)
+	}
+	resp.Body.Close()
 }
 
 func TestIntegration_Validate_415_WrongContentType(t *testing.T) {
@@ -479,7 +569,117 @@ func TestIntegration_Validate_415_WrongContentType(t *testing.T) {
 	}
 }
 
+// ─── $everything for Encounter and Group ─────────────────────────────────────
+
+func TestIntegration_Everything_Encounter(t *testing.T) {
+	srv := newRealServer(t)
+
+	// Create a Patient and an Encounter referencing it.
+	patID, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})
+	encID, _ := iCreate(t, srv, "Encounter", map[string]any{
+		"resourceType": "Encounter", "status": "finished",
+		"class":   map[string]any{"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "AMB"},
+		"subject": map[string]any{"reference": "Patient/" + patID},
+	})
+
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/Encounter/"+encID+"/$everything", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("Encounter/$everything: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	bundle := iJSON(t, resp)
+	if bundle["type"] != "searchset" {
+		t.Errorf("bundle.type: want searchset, got %v", bundle["type"])
+	}
+	total, _ := bundle["total"].(float64)
+	if total < 2 {
+		t.Errorf("Encounter/$everything should include the Encounter + Patient, got total=%v", total)
+	}
+}
+
+func TestIntegration_Everything_Group(t *testing.T) {
+	srv := newRealServer(t)
+
+	// Create a Group. $everything with no related resources should still return the Group itself.
+	grpID, _ := iCreate(t, srv, "Group", map[string]any{
+		"resourceType": "Group", "type": "person", "actual": true,
+	})
+
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/Group/"+grpID+"/$everything", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("Group/$everything: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	bundle := iJSON(t, resp)
+	total, _ := bundle["total"].(float64)
+	if total < 1 {
+		t.Errorf("Group/$everything should return at least the Group itself, got total=%v", total)
+	}
+}
+
+// ─── searchRevInclude in CapabilityStatement ──────────────────────────────────
+
+func TestIntegration_CapabilityStatement_SearchRevInclude(t *testing.T) {
+	srv := newRealServer(t)
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/metadata", nil)
+	cs := iJSON(t, resp)
+	if cs["resourceType"] != "CapabilityStatement" {
+		t.Fatalf("expected CapabilityStatement, got %v", cs["resourceType"])
+	}
+	rest, _ := cs["rest"].([]any)
+	if len(rest) == 0 {
+		t.Fatal("rest is empty")
+	}
+	r0, _ := rest[0].(map[string]any)
+	resources, _ := r0["resource"].([]any)
+	var patient map[string]any
+	for _, r := range resources {
+		rm, _ := r.(map[string]any)
+		if rm["type"] == "Patient" {
+			patient = rm
+			break
+		}
+	}
+	if patient == nil {
+		t.Fatal("Patient not found in CapabilityStatement")
+	}
+	revIncludes, _ := patient["searchRevInclude"].([]any)
+	if len(revIncludes) == 0 {
+		t.Fatal("Patient.searchRevInclude should be non-empty (Encounter:patient etc.)")
+	}
+	// Encounter:patient must be one of them
+	found := false
+	for _, ri := range revIncludes {
+		if ri == "Encounter:patient" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Encounter:patient not in Patient.searchRevInclude; got %v", revIncludes[:min(len(revIncludes), 5)])
+	}
+}
+
 // ─── Type-level history ───────────────────────────────────────────────────────
+
+func TestIntegration_SystemHistory(t *testing.T) {
+	srv := newRealServer(t)
+	iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})
+	iCreate(t, srv, "Organization", map[string]any{"resourceType": "Organization", "name": "Acme"})
+
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/_history", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("system history: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	b := iJSON(t, resp)
+	if b["type"] != "history" {
+		t.Errorf("bundle.type: want history, got %v", b["type"])
+	}
+	if total, _ := b["total"].(float64); total < 2 {
+		t.Errorf("system history should include both Patient and Organization, got total=%v", total)
+	}
+}
 
 func TestIntegration_TypeHistory_Basic(t *testing.T) {
 	srv := newRealServer(t)
@@ -699,5 +899,187 @@ func TestMetadata_AdvertisesSearchParams(t *testing.T) {
 	}
 	if !foundEncPatient {
 		t.Errorf("Encounter.searchInclude missing 'Encounter:patient'; got %v", incs)
+	}
+}
+
+// ─── Patch formats ────────────────────────────────────────────────────────────
+
+// ─── Compartment search ───────────────────────────────────────────────────────
+
+// ─── XML wire format ──────────────────────────────────────────────────────────
+
+func TestIntegration_XML_CreateAndRead(t *testing.T) {
+	srv := newRealServer(t)
+
+	// Create via XML body.
+	xmlBody := `<?xml version="1.0" encoding="UTF-8"?>
+<Patient xmlns="http://hl7.org/fhir">
+  <gender value="female"/>
+</Patient>`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/fhir/r4/Patient", strings.NewReader(xmlBody))
+	req.Header.Set("Content-Type", "application/fhir+xml")
+	req.Header.Set("Accept", "application/fhir+json") // respond in JSON for easy assertion
+	resp, _ := srv.Client().Do(req)
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("XML create: want 201, got %d: %s", resp.StatusCode, string(body))
+	}
+	created := iJSON(t, resp)
+	id, _ := created["id"].(string)
+	if id == "" {
+		t.Fatal("no id returned")
+	}
+
+	// Read back requesting XML via _format.
+	resp = iDo(t, srv, http.MethodGet, "/fhir/r4/Patient/"+id+"?_format=xml", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("XML read: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	defer resp.Body.Close()
+	xmlResp, _ := io.ReadAll(resp.Body)
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "xml") {
+		t.Errorf("XML read: want application/fhir+xml Content-Type, got %q", ct)
+	}
+	if !strings.Contains(string(xmlResp), "<Patient") {
+		t.Errorf("XML read: response should contain <Patient, got: %s", string(xmlResp[:min(len(xmlResp), 200)]))
+	}
+	if !strings.Contains(string(xmlResp), `value="female"`) {
+		t.Errorf("XML read: expected gender female in XML response")
+	}
+}
+
+func TestIntegration_Turtle_ReadFormat(t *testing.T) {
+	srv := newRealServer(t)
+	id, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/Patient/"+id+"?_format=ttl", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("turtle read: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	defer resp.Body.Close()
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "turtle") {
+		t.Errorf("want application/fhir+turtle, got %q", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "a fhir:Patient") {
+		t.Errorf("turtle body should declare fhir:Patient: %s", string(body[:min(len(body), 200)]))
+	}
+	if !strings.Contains(string(body), `fhir:gender "female"`) {
+		t.Errorf("turtle body should contain gender")
+	}
+}
+
+func TestIntegration_CompartmentSearch_Patient_Observation(t *testing.T) {
+	srv := newRealServer(t)
+	patID, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})
+	otherPatID, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})
+
+	// Observation for our patient.
+	iCreate(t, srv, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"subject": map[string]any{"reference": "Patient/" + patID},
+		"code":    map[string]any{"text": "BP"},
+	})
+	// Observation for a different patient — should NOT appear.
+	iCreate(t, srv, "Observation", map[string]any{
+		"resourceType": "Observation", "status": "final",
+		"subject": map[string]any{"reference": "Patient/" + otherPatID},
+		"code":    map[string]any{"text": "HR"},
+	})
+
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/Patient/"+patID+"/Observation", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("compartment search: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	bundle := iJSON(t, resp)
+	if total, _ := bundle["total"].(float64); total != 1 {
+		t.Errorf("Patient/%s/Observation: expected 1, got %v", patID, total)
+	}
+
+	// Unknown compartment type → 404.
+	resp = iDo(t, srv, http.MethodGet, "/fhir/r4/Medication/some-id/Observation", nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown compartment type: want 404, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestIntegration_JSONPatch_RFC6902(t *testing.T) {
+	srv := newRealServer(t)
+	id, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+
+	ops := []map[string]any{
+		{"op": "replace", "path": "/gender", "value": "male"},
+		{"op": "add", "path": "/active", "value": true},
+	}
+	b, _ := json.Marshal(ops)
+	req, _ := http.NewRequest(http.MethodPatch, srv.URL+"/fhir/r4/Patient/"+id, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json-patch+json")
+	resp, _ := srv.Client().Do(req)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("JSON Patch: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	updated := iJSON(t, resp)
+	if updated["gender"] != "male" {
+		t.Errorf("gender: want male, got %v", updated["gender"])
+	}
+	if updated["active"] != true {
+		t.Errorf("active: want true, got %v", updated["active"])
+	}
+	meta, _ := updated["meta"].(map[string]any)
+	if v, _ := meta["versionId"].(string); v != "2" {
+		t.Errorf("versionId: want 2, got %v", v)
+	}
+}
+
+func TestIntegration_FHIRPatch(t *testing.T) {
+	srv := newRealServer(t)
+	id, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+
+	params := map[string]any{
+		"resourceType": "Parameters",
+		"parameter": []any{map[string]any{
+			"name": "operation",
+			"part": []any{
+				map[string]any{"name": "type", "valueCode": "replace"},
+				map[string]any{"name": "path", "valueString": "Patient.gender"},
+				map[string]any{"name": "value", "valueString": "other"},
+			},
+		}},
+	}
+	resp := iDo(t, srv, http.MethodPatch, "/fhir/r4/Patient/"+id, params, "Content-Type", "application/fhir+json")
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("FHIR Patch: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	updated := iJSON(t, resp)
+	if updated["gender"] != "other" {
+		t.Errorf("gender: want other, got %v", updated["gender"])
+	}
+}
+
+func TestIntegration_Metrics_Endpoint(t *testing.T) {
+	srv := newRealServer(t)
+	// Make a request to populate the histogram.
+	iDo(t, srv, http.MethodGet, "/fhir/r4/Patient/does-not-exist", nil).Body.Close()
+
+	resp := iDo(t, srv, http.MethodGet, "/metrics", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("metrics: want 200, got %d", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "http_request_duration_seconds") {
+		t.Error("metrics should contain http_request_duration_seconds")
+	}
+	if !strings.Contains(string(body), "fhir_request_total") {
+		t.Error("metrics should contain fhir_request_total")
 	}
 }
