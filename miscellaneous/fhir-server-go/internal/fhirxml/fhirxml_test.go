@@ -72,6 +72,34 @@ func TestFromXML_Patient(t *testing.T) {
 	}
 }
 
+func TestFromXML_NoSyntheticResourceTypeOnChildren(t *testing.T) {
+	// Nested complex elements must NOT receive a synthetic resourceType — only
+	// the root resource carries it. Regression for the decodeStarted bug.
+	xmlData := `<?xml version="1.0" encoding="UTF-8"?>
+<Patient xmlns="http://hl7.org/fhir">
+  <name>
+    <family value="Smith"/>
+  </name>
+</Patient>`
+	m, err := FromXML([]byte(xmlData))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m["resourceType"] != "Patient" {
+		t.Errorf("root resourceType: got %v", m["resourceType"])
+	}
+	name, _ := m["name"].(map[string]any)
+	if name == nil {
+		t.Fatalf("name not parsed as object: %T", m["name"])
+	}
+	if _, ok := name["resourceType"]; ok {
+		t.Errorf("nested name element must not have a synthetic resourceType, got %v", name["resourceType"])
+	}
+	if name["family"] != "Smith" {
+		t.Errorf("name.family: got %v", name["family"])
+	}
+}
+
 func TestRoundTrip(t *testing.T) {
 	original := map[string]any{
 		"resourceType": "Observation",

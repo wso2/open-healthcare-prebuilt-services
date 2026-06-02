@@ -167,10 +167,13 @@ func decodeElement(dec *xml.Decoder) (any, error) {
 			break
 		}
 	}
-	return decodeStarted(dec, start)
+	return decodeStarted(dec, start, true)
 }
 
-func decodeStarted(dec *xml.Decoder, start xml.StartElement) (any, error) {
+// decodeStarted decodes the element whose StartElement is `start`. isRoot marks
+// the resource root — the only element that should carry resourceType; nested
+// complex elements must not get a synthetic resourceType.
+func decodeStarted(dec *xml.Decoder, start xml.StartElement, isRoot bool) (any, error) {
 	localName := start.Name.Local
 
 	// Check for "value" attribute → primitive.
@@ -184,7 +187,7 @@ func decodeStarted(dec *xml.Decoder, start xml.StartElement) (any, error) {
 	}
 
 	// Collect all child tokens.
-	result := map[string]any{"resourceType": localName}
+	result := map[string]any{}
 	childCounts := map[string]int{}
 	var charData strings.Builder
 	hasChildren := false
@@ -197,7 +200,7 @@ func decodeStarted(dec *xml.Decoder, start xml.StartElement) (any, error) {
 		switch t := tok.(type) {
 		case xml.StartElement:
 			hasChildren = true
-			child, err := decodeStarted(dec, t)
+			child, err := decodeStarted(dec, t, false)
 			if err != nil {
 				return nil, err
 			}
@@ -226,8 +229,6 @@ done:
 	if !hasChildren && !hasValueAttr && charData.Len() > 0 {
 		return charData.String(), nil
 	}
-	// Object: remove the resourceType field for non-root elements.
-	delete(result, "resourceType")
 	if hasValueAttr {
 		// Primitive with extension children: set the value and keep children.
 		result["value"] = valueAttr
@@ -236,7 +237,9 @@ done:
 	if len(result) == 0 {
 		return "", nil
 	}
-	// Root object: put resourceType back.
-	result["resourceType"] = localName
+	// Only the root element carries resourceType; nested objects must not.
+	if isRoot {
+		result["resourceType"] = localName
+	}
 	return result, nil
 }
