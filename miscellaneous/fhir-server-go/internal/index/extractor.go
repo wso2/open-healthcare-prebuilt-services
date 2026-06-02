@@ -204,6 +204,11 @@ func indexToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals []an
 	return nil
 }
 
+// OfTypeSuffix is appended to a token param name to store the auxiliary index
+// row used by the :of-type modifier. The row carries the Identifier.type
+// coding (system, code) plus the identifier value in the display column.
+const OfTypeSuffix = ":of-type"
+
 func insertToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, v any) error {
 	m, ok := v.(map[string]any)
 	if !ok {
@@ -212,20 +217,51 @@ func insertToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, v any) e
 	sys := asString(m["system"])
 	code := asString(m["code"])
 	display := asString(m["display"])
+	value := asString(m["value"])
 	// Identifier and ContactPoint carry their token in "value" rather than
 	// "code"; fall back to it so identifier/telecom token searches match.
 	if code == "" {
-		code = asString(m["value"])
+		code = value
 	}
 	if code == "" {
 		return nil
 	}
-	_, err := tx.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
 		rid, rt, param, sys, code, display,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+
+	// :of-type support — only for Identifiers that carry a type.coding and a value.
+	// Store an auxiliary row keyed by "<param>:of-type" with the type's
+	// system/code and the identifier value in display.
+	if value != "" {
+		if typ, ok := m["type"].(map[string]any); ok {
+			if codings, ok := typ["coding"].([]any); ok {
+				for _, c := range codings {
+					cm, _ := c.(map[string]any)
+					if cm == nil {
+						continue
+					}
+					tSys := asString(cm["system"])
+					tCode := asString(cm["code"])
+					if tCode == "" {
+						continue
+					}
+					if _, err := tx.Exec(ctx, `
+						INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
+						VALUES ($1, $2, $3, $4, $5, $6)`,
+						rid, rt, param+OfTypeSuffix, tSys, tCode, value,
+					); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // ─── sp_date ──────────────────────────────────────────────────────────────────

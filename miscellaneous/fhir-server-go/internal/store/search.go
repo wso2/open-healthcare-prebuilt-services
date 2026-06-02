@@ -656,14 +656,15 @@ func (b *queryBuilder) buildTypedExists(def searchparam.Definition, param, modif
 		return b.buildStringExists(param, modifier, value), true
 	case "token":
 		// :in/:not-in expand a ValueSet via the terminology server.
-		// :above/:below/:of-type need code-system hierarchy or Identifier.type
-		// indexing — still unsupported.
+		// :of-type matches Identifier.type + value (indexed under <param>:of-type).
+		// :above/:below need code-system subsumption (terminology).
 		switch modifier {
 		case "in", "not-in":
 			return b.buildTokenInExists(param, modifier, value)
-		case "above", "below", "of-type":
-			b.err = &UnsupportedParamError{Msg: fmt.Sprintf("modifier :%s on token param %q is not supported by the repository (needs a terminology server)", modifier, param)}
-			return "", false
+		case "of-type":
+			return b.buildOfTypeExists(param, value), true
+		case "above", "below":
+			return b.buildTokenHierarchyExists(param, modifier, value)
 		}
 		return b.buildTokenExists(param, modifier, value), true
 	case "date", "dateTime", "instant", "Period":
@@ -793,10 +794,16 @@ func (b *queryBuilder) buildTokenInExists(param, modifier, vsURL string) (string
 		return "1=0", true // always false
 	}
 
+	sub := b.tokenCodeSetExists(param, codes)
+	// caller wraps :not-in in NOT EXISTS at the applyParam level.
+	return sub, true
+}
+
+// tokenCodeSetExists builds a SELECT-1 subquery matching sp_token rows for
+// param whose (system,code) is in the given code set (OR-joined pairs).
+func (b *queryBuilder) tokenCodeSetExists(param string, codes []terminology.CodeEntry) string {
 	rtP := b.next(b.rt)
 	pP := b.next(param)
-
-	// Build OR of (system,code) pairs.
 	var pairOrs []string
 	for _, c := range codes {
 		if c.System != "" {
@@ -809,13 +816,71 @@ func (b *queryBuilder) buildTokenInExists(param, modifier, vsURL string) (string
 		}
 	}
 	codeFilter := "(" + strings.Join(pairOrs, " OR ") + ")"
-	sub := fmt.Sprintf("SELECT 1 FROM sp_token s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND %s",
+	return fmt.Sprintf("SELECT 1 FROM sp_token s WHERE s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s AND %s",
 		rtP, pP, codeFilter)
+}
 
-	if modifier == "not-in" {
-		return sub, true // caller wraps in NOT EXISTS
+// buildOfTypeExists implements the token :of-type modifier for Identifiers.
+// value is "typeSystem|typeCode|idValue" (system optional). It matches the
+// auxiliary "<param>:of-type" rows written by the indexer, which carry the
+// Identifier.type coding in system/code and the identifier value in display.
+func (b *queryBuilder) buildOfTypeExists(param, value string) string {
+	parts := strings.SplitN(value, "|", 3)
+	var typeSys, typeCode, idValue string
+	switch len(parts) {
+	case 3:
+		typeSys, typeCode, idValue = parts[0], parts[1], parts[2]
+	case 2:
+		typeCode, idValue = parts[0], parts[1]
+	default:
+		idValue = value
 	}
-	return sub, true
+	rtP := b.next(b.rt)
+	pP := b.next(param + ":of-type") // matches index.OfTypeSuffix
+	conds := []string{
+		fmt.Sprintf("s.resource_id = r.fhir_id AND s.resource_type = %s AND s.param_name = %s", rtP, pP),
+	}
+	if typeSys != "" {
+		conds = append(conds, fmt.Sprintf("s.system = %s", b.next(typeSys)))
+	}
+	if typeCode != "" {
+		conds = append(conds, fmt.Sprintf("s.code = %s", b.next(typeCode)))
+	}
+	if idValue != "" {
+		conds = append(conds, fmt.Sprintf("s.display = %s", b.next(idValue)))
+	}
+	return "SELECT 1 FROM sp_token s WHERE " + strings.Join(conds, " AND ")
+}
+
+// buildTokenHierarchyExists implements token :above / :below via the
+// terminology server's subsumption filters (:below = is-a descendants,
+// :above = generalizes ancestors). value is "system|code".
+func (b *queryBuilder) buildTokenHierarchyExists(param, modifier, value string) (string, bool) {
+	if b.terminology == nil {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("modifier :%s on param %q requires FHIR_TERMINOLOGY_URL (code-system subsumption)", modifier, param)}
+		return "", false
+	}
+	sys, code := value, ""
+	if i := strings.Index(value, "|"); i >= 0 {
+		sys, code = value[:i], value[i+1:]
+	}
+	if sys == "" || code == "" {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("modifier :%s requires a system|code value, got %q", modifier, value)}
+		return "", false
+	}
+	op := "is-a" // :below — the given code and its descendants
+	if modifier == "above" {
+		op = "generalizes" // the given code and its ancestors
+	}
+	codes, err := b.terminology.ExpandFilter(b.ctx, sys, op, code)
+	if err != nil {
+		b.err = &UnsupportedParamError{Msg: fmt.Sprintf("terminology subsumption (:%s) for %s|%s failed: %v", modifier, sys, code, err)}
+		return "", false
+	}
+	if len(codes) == 0 {
+		return "1=0", true
+	}
+	return b.tokenCodeSetExists(param, codes), true
 }
 
 func (b *queryBuilder) buildDateExists(param, value string) string {

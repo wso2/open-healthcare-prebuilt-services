@@ -510,6 +510,43 @@ func TestSearch_URIModifiers(t *testing.T) {
 	}
 }
 
+func TestSearch_OfTypeModifier(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	// Patient with an MR-typed identifier.
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient",
+		"identifier": []any{map[string]any{
+			"type": map[string]any{"coding": []any{map[string]any{
+				"system": "http://terminology.hl7.org/CodeSystem/v2-0203", "code": "MR",
+			}}},
+			"system": "urn:oid:1.2.3", "value": "mrn-555",
+		}},
+	})
+	// Patient with a different identifier type.
+	s.Create(ctx, "Patient", map[string]any{
+		"resourceType": "Patient",
+		"identifier": []any{map[string]any{
+			"type": map[string]any{"coding": []any{map[string]any{
+				"system": "http://terminology.hl7.org/CodeSystem/v2-0203", "code": "DL",
+			}}},
+			"value": "DL-999",
+		}},
+	})
+
+	res, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"identifier:of-type": {"http://terminology.hl7.org/CodeSystem/v2-0203|MR|mrn-555"}},
+	})
+	if err != nil {
+		t.Fatalf("of-type search: %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("identifier:of-type MR|mrn-555: expected 1, got %d", res.Total)
+	}
+}
+
 func TestSearch_UnsupportedTokenModifier(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()

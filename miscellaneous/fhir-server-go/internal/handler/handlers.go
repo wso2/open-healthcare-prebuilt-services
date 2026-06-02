@@ -1187,6 +1187,9 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 			"conditionalCreate": true,
 			"conditionalUpdate": true,
 			"conditionalDelete": "single",
+			// References may be stored as literal "Type/id" or as logical
+			// (identifier-based) references; both are indexed by sp_reference.
+			"referencePolicy": []string{"literal", "logical"},
 		}
 		if profs, ok := profiles[rt]; ok && len(profs) > 0 {
 			entry["supportedProfile"] = profs
