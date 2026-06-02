@@ -13,14 +13,22 @@ import (
 // metaSystem handles GET [base]/$meta — the union of all meta tags/security/
 // profiles in use across every resource.
 func (h *fhirHandler) metaSystem(w http.ResponseWriter, r *http.Request) {
-	meta := aggregateMeta(r.Context(), h.pool, "")
+	meta, err := aggregateMeta(r.Context(), h.pool, "")
+	if err != nil {
+		operationOutcome(w, http.StatusInternalServerError, "error", "exception", "meta aggregation failed: "+err.Error())
+		return
+	}
 	writeFHIR(w, r, http.StatusOK, metaParameters(meta))
 }
 
 // metaType handles GET [base]/{type}/$meta — meta in use across one type.
 func (h *fhirHandler) metaType(w http.ResponseWriter, r *http.Request) {
 	rt := chi.URLParam(r, "resourceType")
-	meta := aggregateMeta(r.Context(), h.pool, rt)
+	meta, err := aggregateMeta(r.Context(), h.pool, rt)
+	if err != nil {
+		operationOutcome(w, http.StatusInternalServerError, "error", "exception", "meta aggregation failed: "+err.Error())
+		return
+	}
 	writeFHIR(w, r, http.StatusOK, metaParameters(meta))
 }
 
@@ -103,25 +111,43 @@ func (h *fhirHandler) metaMutate(w http.ResponseWriter, r *http.Request, add boo
 
 // aggregateMeta returns the distinct meta in use — tags/security from sp_token,
 // profiles from sp_uri. When resourceType is empty the scope is system-wide.
-func aggregateMeta(ctx context.Context, pool *pgxpool.Pool, resourceType string) map[string]any {
+// Any backend read failure is propagated so the $meta handlers fail (rather
+// than returning a misleading 200 with partial/empty results).
+func aggregateMeta(ctx context.Context, pool *pgxpool.Pool, resourceType string) (map[string]any, error) {
 	meta := map[string]any{}
 	if pool == nil {
-		return meta
+		return meta, nil
 	}
-	if tags := distinctCodings(ctx, pool, "_tag", resourceType); len(tags) > 0 {
+	tags, err := distinctCodings(ctx, pool, "_tag", resourceType)
+	if err != nil {
+		return nil, err
+	}
+	if len(tags) > 0 {
 		meta["tag"] = tags
 	}
-	if sec := distinctCodings(ctx, pool, "_security", resourceType); len(sec) > 0 {
+	sec, err := distinctCodings(ctx, pool, "_security", resourceType)
+	if err != nil {
+		return nil, err
+	}
+	if len(sec) > 0 {
 		meta["security"] = sec
 	}
-	if profs := distinctURIs(ctx, pool, "_profile", resourceType); len(profs) > 0 {
+	profs, err := distinctURIs(ctx, pool, "_profile", resourceType)
+	if err != nil {
+		return nil, err
+	}
+	if len(profs) > 0 {
 		meta["profile"] = profs
 	}
-	return meta
+	return meta, nil
 }
 
-func distinctCodings(ctx context.Context, pool *pgxpool.Pool, param, rt string) []any {
-	q := `SELECT DISTINCT system, code, display FROM sp_token WHERE param_name = $1`
+// distinctCodings returns the distinct (system, code) codings for a token param.
+// Identity is system+code only — display is intentionally excluded so the same
+// coding with differing display text isn't returned multiple times (matching
+// the mutation path's system|code identity).
+func distinctCodings(ctx context.Context, pool *pgxpool.Pool, param, rt string) ([]any, error) {
+	q := `SELECT DISTINCT system, code FROM sp_token WHERE param_name = $1`
 	args := []any{param}
 	if rt != "" {
 		q += ` AND resource_type = $2`
@@ -129,14 +155,14 @@ func distinctCodings(ctx context.Context, pool *pgxpool.Pool, param, rt string) 
 	}
 	rows, err := pool.Query(ctx, q, args...)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer rows.Close()
 	var out []any
 	for rows.Next() {
-		var system, code, display string
-		if err := rows.Scan(&system, &code, &display); err != nil {
-			return out
+		var system, code string
+		if err := rows.Scan(&system, &code); err != nil {
+			return nil, err
 		}
 		c := map[string]any{}
 		if system != "" {
@@ -145,15 +171,12 @@ func distinctCodings(ctx context.Context, pool *pgxpool.Pool, param, rt string) 
 		if code != "" {
 			c["code"] = code
 		}
-		if display != "" {
-			c["display"] = display
-		}
 		out = append(out, c)
 	}
-	return out
+	return out, rows.Err()
 }
 
-func distinctURIs(ctx context.Context, pool *pgxpool.Pool, param, rt string) []any {
+func distinctURIs(ctx context.Context, pool *pgxpool.Pool, param, rt string) ([]any, error) {
 	q := `SELECT DISTINCT value FROM sp_uri WHERE param_name = $1`
 	args := []any{param}
 	if rt != "" {
@@ -162,20 +185,20 @@ func distinctURIs(ctx context.Context, pool *pgxpool.Pool, param, rt string) []a
 	}
 	rows, err := pool.Query(ctx, q, args...)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer rows.Close()
 	var out []any
 	for rows.Next() {
 		var v string
 		if err := rows.Scan(&v); err != nil {
-			return out
+			return nil, err
 		}
 		if v != "" {
 			out = append(out, v)
 		}
 	}
-	return out
+	return out, rows.Err()
 }
 
 // metaParameters wraps a meta object in a Parameters resource (out param
@@ -191,8 +214,12 @@ func metaParameters(meta map[string]any) map[string]any {
 }
 
 // metaFromParameters extracts the input Meta from a Parameters body
-// (parameter name="meta", valueMeta=...).
+// (parameter name="meta", valueMeta=...). Returns nil unless the body is a
+// Parameters resource, per the $meta-add / $meta-delete operation contract.
 func metaFromParameters(body map[string]any) map[string]any {
+	if rt, _ := body["resourceType"].(string); rt != "Parameters" {
+		return nil
+	}
 	params, _ := body["parameter"].([]any)
 	for _, raw := range params {
 		p, _ := raw.(map[string]any)

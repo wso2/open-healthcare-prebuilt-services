@@ -4,10 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
 )
 
@@ -57,8 +58,16 @@ func (h *fhirHandler) everythingType(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		add(anchor, "match")
-		fwd, _ := h.store.FetchReferences(r.Context(), rt, id, false)
-		rev, _ := h.store.FetchReferences(r.Context(), rt, id, true)
+		fwd, err := h.store.FetchReferences(r.Context(), rt, id, false)
+		if err != nil {
+			operationOutcome(w, http.StatusInternalServerError, "error", "exception", "forward reference fetch failed: "+err.Error())
+			return
+		}
+		rev, err := h.store.FetchReferences(r.Context(), rt, id, true)
+		if err != nil {
+			operationOutcome(w, http.StatusInternalServerError, "error", "exception", "reverse reference fetch failed: "+err.Error())
+			return
+		}
 		for _, res := range append(fwd, rev...) {
 			add(res, "include")
 		}
@@ -90,19 +99,16 @@ func (h *fhirHandler) lastN(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build the underlying search from the supported filter params.
+	// Pass the supported filters to the store, which does per-code top-N with a
+	// window function (correct regardless of overall volume).
 	params := map[string][]string{}
 	for _, p := range []string{"patient", "subject", "category", "code"} {
 		if v := q[p]; len(v) > 0 {
 			params[p] = v
 		}
 	}
-	// Sort newest-first so the first maxN per group are the most recent.
-	params["_sort"] = []string{"-date"}
 
-	result, err := h.store.Search(r.Context(), store.SearchParams{
-		ResourceType: "Observation", Params: params, Page: 1, PageSize: 1000,
-	})
+	result, err := h.store.LastN(r.Context(), params, maxN)
 	if err != nil {
 		var unsup *store.UnsupportedParamError
 		if errors.As(err, &unsup) {
@@ -113,16 +119,8 @@ func (h *fhirHandler) lastN(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Group by the observation's code (system|code of the first coding) and keep
-	// the most recent maxN in each group (entries are already date-desc).
-	groupCount := map[string]int{}
-	var entries []any
+	entries := make([]any, 0, len(result.Entries))
 	for _, obs := range result.Entries {
-		key := observationCodeKey(obs)
-		if groupCount[key] >= maxN {
-			continue
-		}
-		groupCount[key]++
 		id, _ := obs["id"].(string)
 		entries = append(entries, map[string]any{
 			"fullUrl":  fmt.Sprintf("%s/Observation/%s", h.baseURL, id),
@@ -137,36 +135,6 @@ func (h *fhirHandler) lastN(w http.ResponseWriter, r *http.Request) {
 		"total":        len(entries),
 		"entry":        entries,
 	})
-}
-
-// observationCodeKey returns a stable grouping key from Observation.code's
-// first coding (system|code), falling back to code.text.
-func observationCodeKey(obs map[string]any) string {
-	code, _ := obs["code"].(map[string]any)
-	if code == nil {
-		return ""
-	}
-	if codings, ok := code["coding"].([]any); ok {
-		// Sort coding keys so multiple codings yield a deterministic group key.
-		var keys []string
-		for _, c := range codings {
-			cm, _ := c.(map[string]any)
-			if cm == nil {
-				continue
-			}
-			sys, _ := cm["system"].(string)
-			cd, _ := cm["code"].(string)
-			keys = append(keys, sys+"|"+cd)
-		}
-		sort.Strings(keys)
-		if len(keys) > 0 {
-			return keys[0]
-		}
-	}
-	if txt, ok := code["text"].(string); ok {
-		return "text:" + txt
-	}
-	return ""
 }
 
 // document implements Composition/{id}/$document (instance level): assembles a
@@ -192,25 +160,42 @@ func (h *fhirHandler) document(w http.ResponseWriter, r *http.Request) {
 	}}
 	seen := map[string]bool{"Composition/" + id: true}
 
-	// Pull in everything the Composition references (subject, author, sections, …).
-	refs, _ := h.store.FetchReferences(r.Context(), rt, id, false)
-	for _, res := range refs {
-		irt, _ := res["resourceType"].(string)
-		iid, _ := res["id"].(string)
-		key := irt + "/" + iid
-		if irt == "" || iid == "" || seen[key] {
-			continue
+	// Transitive closure: BFS over forward references starting from the
+	// Composition, so the document Bundle is self-contained (Composition →
+	// Encounter → Patient → …). Bounded to avoid runaway closures.
+	type ref struct{ rt, id string }
+	queue := []ref{{rt, id}}
+	const maxDocResources = 500
+	for len(queue) > 0 && len(entries) < maxDocResources {
+		cur := queue[0]
+		queue = queue[1:]
+		refs, err := h.store.FetchReferences(r.Context(), cur.rt, cur.id, false)
+		if err != nil {
+			operationOutcome(w, http.StatusInternalServerError, "error", "exception", "document assembly failed: "+err.Error())
+			return
 		}
-		seen[key] = true
-		entries = append(entries, map[string]any{
-			"fullUrl":  fmt.Sprintf("%s/%s/%s", h.baseURL, irt, iid),
-			"resource": res,
-		})
+		for _, res := range refs {
+			irt, _ := res["resourceType"].(string)
+			iid, _ := res["id"].(string)
+			key := irt + "/" + iid
+			if irt == "" || iid == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			entries = append(entries, map[string]any{
+				"fullUrl":  fmt.Sprintf("%s/%s/%s", h.baseURL, irt, iid),
+				"resource": res,
+			})
+			queue = append(queue, ref{irt, iid})
+		}
 	}
 
+	// A document Bundle requires a persistent identifier and a timestamp.
 	writeFHIR(w, r, http.StatusOK, map[string]any{
 		"resourceType": "Bundle",
 		"type":         "document",
+		"identifier":   map[string]any{"system": "urn:ietf:rfc:3986", "value": "urn:uuid:" + uuid.NewString()},
+		"timestamp":    time.Now().UTC().Format(time.RFC3339),
 		"entry":        entries,
 	})
 }

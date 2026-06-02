@@ -197,3 +197,39 @@ func TestIntegration_Document(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegration_LastN_PerCodeGrouping(t *testing.T) {
+	srv := newRealServer(t)
+	patID, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})
+	// Two distinct codes, two observations each at different times.
+	for _, code := range []string{"8480-6", "8867-4"} {
+		for _, d := range []string{"2024-01-01", "2024-02-01"} {
+			iCreate(t, srv, "Observation", map[string]any{
+				"resourceType": "Observation", "status": "final",
+				"subject":           map[string]any{"reference": "Patient/" + patID},
+				"code":              map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": code}}},
+				"effectiveDateTime": d,
+			})
+		}
+	}
+	// max=1 → exactly one (the most recent) per code = 2 total. This is the
+	// per-code-recency property that a global top-N cap would break.
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/Observation/$lastn?max=1", nil)
+	b := iJSON(t, resp)
+	if total, _ := b["total"].(float64); total != 2 {
+		t.Errorf("$lastn max=1 over 2 codes: want 2 (one per code), got %v", total)
+	}
+}
+
+func TestIntegration_MetaAdd_RejectsNonParameters(t *testing.T) {
+	srv := newRealServer(t)
+	id, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})
+	// A Patient body (not Parameters) must be rejected with 400.
+	resp := iDo(t, srv, http.MethodPost, "/fhir/r4/Patient/"+id+"/$meta-add",
+		map[string]any{"resourceType": "Patient", "meta": map[string]any{"tag": []any{}}})
+	if resp.StatusCode != http.StatusBadRequest {
+		b := iJSON(t, resp)
+		t.Fatalf("$meta-add with non-Parameters body: want 400, got %d: %v", resp.StatusCode, b)
+	}
+	resp.Body.Close()
+}

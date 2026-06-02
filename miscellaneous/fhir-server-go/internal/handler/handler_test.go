@@ -25,6 +25,7 @@ type mockStore struct {
 	getHistoryFn        func(ctx context.Context, rt, id string) ([]store.HistoryEntry, error)
 	getTypeHistoryFn    func(ctx context.Context, p store.HistoryParams) (store.HistoryResult, error)
 	searchFn            func(ctx context.Context, sp store.SearchParams) (store.SearchResult, error)
+	lastNFn             func(ctx context.Context, params map[string][]string, maxN int) (store.SearchResult, error)
 	conditionalMatchFn  func(ctx context.Context, rt, rawQuery string) (string, int, error)
 	fetchReferencesFn   func(ctx context.Context, rt, id string, reverse bool) ([]map[string]any, error)
 	syncSearchParamFn   func(ctx context.Context, body map[string]any) error
@@ -61,6 +62,12 @@ func (m *mockStore) GetTypeHistory(ctx context.Context, p store.HistoryParams) (
 }
 func (m *mockStore) Search(ctx context.Context, sp store.SearchParams) (store.SearchResult, error) {
 	return m.searchFn(ctx, sp)
+}
+func (m *mockStore) LastN(ctx context.Context, params map[string][]string, maxN int) (store.SearchResult, error) {
+	if m.lastNFn != nil {
+		return m.lastNFn(ctx, params, maxN)
+	}
+	return store.SearchResult{}, nil
 }
 func (m *mockStore) ConditionalMatch(ctx context.Context, rt, rawQuery string) (string, int, error) {
 	if m.conditionalMatchFn != nil {

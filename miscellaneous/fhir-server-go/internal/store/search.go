@@ -1221,6 +1221,84 @@ func (b *queryBuilder) count(ctx context.Context, pool *pgxpool.Pool) (int, erro
 	return n, err
 }
 
+// LastN implements the Observation $lastn operation correctly at the store
+// layer: it returns the most recent maxN observations per code group, using a
+// window function so per-code recency does not depend on overall volume (a
+// naive "fetch top-N globally then group" drops low-frequency codes when
+// high-frequency ones fill the page). params may carry the supported filters
+// (patient/subject/category/code), which are applied as the search WHERE.
+// Observations are partitioned by each code coding (system, code) and ordered
+// by the indexed observation date (falling back to last_updated).
+func (s *Store) LastN(ctx context.Context, params map[string][]string, maxN int) (SearchResult, error) {
+	if maxN <= 0 {
+		maxN = 1
+	}
+	b := &queryBuilder{rt: "Observation", reg: s.registry, terminology: s.terminology, ctx: ctx}
+	b.writeBase()
+	for k, vals := range params {
+		if k == "_sort" || k == "max" || k == "_count" || k == "_page" {
+			continue
+		}
+		for _, v := range vals {
+			b.applyParam(k, v)
+		}
+	}
+	if b.err != nil {
+		return SearchResult{}, b.err
+	}
+
+	nP := b.next(maxN)
+	q := fmt.Sprintf(`
+		SELECT resource_json, version_id, last_updated FROM (
+			SELECT r.resource_json AS resource_json, r.version_id AS version_id, r.last_updated AS last_updated,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY tok.system, tok.code
+			           ORDER BY COALESCE(d.value_low, r.last_updated) DESC
+			       ) AS rn
+			FROM resources r
+			JOIN sp_token tok ON tok.resource_id = r.fhir_id AND tok.resource_type = r.resource_type AND tok.param_name = 'code'
+			LEFT JOIN sp_date d ON d.resource_id = r.fhir_id AND d.resource_type = r.resource_type AND d.param_name = 'date'
+			WHERE %s
+		) ranked
+		WHERE rn <= %s
+		ORDER BY rn`,
+		b.where.String(), nP,
+	)
+
+	rows, err := s.pool.Query(ctx, q, b.args...)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	defer rows.Close()
+
+	seen := map[string]bool{}
+	var entries []map[string]any
+	for rows.Next() {
+		var raw []byte
+		var versionID int
+		var lastUpdated time.Time
+		if err := rows.Scan(&raw, &versionID, &lastUpdated); err != nil {
+			return SearchResult{}, err
+		}
+		m, err := unmarshalWithMeta(raw, versionID, lastUpdated)
+		if err != nil {
+			return SearchResult{}, err
+		}
+		// An observation with multiple codings appears once per code partition;
+		// dedupe so the Bundle lists each resource a single time.
+		id, _ := m["id"].(string)
+		if id != "" && seen[id] {
+			continue
+		}
+		seen[id] = true
+		entries = append(entries, m)
+	}
+	if err := rows.Err(); err != nil {
+		return SearchResult{}, err
+	}
+	return SearchResult{Total: len(entries), Entries: entries}, nil
+}
+
 func (b *queryBuilder) fetch(ctx context.Context, pool *pgxpool.Pool, limit, offset int) ([]map[string]any, error) {
 	// Build the ORDER BY before binding LIMIT/OFFSET so the positional args line
 	// up: [where args…, order-by param args…, limit, offset].
