@@ -951,6 +951,29 @@ func TestIntegration_XML_CreateAndRead(t *testing.T) {
 	}
 }
 
+func TestIntegration_Turtle_ReadFormat(t *testing.T) {
+	srv := newRealServer(t)
+	id, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+
+	resp := iDo(t, srv, http.MethodGet, "/fhir/r4/Patient/"+id+"?_format=ttl", nil)
+	if resp.StatusCode != http.StatusOK {
+		body := iJSON(t, resp)
+		t.Fatalf("turtle read: want 200, got %d: %v", resp.StatusCode, body)
+	}
+	defer resp.Body.Close()
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "turtle") {
+		t.Errorf("want application/fhir+turtle, got %q", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "a fhir:Patient") {
+		t.Errorf("turtle body should declare fhir:Patient: %s", string(body[:min(len(body), 200)]))
+	}
+	if !strings.Contains(string(body), `fhir:gender "female"`) {
+		t.Errorf("turtle body should contain gender")
+	}
+}
+
 func TestIntegration_CompartmentSearch_Patient_Observation(t *testing.T) {
 	srv := newRealServer(t)
 	patID, _ := iCreate(t, srv, "Patient", map[string]any{"resourceType": "Patient"})

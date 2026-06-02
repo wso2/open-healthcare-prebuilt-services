@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/compartment"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/fhirttl"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/fhirxml"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/ig"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/patch"
@@ -78,42 +79,65 @@ func readBody(r *http.Request) (map[string]any, error) {
 	return body, nil
 }
 
-// wantsXML returns true when the request prefers XML over JSON, as indicated
-// by Accept: application/fhir+xml, _format=xml, _format=application/fhir+xml,
-// or Content-Type: application/fhir+xml on writes.
-func wantsXML(r *http.Request) bool {
-	if f := r.URL.Query().Get("_format"); f != "" {
-		switch strings.ToLower(f) {
-		case "xml", "application/fhir+xml", "application/xml":
-			return true
+// negotiatedFormat returns "xml", "turtle", or "json" based on the request's
+// _format query param (highest priority) or Accept header.
+func negotiatedFormat(r *http.Request) string {
+	if f := strings.ToLower(r.URL.Query().Get("_format")); f != "" {
+		switch {
+		case f == "xml" || strings.Contains(f, "+xml") || f == "application/xml":
+			return "xml"
+		case f == "ttl" || f == "turtle" || strings.Contains(f, "turtle"):
+			return "turtle"
+		case f == "json" || strings.Contains(f, "json"):
+			return "json"
 		}
 	}
 	accept := r.Header.Get("Accept")
-	if strings.Contains(accept, "application/fhir+xml") || strings.Contains(accept, "application/xml") {
-		return true
+	switch {
+	case strings.Contains(accept, "application/fhir+xml") || strings.Contains(accept, "application/xml"):
+		return "xml"
+	case strings.Contains(accept, "turtle") || strings.Contains(accept, "application/fhir+ttl"):
+		return "turtle"
 	}
-	return false
+	return "json"
 }
 
-// writeFHIR writes a FHIR resource as JSON or XML depending on the request's
-// Accept header / _format query param.
+// wantsXML is retained for callers that only branch JSON/XML.
+func wantsXML(r *http.Request) bool { return negotiatedFormat(r) == "xml" }
+
+// writeFHIR writes a FHIR resource as JSON, XML, or Turtle depending on the
+// request's Accept header / _format query param.
 func writeFHIR(w http.ResponseWriter, r *http.Request, status int, body map[string]any) {
-	if wantsXML(r) {
-		xmlBytes, err := fhirxml.ToXML(body)
+	switch negotiatedFormat(r) {
+	case "xml":
+		out, err := fhirxml.ToXML(body)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{
-				"resourceType": "OperationOutcome",
-				"issue": []any{map[string]any{"severity": "error", "code": "exception",
-					"diagnostics": "XML serialisation failed: " + err.Error()}},
-			})
+			writeSerErr(w, "XML", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/fhir+xml")
 		w.WriteHeader(status)
-		w.Write(xmlBytes) //nolint:errcheck
-		return
+		w.Write(out) //nolint:errcheck
+	case "turtle":
+		out, err := fhirttl.ToTurtle(body)
+		if err != nil {
+			writeSerErr(w, "Turtle", err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/fhir+turtle")
+		w.WriteHeader(status)
+		w.Write(out) //nolint:errcheck
+	default:
+		writeJSON(w, status, body)
 	}
-	writeJSON(w, status, body)
+}
+
+func writeSerErr(w http.ResponseWriter, format string, err error) {
+	writeJSON(w, http.StatusInternalServerError, map[string]any{
+		"resourceType": "OperationOutcome",
+		"issue": []any{map[string]any{"severity": "error", "code": "exception",
+			"diagnostics": format + " serialisation failed: " + err.Error()}},
+	})
 }
 
 // requireFHIRContent returns false (and writes 415) only when Content-Type is
@@ -127,24 +151,32 @@ func requireFHIRContent(w http.ResponseWriter, r *http.Request) bool {
 	base := strings.TrimSpace(strings.SplitN(ct, ";", 2)[0])
 	switch base {
 	case "application/fhir+json", "application/json",
-		"application/fhir+xml", "application/xml":
+		"application/fhir+xml", "application/xml",
+		"application/fhir+turtle", "text/turtle":
 		return true
 	}
 	operationOutcome(w, http.StatusUnsupportedMediaType, "error", "not-supported",
-		"Content-Type must be application/fhir+json or application/fhir+xml")
+		"Content-Type must be application/fhir+json, application/fhir+xml, or application/fhir+turtle")
 	return false
 }
 
-// readFHIRBody parses a request body that may be JSON or XML.
+// readFHIRBody parses a request body that may be JSON, XML, or Turtle.
 func readFHIRBody(r *http.Request) (map[string]any, error) {
 	ct := r.Header.Get("Content-Type")
 	base := strings.TrimSpace(strings.SplitN(ct, ";", 2)[0])
-	if base == "application/fhir+xml" || base == "application/xml" {
+	switch base {
+	case "application/fhir+xml", "application/xml":
 		b, err := io.ReadAll(r.Body)
 		if err != nil {
 			return nil, err
 		}
 		return fhirxml.FromXML(b)
+	case "application/fhir+turtle", "text/turtle":
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			return nil, err
+		}
+		return fhirttl.FromTurtle(b)
 	}
 	var body map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -1265,7 +1297,7 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 		"status":              "active",
 		"kind":                "instance",
 		"fhirVersion":         "4.0.1",
-		"format":              []string{"application/fhir+json", "application/fhir+xml"},
+		"format":              []string{"application/fhir+json", "application/fhir+xml", "application/fhir+turtle"},
 		"patchFormat": []string{
 			"application/json-patch+json",
 			"application/merge-patch+json",
