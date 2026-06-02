@@ -4,12 +4,16 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/store"
+	"github.com/wso2/open-healthcare-fhir-server-go/internal/terminology"
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/testutil"
 )
 
@@ -18,6 +22,54 @@ func newStore(t *testing.T) *store.Store {
 	pool := testutil.MustSeededDB(t)
 	reg := testutil.MustRegistry(t, pool)
 	return store.New(pool, reg)
+}
+
+// TestSearch_InNotIn_EmptyValueSet verifies that an empty ValueSet expansion
+// produces valid SQL (the EXISTS(...) wrapper needs a real subquery, not a bare
+// boolean): :in matches none, :not-in matches all. Regression for the
+// "1=0"/"1=1" → invalid-SQL bug.
+func TestSearch_InNotIn_EmptyValueSet(t *testing.T) {
+	pool := testutil.MustSeededDB(t)
+	reg := testutil.MustRegistry(t, pool)
+
+	// Mock terminology server: every $expand returns an empty expansion.
+	tx := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/fhir+json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"resourceType": "ValueSet",
+			"expansion":    map[string]any{"contains": []any{}},
+		})
+	}))
+	defer tx.Close()
+
+	s := store.New(pool, reg, store.WithTerminology(terminology.New(tx.URL)))
+	ctx := context.Background()
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "female"})
+	s.Create(ctx, "Patient", map[string]any{"resourceType": "Patient", "gender": "male"})
+
+	// :in with empty ValueSet → match none.
+	in, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"gender:in": {"http://example.org/vs/empty"}},
+	})
+	if err != nil {
+		t.Fatalf("gender:in empty VS: %v", err)
+	}
+	if in.Total != 0 {
+		t.Errorf("gender:in (empty VS): expected 0, got %d", in.Total)
+	}
+
+	// :not-in with empty ValueSet → match all.
+	notIn, err := s.Search(ctx, store.SearchParams{
+		ResourceType: "Patient",
+		Params:       map[string][]string{"gender:not-in": {"http://example.org/vs/empty"}},
+	})
+	if err != nil {
+		t.Fatalf("gender:not-in empty VS: %v", err)
+	}
+	if notIn.Total != 2 {
+		t.Errorf("gender:not-in (empty VS): expected 2 (all), got %d", notIn.Total)
+	}
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────

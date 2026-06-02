@@ -283,7 +283,7 @@ func jsonPatchAdd(doc map[string]any, ptr string, val any) error {
 			p = append(p, val)
 			setAt(doc, parts[:len(parts)-1], p)
 		} else {
-			idx, e := parseIndex(last, len(p))
+			idx, e := parseInsertIndex(last, len(p))
 			if e != nil {
 				return e
 			}
@@ -376,7 +376,20 @@ func setAt(doc map[string]any, parts []string, val any) {
 	}
 }
 
+// parseIndex parses an array index that must reference an EXISTING element
+// (0 <= idx < length). Used by get/remove/navigate, where idx==length is
+// out of range.
 func parseIndex(key string, length int) (int, error) {
+	idx, err := strconv.Atoi(key)
+	if err != nil || idx < 0 || idx >= length {
+		return 0, fmt.Errorf("array index %q out of range (len=%d)", key, length)
+	}
+	return idx, nil
+}
+
+// parseInsertIndex parses an array index for insertion, where "-" or
+// idx==length means "append at the end" (0 <= idx <= length). Used by add.
+func parseInsertIndex(key string, length int) (int, error) {
 	if key == "-" {
 		return length, nil
 	}

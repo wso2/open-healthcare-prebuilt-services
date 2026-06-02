@@ -632,6 +632,7 @@ func (h *fhirHandler) create(w http.ResponseWriter, r *http.Request) {
 				handleError(w, err)
 				return
 			}
+			slog.Debug("conditional create matched existing resource", "resourceType", rt, "id", existingID)
 			w.Header().Set("Location", fmt.Sprintf("%s/%s/%s", h.baseURL, rt, existingID))
 			w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(existing)))
 			writeFHIR(w, r, http.StatusOK, existing)
@@ -900,6 +901,7 @@ func (h *fhirHandler) conditionalUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if count > 1 {
+		slog.Warn("conditional update matched multiple resources", "resourceType", rt, "count", count)
 		operationOutcome(w, http.StatusPreconditionFailed, "error", "conflict",
 			fmt.Sprintf("conditional update matched %d resources", count))
 		return

@@ -787,17 +787,21 @@ func (b *queryBuilder) buildTokenInExists(param, modifier, vsURL string) (string
 		return "", false
 	}
 	if len(codes) == 0 {
-		// Empty ValueSet — no resource can match :in; every resource matches :not-in.
-		if modifier == "not-in" {
-			return "1=1", true // always true — included below via EXISTS
-		}
-		return "1=0", true // always false
+		// Empty ValueSet: return a subquery that yields no rows. The caller wraps
+		// it in EXISTS(...), so :in → EXISTS(∅) = false (match none), and :not-in
+		// → NOT EXISTS(∅) = true (match all). Must be a real subquery, not a bare
+		// boolean, because EXISTS requires a SELECT.
+		return emptyRowSubquery, true
 	}
 
 	sub := b.tokenCodeSetExists(param, codes)
 	// caller wraps :not-in in NOT EXISTS at the applyParam level.
 	return sub, true
 }
+
+// emptyRowSubquery is a valid SELECT that returns no rows, used as the body of
+// an EXISTS(...) when a token-set helper resolves to no codes.
+const emptyRowSubquery = "SELECT 1 WHERE false"
 
 // tokenCodeSetExists builds a SELECT-1 subquery matching sp_token rows for
 // param whose (system,code) is in the given code set (OR-joined pairs).
@@ -878,7 +882,9 @@ func (b *queryBuilder) buildTokenHierarchyExists(param, modifier, value string) 
 		return "", false
 	}
 	if len(codes) == 0 {
-		return "1=0", true
+		// No codes in the hierarchy → match nothing (valid no-rows subquery for
+		// the EXISTS(...) wrapper).
+		return emptyRowSubquery, true
 	}
 	return b.tokenCodeSetExists(param, codes), true
 }

@@ -118,6 +118,29 @@ func TestFHIRPatch_Replace(t *testing.T) {
 	}
 }
 
+func TestJSONPatch_RemoveOutOfRange(t *testing.T) {
+	// Removing at index == len must error (not panic / out-of-range), while
+	// adding at index == len appends. Regression for the parseIndex split.
+	d := map[string]any{"resourceType": "Patient", "name": []any{map[string]any{"family": "Smith"}}}
+
+	// remove at index 1 of a length-1 array → out of range error.
+	if _, err := ApplyJSONPatch(d, []map[string]any{{"op": "remove", "path": "/name/1"}}); err == nil {
+		t.Error("remove at index==len should error")
+	}
+	// get/test at index 1 → error.
+	if _, err := ApplyJSONPatch(d, []map[string]any{{"op": "test", "path": "/name/1", "value": "x"}}); err == nil {
+		t.Error("test at index==len should error")
+	}
+	// add at index 1 (==len) → append, succeeds.
+	out, err := ApplyJSONPatch(d, []map[string]any{{"op": "add", "path": "/name/1", "value": map[string]any{"family": "Jones"}}})
+	if err != nil {
+		t.Fatalf("add at index==len should append, got %v", err)
+	}
+	if names, _ := out["name"].([]any); len(names) != 2 {
+		t.Errorf("expected 2 names after append, got %d", len(names))
+	}
+}
+
 func TestFHIRPatch_Move(t *testing.T) {
 	params := map[string]any{
 		"resourceType": "Parameters",
