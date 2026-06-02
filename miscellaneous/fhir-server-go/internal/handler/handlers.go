@@ -713,7 +713,9 @@ func (h *fhirHandler) patch(w http.ResponseWriter, r *http.Request) {
 	switch ct {
 	case "application/json-patch+json":
 		h.jsonPatch(w, r, rt, id)
-	case "application/fhir+json":
+	case "application/xml-patch+xml":
+		h.xmlPatch(w, r, rt, id)
+	case "application/fhir+json", "application/fhir+xml":
 		h.fhirPatch(w, r, rt, id)
 	default: // application/merge-patch+json or empty
 		body, err := readFHIRBody(r)
@@ -759,9 +761,10 @@ func (h *fhirHandler) jsonPatch(w http.ResponseWriter, r *http.Request, rt, id s
 }
 
 func (h *fhirHandler) fhirPatch(w http.ResponseWriter, r *http.Request, rt, id string) {
-	var params map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
+	// FHIR Patch body is a Parameters resource, in JSON or XML.
+	params, err := readFHIRBody(r)
+	if err != nil {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid Parameters body: "+err.Error())
 		return
 	}
 	resource, err := h.store.Read(r.Context(), rt, id)
@@ -772,6 +775,33 @@ func (h *fhirHandler) fhirPatch(w http.ResponseWriter, r *http.Request, rt, id s
 	patched, err := patch.ApplyFHIRPatch(resource, params)
 	if err != nil {
 		operationOutcome(w, http.StatusUnprocessableEntity, "error", "invalid", "FHIR Patch failed: "+err.Error())
+		return
+	}
+	patched["id"] = id
+	patched["resourceType"] = rt
+	updated, err := h.store.Update(r.Context(), rt, id, patched, -1)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	w.Header().Set("ETag", fmt.Sprintf(`W/"%s"`, versionFromMeta(updated)))
+	writeFHIR(w, r, http.StatusOK, updated)
+}
+
+func (h *fhirHandler) xmlPatch(w http.ResponseWriter, r *http.Request, rt, id string) {
+	xmlBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "cannot read body: "+err.Error())
+		return
+	}
+	resource, err := h.store.Read(r.Context(), rt, id)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	patched, err := patch.ApplyXMLPatch(resource, xmlBytes)
+	if err != nil {
+		operationOutcome(w, http.StatusUnprocessableEntity, "error", "invalid", "XML Patch failed: "+err.Error())
 		return
 	}
 	patched["id"] = id
@@ -1239,7 +1269,9 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 		"patchFormat": []string{
 			"application/json-patch+json",
 			"application/merge-patch+json",
+			"application/xml-patch+xml",
 			"application/fhir+json",
+			"application/fhir+xml",
 		},
 		"implementationGuide": igURLs,
 		"software": map[string]any{
