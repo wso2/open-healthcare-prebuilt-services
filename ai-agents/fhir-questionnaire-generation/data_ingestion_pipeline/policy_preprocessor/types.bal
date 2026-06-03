@@ -1,4 +1,4 @@
-// Copyright (c) 2023, WSO2 LLC. (http://www.wso2.com).
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
 
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -57,8 +57,8 @@ type PromptTemplate record {
 type QuestionnaireUploadPayload record {
     string file_name;
     string job_id;
-    map<json> questionnaires;
-    map<PromptTemplate> failed_scenarios;
+    json bundle;
+    map<json> failed_scenarios;
 };
 
 type UploadResponse record {
@@ -71,3 +71,52 @@ type UploadResponse record {
 type ErrorResponse record {
     string 'error;
 };
+
+type PromptStore record {
+    PromptTemplate[] templates;
+};
+
+type PromptTemplateResponse record {
+    PromptTemplate[] promptTemplates;
+    string carryForwardContext?;
+};
+
+type ConvertRequest record {
+    string job_id;
+    string file_name;
+};
+
+type ConvertResponse record {
+    string job_id;
+    string file_name;
+    string status;
+    string message;
+};
+
+type StoredFileInfo record {
+    string job_id;
+    string file_name;
+    string file_name_with_ext;
+};
+
+type ReTriggerRequest record {
+    string file_name;
+    string job_id;
+};
+
+type JobMetadata record {
+    string job_id;
+    string file_name;
+    string status;
+    string created_at;
+    string? error_message;
+};
+
+const string STATUS_PDF_TO_MD_CONVERSION_STARTED = "PDF_TO_MD_CONVERSION_STARTED";
+const string STATUS_PDF_TO_MD_CONVERSION_ENDED = "PDF_TO_MD_CONVERSION_ENDED";
+const string STATUS_PREPROCESSING_STARTED = "PREPROCESSING_STARTED";
+const string STATUS_PREPROCESSING_ENDED = "PREPROCESSING_ENDED";
+const string STATUS_FHIR_QUESTIONNAIRE_GEN_STARTED = "FHIR_QUESTIONNAIRE_GEN_STARTED";
+const string STATUS_FHIR_QUESTIONNAIRE_GEN_ENDED = "FHIR_QUESTIONNAIRE_GEN_ENDED";
+const string STATUS_ENRICHING_AND_STORING = "ENRICHING_AND_STORING";
+const string STATUS_COMPLETED = "COMPLETED";
