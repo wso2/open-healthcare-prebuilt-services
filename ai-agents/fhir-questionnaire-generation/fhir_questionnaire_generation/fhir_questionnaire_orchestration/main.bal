@@ -1,4 +1,4 @@
-// Copyright (c) 2023, WSO2 LLC. (http://www.wso2.com).
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
 
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -14,47 +14,27 @@
 // specific language governing permissions and limitations
 // under the License.
 
-import ballerina/io;
 import ballerina/log;
-import ballerina/ftp;
-import ballerina/regex;
+import ballerina/http;
 
-listener ftp:Listener fileListener = new ({
-    host: FTP_HOST,
-    port: FTP_PORT,
-    auth: {
-        credentials: {
-            username: FTP_USERNAME,
-            password: FTP_PASSWORD
-        }
-    },
-    path: "/prompts",
-    fileNamePattern: "(.*).json"
-});
+service / on new http:Listener(SERVICE_PORT) {
+    resource function get health() returns string {
+        log:printDebug("Health check endpoint accessed");
+        return "Service is healthy";
+    }
 
-service on fileListener {
-    remote function onFileChange(ftp:WatchEvent & readonly event, ftp:Caller caller) returns error? {
-        log:printInfo("File change event received: " + event.toString());
-        foreach ftp:FileInfo addedFile in event.addedFiles {
-            stream<byte[] & readonly, io:Error?> fileStream = check caller->get(addedFile.pathDecoded);
-            // Get the file name without the extension
-            string fileName = addedFile.name;
-            string fileNameWithoutExt = regex:split(fileName, "\\.")[0];
-            log:printInfo("Processing file: " + fileNameWithoutExt);
-            // Read the file content from the stream
-            string fileContent = "";
-            byte[][] & readonly chunks = check from byte[] & readonly chunk in fileStream
-                select chunk;
-            foreach byte[] & readonly chunk in chunks {
-                fileContent += check string:fromBytes(chunk);
-            }
-            json obj = check fileContent.fromJsonString();
-            PromptStore chunkStore = check obj.fromJsonWithType(PromptStore);
-            check fileStream.close();
-            // Delete the file from the SFTP server after reading.
-            check caller->delete(addedFile.pathDecoded);
-            check orchestrateConversation(chunkStore.templates, fileNameWithoutExt);
-            log:printInfo("Finished processing file: " + fileNameWithoutExt);
-        }
+    resource function post generate(GenerateRequest payload) returns http:Accepted|error {
+        log:printInfo("Received generate request for file: " + payload.file_name);
+        _ = start processGeneration(payload);
+        return http:ACCEPTED;
+    }
+}
+
+function processGeneration(GenerateRequest payload) {
+    string jobId = payload.job_id ?: ("job-" + payload.file_name);
+    error? result = orchestrateGeneration(payload.file_name, jobId);
+    if result is error {
+        log:printError("Error processing generation for file: " + payload.file_name + " - " + result.message());
+        log:printDebug("Trace: " + result.stackTrace().toString());
     }
 }

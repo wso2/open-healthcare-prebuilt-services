@@ -1,4 +1,4 @@
-// Copyright (c) 2023, WSO2 LLC. (http://www.wso2.com).
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
 
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -14,18 +14,43 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// UI Notification url
-configurable string POLICY_FLOW_ORCHESTRATOR = "http://localhost:6080";
+import ballerina/os;
+
+// Environment variable helpers
+function getEnvOrDefault(string key, string defaultVal) returns string {
+    string val = os:getEnv(key);
+    return val == "" ? defaultVal : val;
+}
+
+function getEnvAsIntOrDefault(string key, int defaultVal) returns int {
+    string val = os:getEnv(key);
+    if val == "" {
+        return defaultVal;
+    }
+    int|error intVal = int:fromString(val);
+    return intVal is int ? intVal : defaultVal;
+}
+
+// Policy Preprocessor Service URL
+final string POLICY_FLOW_ORCHESTRATOR = getEnvOrDefault("POLICY_FLOW_ORCHESTRATOR", "http://localhost:6080");
 
 // Agent Service URLs
-configurable string FHIR_QUESTIONNAIRE_GENERATOR_URL = "http://localhost:7082/QuestionnaireGenerator";
-configurable string FHIR_REVIEWER_URL = "http://localhost:7081/Reviewer";
+final string FHIR_QUESTIONNAIRE_GENERATOR_URL = getEnvOrDefault("FHIR_QUESTIONNAIRE_GENERATOR_URL", "http://localhost:7082/QuestionnaireGenerator");
+final string FHIR_REVIEWER_URL = getEnvOrDefault("FHIR_REVIEWER_URL", "http://localhost:7081/Reviewer");
 
-// FTP configurations
-configurable string FTP_HOST = "";
-configurable int FTP_PORT = 2121;
-configurable string FTP_USERNAME = "";
-configurable string FTP_PASSWORD = "";
+// CQL Enrichment API URL
+final string CQL_ENRICHMENT_API_URL = getEnvOrDefault("CQL_ENRICHMENT_API_URL", "http://localhost:3000");
+
+// Service port
+final int SERVICE_PORT = getEnvAsIntOrDefault("SERVICE_PORT", 6060);
+
+// Storage configurations
+final string STORAGE_TYPE = getEnvOrDefault("STORAGE_TYPE", "local");
+final string LOCAL_STORAGE_PATH = getEnvOrDefault("LOCAL_STORAGE_PATH", "../../data");
 
 // Agent Orchestration Configs
-configurable int AGENT_CONV_LIMIT = 5;
+final int AGENT_CONV_LIMIT = getEnvAsIntOrDefault("AGENT_CONV_LIMIT", 5);
+
+// Anthropic LLM config (used for direct LLM calls, e.g. appending applicable codes)
+final string ANTHROPIC_API_KEY = os:getEnv("ANTHROPIC_API_KEY");
+final string ANTHROPIC_AI_GATEWAY_URL = getEnvOrDefault("ANTHROPIC_GENERATOR_AGENT_AI_GATEWAY_URL", "https://api.anthropic.com/v1");
