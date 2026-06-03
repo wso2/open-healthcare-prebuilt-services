@@ -65,6 +65,9 @@ CREATE TABLE IF NOT EXISTS sp_string (
 
 CREATE INDEX IF NOT EXISTS idx_sp_str_lower ON sp_string (resource_type, param_name, value_lower);
 CREATE INDEX IF NOT EXISTS idx_sp_str_exact ON sp_string (resource_type, param_name, value_exact);
+-- Source-keyed index: serves the correlated EXISTS probe in multi-param searches
+-- (s.resource_id = r.fhir_id AND …) and the per-resource DELETE on re-index.
+CREATE INDEX IF NOT EXISTS idx_sp_str_source ON sp_string (resource_id, resource_type, param_name, value_lower);
 -- Uncomment for :contains support (requires pg_trgm extension):
 -- CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- CREATE INDEX idx_sp_str_trgm ON sp_string USING GIN (value_lower gin_trgm_ops);
@@ -87,6 +90,10 @@ CREATE TABLE IF NOT EXISTS sp_token (
 CREATE INDEX IF NOT EXISTS idx_sp_tok_sys_code ON sp_token (resource_type, param_name, system, code);
 CREATE INDEX IF NOT EXISTS idx_sp_tok_code     ON sp_token (resource_type, param_name, code);
 CREATE INDEX IF NOT EXISTS idx_sp_tok_system   ON sp_token (resource_type, param_name, system);
+-- Source-keyed index: without it, the correlated EXISTS probe in multi-param
+-- searches (e.g. Encounter?patient=X&type=Y) degenerates into hashing every
+-- sp_token row matching the code — per query. Also serves re-index DELETEs.
+CREATE INDEX IF NOT EXISTS idx_sp_tok_source ON sp_token (resource_id, resource_type, param_name, system, code);
 
 -- ─── Date search index ────────────────────────────────────────────────────────
 -- Param type: date / dateTime / Period / instant.
@@ -106,6 +113,7 @@ CREATE TABLE IF NOT EXISTS sp_date (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sp_date_range ON sp_date (resource_type, param_name, value_low, value_high);
+CREATE INDEX IF NOT EXISTS idx_sp_date_source ON sp_date (resource_id, resource_type, param_name, value_low, value_high);
 
 -- ─── Number search index ──────────────────────────────────────────────────────
 -- Param type: number.
@@ -124,6 +132,7 @@ CREATE TABLE IF NOT EXISTS sp_number (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sp_num_range ON sp_number (resource_type, param_name, value_low, value_high);
+CREATE INDEX IF NOT EXISTS idx_sp_num_source ON sp_number (resource_id, resource_type, param_name, value_low, value_high);
 
 -- ─── Quantity search index ────────────────────────────────────────────────────
 -- Param type: quantity.
@@ -146,6 +155,7 @@ CREATE TABLE IF NOT EXISTS sp_quantity (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sp_qty_raw       ON sp_quantity (resource_type, param_name, value_low, value_high, system, code);
+CREATE INDEX IF NOT EXISTS idx_sp_qty_source    ON sp_quantity (resource_id, resource_type, param_name);
 CREATE INDEX IF NOT EXISTS idx_sp_qty_canonical ON sp_quantity (resource_type, param_name, canonical_value, canonical_units)
     WHERE canonical_value IS NOT NULL;
 
@@ -164,6 +174,7 @@ CREATE TABLE IF NOT EXISTS sp_uri (
 
 CREATE INDEX IF NOT EXISTS idx_sp_uri_exact  ON sp_uri (resource_type, param_name, value);
 CREATE INDEX IF NOT EXISTS idx_sp_uri_prefix ON sp_uri (resource_type, param_name, value text_pattern_ops);
+CREATE INDEX IF NOT EXISTS idx_sp_uri_source ON sp_uri (resource_id, resource_type, param_name, value);
 
 -- ─── Reference search index ───────────────────────────────────────────────────
 -- Param type: reference.
@@ -187,7 +198,12 @@ CREATE TABLE IF NOT EXISTS sp_reference (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sp_ref_source ON sp_reference (resource_type, resource_id, param_name);
-CREATE INDEX IF NOT EXISTS idx_sp_ref_target ON sp_reference (target_type, target_id);
+-- Replaced by idx_sp_ref_target_full: leading on target_id makes the index
+-- usable for bare-id reference searches (patient=123, no Type/ prefix), and the
+-- extra columns let reference predicates resolve index-only. (target_id,
+-- target_type) prefix still serves every (target_type, target_id) lookup.
+DROP INDEX IF EXISTS idx_sp_ref_target;
+CREATE INDEX IF NOT EXISTS idx_sp_ref_target_full ON sp_reference (target_id, target_type, param_name, resource_type, resource_id);
 CREATE INDEX IF NOT EXISTS idx_sp_ref_ident  ON sp_reference (target_type, identifier_system, identifier_value)
     WHERE identifier_value IS NOT NULL;
 
