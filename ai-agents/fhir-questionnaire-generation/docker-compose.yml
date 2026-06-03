@@ -1,0 +1,36 @@
+services:
+  # ──────────────────────────────────────────────
+  # Single container running all 5 services.
+  # Only port 6080 (Policy Preprocessor) is exposed.
+  # ──────────────────────────────────────────────
+  fhir-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fhir-pipeline
+    ports:
+      - "${EXPOSED_PORT:-6080}:6080"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_GENERATOR_AGENT_AI_GATEWAY_URL=${ANTHROPIC_GENERATOR_AGENT_AI_GATEWAY_URL:-https://api.anthropic.com/v1}
+      - ANTHROPIC_REVIEWER_AGENT_AI_GATEWAY_URL=${ANTHROPIC_REVIEWER_AGENT_AI_GATEWAY_URL:-https://api.anthropic.com/v1}
+      - AGENT_CONV_LIMIT=${AGENT_CONV_LIMIT:-5}
+      - FHIR_SERVER_URL=${FHIR_SERVER_URL:-http://localhost:9090/fhir/r4}
+      - LOCAL_STORAGE_PATH=${LOCAL_STORAGE_PATH:-/app/data}
+      - LOCAL_DIR=${LOCAL_DIR:-/app/data}
+      - FHIR_QUESTIONNAIRE_GENERATOR_URL=${FHIR_QUESTIONNAIRE_GENERATOR_URL}
+      - FHIR_REVIEWER_URL=${FHIR_REVIEWER_URL}
+      - CQL_ENRICHMENT_API_URL=${CQL_ENRICHMENT_API_URL:-http://localhost:3000}
+    volumes:
+      - pipeline-data:${LOCAL_STORAGE_PATH:-/app/data}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  pipeline-data:
+    driver: local

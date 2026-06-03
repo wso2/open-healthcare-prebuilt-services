@@ -1,79 +1,130 @@
 # FHIR Questionnaire Generation
 
-The **FHIR Questionnaire Generation** module provides the functionality to **generate FHIR Questionnaire resources** using a collaborative system of AI agents.
-
-Under the `/fhir_questionnaire_agents` directory, two agents are implemented:
-
-* **Generator Agent** – responsible for creating the initial FHIR Questionnaire resource.
-* **Reviewer Agent** – reviews and validates the generated questionnaire to ensure quality, accuracy, and compliance.
-
-The **`fhir_questionnaire_orchestration`** service acts as a **file-listener** that monitors the `/prompts` directory for extracted scenario details. Once a new scenario is detected, it triggers the **Generator Agent** to create the FHIR Questionnaire. The orchestration layer manages the structured conversation between the **Generator** and **Reviewer** agents to produce a refined and validated output.
-
-Upon successful generation, the final FHIR Questionnaire resources are sent to the **Policy Processor Service** via its `/questionnaire` endpoint. These questionnaires can later be retrieved through the Policy Processor’s API.
+A multi-service pipeline that generates FHIR R4 Questionnaire artifacts from preprocessed policy chunks using AI agents, validates/reviews them, enriches them with CQL, and posts the final bundle back to the policy preprocessor.
 
 ---
 
-## Prerequisites
+## Core Features
 
-* **Ballerina** must be installed on your system.
-  👉 [Download Ballerina](https://ballerina.io/downloads/)
+- **Agent Collaboration Loop**: Generator and Reviewer agents iterate until approved (or conversation limit reached).
+- **FHIR Validation**: Generated Questionnaire JSON is structurally validated against FHIR R4.
+- **Applicable Code Appending**: HCPCS, CPT, and ICD-10 options are extracted and appended as `choice` items.
+- **CQL Enrichment**: Integrates with the CQL Enrichment API to produce a questionnaire-package bundle.
+- **Async Orchestration API**: Orchestration service accepts requests and processes them in background.
+- **Policy Preprocessor Integration**: Sends notifications and final bundle to policy preprocessor endpoints.
 
 ---
 
-## Configuration
+## Components
 
-The service uses configurable parameters defined in the orchestration module.
+- **Orchestration Service** (`fhir_questionnaire_orchestration`)
+   - Base URL: `http://localhost:6060`
+   - Endpoints: `GET /health`, `POST /generate`
 
-| Parameter                            | Description                                                                |
-| ------------------------------------ | -------------------------------------------------------------------------- |
-| **POLICY_FLOW_ORCHESTRATOR**         | Base URL of the Policy Processor service to post generated questionnaires. |
-| **FHIR_QUESTIONNAIRE_GENERATOR_URL** | Endpoint of the Generator Agent.                                           |
-| **FHIR_REVIEWER_URL**                | Endpoint of the Reviewer Agent.                                            |
-| **FTP Settings**                     | Connection details for FTP-based communication and prompt retrieval.       |
-| **AGENT_CONV_LIMIT**                 | Maximum number of review iterations between Generator and Reviewer agents. |
+- **Generator Agent** (`fhir_questionnaire_agents/fhir_questionnaire_generator_agent`)
+   - Base URL: `http://localhost:7082/QuestionnaireGenerator`
+   - Endpoint: `POST /chat`
 
-Below is an example configuration:
+- **Reviewer Agent** (`fhir_questionnaire_agents/fhir_questionnaire_reviewer_agent`)
+   - Base URL: `http://localhost:7081/Reviewer`
+   - Endpoint: `POST /chat`
 
-```toml
-configurable string POLICY_FLOW_ORCHESTRATOR = "http://localhost:6080"
+- **CQL Enrichment API** (`cql-enrichment-api`)
+   - Base URL: `http://localhost:3000`
+   - Used endpoint: `POST /api/enrich`
 
-configurable string FHIR_QUESTIONNAIRE_GENERATOR_URL = "http://localhost:7082/QuestionnaireGenerator"
-configurable string FHIR_REVIEWER_URL = "http://localhost:7081/Reviewer"
+---
 
-configurable string FTP_HOST = ""
-configurable int FTP_PORT = 2121
-configurable string FTP_USERNAME = ""
-configurable string FTP_PASSWORD = ""
+## Quick Start
 
-configurable int AGENT_CONV_LIMIT = 5
+Only follow these steps if you want to run the service locally. If you are running the entire pipeline using Docker, this service will be started as part of the `docker-compose` setup and you can skip these steps.
+
+### Prerequisites
+
+- Ballerina (Swan Lake)
+- Node.js (for `cql-enrichment-api`)
+- Running Policy Preprocessor service (default: `http://localhost:6080`)
+
+### 1. Start Generator Agent
+
+Configure the `ANTHROPIC_API_KEY` environment variable in `Config.toml` before starting the service.
+
+```bash
+cd fhir_questionnaire_generation/fhir_questionnaire_agents/fhir_questionnaire_generator_agent
+bal run
+```
+
+### 2. Start Reviewer Agent
+
+Configure the `ANTHROPIC_API_KEY` environment variable in `Config.toml` before starting the service.
+```bash
+cd fhir_questionnaire_generation/fhir_questionnaire_agents/fhir_questionnaire_reviewer_agent
+bal run
+```
+
+### 3. Start CQL Enrichment API
+
+```bash
+cd fhir_questionnaire_generation/cql-enrichment-api
+npm install
+npm start
+```
+
+### 4. Start Orchestration Service
+
+```bash
+cd fhir_questionnaire_generation/fhir_questionnaire_orchestration
+export ANTHROPIC_API_KEY="<your_api_key>"
+bal run
+```
+
+The orchestration API is available at `http://localhost:6060`.
+
+---
+
+## API Overview (Orchestration)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`  | `/health` | Checks if the orchestration service is healthy. |
+| `POST` | `/generate` | Starts questionnaire generation for a file/job. Returns `202 Accepted`. |
+
+### Request Example (`POST /generate`)
+
+```json
+{
+   "file_name": "medical_policy_001",
+   "job_id": "job-medical_policy_001"
+}
 ```
 
 ---
 
-## Running the Service
+## Configuration (Orchestration)
 
-To start the **FHIR Questionnaire Generation** orchestration service:
+Set the following environment variables:
 
-1. **Navigate** to the orchestration directory:
-
-   ```bash
-   cd fhir_questionnaire_generation_orchestration
-   ```
-
-2. **Run** the service:
-
-   ```bash
-   bal run
-   ```
-
-Before starting, ensure:
-
-* Both the **Generator** and **Reviewer** agents are running.
-* The **FTP server** is accessible and configured correctly.
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SERVICE_PORT` | Orchestration service port. | `6060` |
+| `POLICY_FLOW_ORCHESTRATOR` | Policy preprocessor base URL for `/notification` and `/questionnaires`. | `http://localhost:6080` |
+| `FHIR_QUESTIONNAIRE_GENERATOR_URL` | Generator agent base URL. | `http://localhost:7082/QuestionnaireGenerator` |
+| `FHIR_REVIEWER_URL` | Reviewer agent base URL. | `http://localhost:7081/Reviewer` |
+| `CQL_ENRICHMENT_API_URL` | CQL enrichment API base URL. | `http://localhost:3000` |
+| `AGENT_CONV_LIMIT` | Max reviewer/generator iterations. | `5` |
+| `ANTHROPIC_API_KEY` | Anthropic API key (required). | _required_ |
+| `ANTHROPIC_GENERATOR_AGENT_AI_GATEWAY_URL` | Anthropic gateway URL used by orchestration-side LLM calls. | `https://api.anthropic.com/v1` |
+| `STORAGE_TYPE` | Storage backend hint (`local`/`ftp`). | `local` |
+| `LOCAL_STORAGE_PATH` | Base path used to read chunk files. | `../../data` |
 
 ---
 
-## Notes
+## End-to-End Workflow
 
-* The orchestration logic ensures human-like collaboration between AI agents, enhancing the reliability of generated FHIR resources.
-* Generated questionnaires are automatically posted to the **Policy Processor Service**, which serves as the central access point for retrieval and further integration.
+1. Policy preprocessor calls orchestration `POST /generate`.
+2. Orchestration loads chunk file from `/chunks/{file_name}.json`.
+3. Coverage rationale is sent to Generator agent.
+4. Reviewer agent evaluates output; orchestration enforces iterative correction.
+5. Final questionnaire is validated and applicable codes are appended.
+6. Questionnaire is enriched through CQL API (`/api/enrich`) to produce a FHIR bundle.
+7. Orchestration notifies policy preprocessor and posts final payload to `POST /questionnaires`.
