@@ -562,7 +562,7 @@ function saveFHIRTemplates(string file_name, string job_id) returns error? {
     if CQL_ENRICHED_BUNDLE_STORE.hasKey(file_name) {
         bundle = CQL_ENRICHED_BUNDLE_STORE[file_name];
         log:printInfo("Using CQL-enriched bundle for: " + file_name);
-    } else {
+    } else if FHIR_QUESTIONNAIRE_STORE.hasKey(file_name) {
         json[] bundleEntries = [];
         json questionnaire = FHIR_QUESTIONNAIRE_STORE[file_name];
         bundleEntries.push({"resource": questionnaire});
@@ -572,6 +572,15 @@ function saveFHIRTemplates(string file_name, string job_id) returns error? {
             "entry": bundleEntries
         };
         log:printInfo("Using unenriched questionnaire bundle for: " + file_name);
+    } else {
+        // Failure paths (no coverage content / no reviewer approval) never populate
+        // the questionnaire store; persist an empty bundle instead of a null resource.
+        bundle = {
+            "resourceType": "Bundle",
+            "type": "collection",
+            "entry": []
+        };
+        log:printInfo("No questionnaire generated; persisting empty bundle for: " + file_name);
     }
 
     QuestionnaireUploadPayload payload = {

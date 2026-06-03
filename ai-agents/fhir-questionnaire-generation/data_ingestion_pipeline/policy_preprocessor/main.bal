@@ -18,8 +18,8 @@ import ballerina/io;
 import ballerina/log;
 import ballerina/http;
 import ballerina/mime;
-import ballerina/regex;
 import ballerina/time;
+import ballerina/uuid;
 
 isolated map<json> QUESITONNAIRE_STORE = {};
 isolated map<map<json>> FAILED_SCENARIOS_STORE = {};
@@ -288,8 +288,11 @@ function storeFile(mime:Entity filePart) returns StoredFileInfo|http:BadRequest|
     check storagePut(storageFilePath, readonlyStream);
     log:printInfo(string `File ${filename} uploaded successfully to storage`);
 
-    string fileNameWithoutExt = regex:split(filename, "\\.")[0];
-    string jobId = "job-" + fileNameWithoutExt;
+    // Strip only the final extension so multi-dot names (e.g. policy.v1.pdf) are preserved.
+    int? lastDotIndex = filename.lastIndexOf(".");
+    string fileNameWithoutExt = lastDotIndex is int ? filename.substring(0, lastDotIndex) : filename;
+    // Use a per-upload unique job id so distinct uploads never collide in the job stores.
+    string jobId = "job-" + uuid:createRandomUuid();
 
     lock {
         JobMetadata metadata = {

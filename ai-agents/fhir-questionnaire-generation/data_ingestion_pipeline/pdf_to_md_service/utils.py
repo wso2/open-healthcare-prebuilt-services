@@ -14,6 +14,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import os
 import httpx
 import logging
 import pymupdf4llm
@@ -102,3 +103,10 @@ async def process_pdf_file(job_id: str, file_name: str, logger: logging.Logger, 
     except Exception as e:
         logger.error(f"Error processing job {job_id}: {e}")
         await send_notification(job_id, file_name, "failed", f"error: {str(e)}", configs, logger)
+    finally:
+        # Always remove the temporary PDF copy handed over by the read helpers.
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError as cleanup_error:
+                logger.warning(f"Failed to delete temporary PDF for job {job_id}: {cleanup_error}")

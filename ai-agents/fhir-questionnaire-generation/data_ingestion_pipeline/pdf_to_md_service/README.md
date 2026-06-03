@@ -63,13 +63,13 @@ The API is now available at `http://0.0.0.0:8000`.
 | Method | Endpoint         | Description                                  |
 |--------|------------------|----------------------------------------------|
 | `POST` | `/convert`       | Submits a single PDF for conversion.         |
-| `POST` | `/batch-convert` | Submits a batch of PDFs for conversion.      |
+| `POST` | `/convert/batch` | Submits a batch of PDFs for conversion.      |
 | `GET`  | `/health`        | Checks if the service is operational.        |
 
 ### Usage
 
 -   **Single Conversion**: `POST` to `/convert` with `{"job_id": "...", "file_name": "..."}`.
--   **Batch Conversion**: `POST` to `/batch-convert` with `{"requests": [{"job_id": "...", "file_name": "..."}, ...]}`.
+-   **Batch Conversion**: `POST` to `/convert/batch` with `{"requests": [{"job_id": "...", "file_name": "..."}, ...]}`.
 
 **Note**: Provide `file_name` without the `.pdf` extension. PDFs are sourced from the `/pdf` directory and Markdown files are saved to the `/md` directory in your configured storage.
 

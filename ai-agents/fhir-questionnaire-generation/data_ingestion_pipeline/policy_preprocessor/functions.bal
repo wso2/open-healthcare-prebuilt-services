@@ -336,7 +336,11 @@ function postBundleToFhirServer(string fileName, json & readonly bundle) returns
         log:printError("Bundle has no entries. Skipping FHIR server post.");
         return;
     }
-    json[] entries = <json[]>entriesJson;
+    json[]|error entries = entriesJson.ensureType();
+    if entries is error {
+        log:printError("Bundle entries are not a JSON array. Skipping FHIR server post.");
+        return;
+    }
 
     // Separate resources by type for ordered posting
     json[] valueSets = [];
@@ -356,8 +360,8 @@ function postBundleToFhirServer(string fileName, json & readonly bundle) returns
         if resMap is error {
             continue;
         }
-        string? resType = <string?>resMap["resourceType"];
-        if resType is () {
+        string|error resType = resMap["resourceType"].ensureType();
+        if resType is error {
             continue;
         }
         if resType == "ValueSet" {

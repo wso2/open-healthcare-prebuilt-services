@@ -108,17 +108,17 @@ The pipeline is now accessible at `http://localhost:6080`.
 
 ## Local Development
 
-```bash
-# First time only — make the script executable
-chmod +x start-services.sh
+The full pipeline (all four services) runs via Docker Compose, which loads `.env`
+automatically and streams logs from every service to the same terminal:
 
-# Start all four services (loads .env automatically)
-./start-services.sh
+```bash
+docker-compose up --build
 
 # Stop with Ctrl+C
 ```
 
-Each service runs in the background. Logs from all services are printed to the same terminal.
+To iterate on a single service, run it directly from its own directory — the PDF
+to MD service with `python main.py`, and the Ballerina services with `bal run`.
 
 ---
 
@@ -209,8 +209,7 @@ curl http://localhost:6080/questionnaires
 .
 ├── Dockerfile                          # Multi-stage build (Ballerina + Python + Node.js)
 ├── docker-compose.yml
-├── entrypoint.sh                       # Container startup script
-├── start-services.sh                   # Local development startup script
+├── entrypoint.sh                       # Container startup script (starts all services)
 ├── main_openapi.yaml                   # OpenAPI spec for the Policy Preprocessor
 ├── .env.example
 │

@@ -9,6 +9,7 @@ set -e
 PIDS=()
 
 cleanup() {
+    local code="${1:-0}"
     echo ""
     echo "[entrypoint] Stopping all services..."
     for pid in "${PIDS[@]}"; do
@@ -18,7 +19,7 @@ cleanup() {
     done
     wait 2>/dev/null
     echo "[entrypoint] All services stopped."
-    exit 0
+    exit "$code"
 }
 
 trap cleanup SIGINT SIGTERM
@@ -67,4 +68,4 @@ echo "========================================"
 wait -n
 EXIT_CODE=$?
 echo "[entrypoint] A service exited with code $EXIT_CODE — shutting down."
-cleanup
+cleanup "$EXIT_CODE"
