@@ -27,7 +27,11 @@ CREATE TABLE IF NOT EXISTS resources (
 
 CREATE INDEX IF NOT EXISTS idx_res_type_updated ON resources (resource_type, last_updated DESC);
 CREATE INDEX IF NOT EXISTS idx_res_active        ON resources (resource_type, last_updated DESC) WHERE is_deleted = FALSE;
-CREATE INDEX IF NOT EXISTS idx_res_json_gin      ON resources USING GIN (resource_json);
+-- idx_res_json_gin removed: no query uses jsonb operators on resource_json
+-- (all search goes through the sp_* tables), and a whole-document GIN index
+-- costs ~2.4x on resource inserts. Recreate it if jsonb containment queries
+-- are ever added.
+DROP INDEX IF EXISTS idx_res_json_gin;
 CREATE INDEX IF NOT EXISTS idx_res_search_text   ON resources USING GIN (search_text);
 
 -- ─── Version history ──────────────────────────────────────────────────────────
@@ -47,6 +51,10 @@ CREATE TABLE IF NOT EXISTS resource_history (
 
 CREATE INDEX IF NOT EXISTS idx_hist_resource ON resource_history (resource_type, fhir_id, version_id DESC);
 CREATE INDEX IF NOT EXISTS idx_hist_time     ON resource_history (recorded_at DESC);
+-- Type-level history (GET /{type}/_history): without this, the ORDER BY
+-- recorded_at LIMIT walk filters idx_hist_time row-by-row, degrading badly
+-- for resource types whose changes are rare or old.
+CREATE INDEX IF NOT EXISTS idx_hist_type_time ON resource_history (resource_type, recorded_at DESC);
 
 -- ─── String search index ─────────────────────────────────────────────────────
 -- Param type: string.
@@ -63,7 +71,13 @@ CREATE TABLE IF NOT EXISTS sp_string (
     FOREIGN KEY (resource_id, resource_type) REFERENCES resources (fhir_id, resource_type) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_sp_str_lower ON sp_string (resource_type, param_name, value_lower);
+-- The default string match is `value_lower LIKE 'prefix%'`. A plain btree
+-- cannot serve LIKE prefix scans under a non-C collation (en_US.utf8), so the
+-- old idx_sp_str_lower forced a seq scan of sp_string on every name/address/…
+-- search. text_pattern_ops makes the prefix scan an index range scan (and
+-- still serves equality). Same technique idx_sp_uri_prefix already uses.
+DROP INDEX IF EXISTS idx_sp_str_lower;
+CREATE INDEX IF NOT EXISTS idx_sp_str_lower_pattern ON sp_string (resource_type, param_name, value_lower text_pattern_ops);
 CREATE INDEX IF NOT EXISTS idx_sp_str_exact ON sp_string (resource_type, param_name, value_exact);
 -- Source-keyed index: serves the correlated EXISTS probe in multi-param searches
 -- (s.resource_id = r.fhir_id AND …) and the per-resource DELETE on re-index.
