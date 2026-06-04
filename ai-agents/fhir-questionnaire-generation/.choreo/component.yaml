@@ -1,0 +1,86 @@
+# Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+schemaVersion: 1.2
+
+build:
+  docker:
+    dockerfilePath: Dockerfile
+    buildContext: .
+
+endpoints:
+  - name: policy-preprocessor
+    displayName: Policy Preprocessor
+    service:
+      basePath: /
+      port: 6080
+    type: REST
+    networkVisibilities:
+      - Project
+      - Organization
+      - Public
+    schemaFilePath: main_openapi.yaml
+
+configurations:
+  env:
+    - name: ANTHROPIC_API_KEY
+      valueFrom:
+        configForm:
+          displayName: Anthropic API Key
+          required: true
+          type: secret
+    - name: FHIR_SERVER_URL
+      valueFrom:
+        configForm:
+          displayName: FHIR Server URL
+          required: true
+          type: string
+    - name: FHIR_QUESTIONNAIRE_GENERATOR_URL
+      valueFrom:
+        configForm:
+          displayName: FHIR Questionnaire Generator URL
+          required: true
+          type: string
+    - name: FHIR_REVIEWER_URL
+      valueFrom:
+        configForm:
+          displayName: FHIR Reviewer URL
+          required: true
+          type: string
+    - name: ANTHROPIC_GENERATOR_AGENT_AI_GATEWAY_URL
+      valueFrom:
+        configForm:
+          displayName: Anthropic Generator Agent AI Gateway URL
+          required: false
+          type: string
+    - name: ANTHROPIC_REVIEWER_AGENT_AI_GATEWAY_URL
+      valueFrom:
+        configForm:
+          displayName: Anthropic Reviewer Agent AI Gateway URL
+          required: false
+          type: string
+    - name: STORAGE_TYPE
+      valueFrom:
+        configForm:
+          displayName: Storage Type
+          required: false
+          type: string
+    - name: LOCAL_STORAGE_PATH
+      valueFrom:
+        configForm:
+          displayName: Local Storage Path
+          required: false
+          type: string

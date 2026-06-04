@@ -1,4 +1,4 @@
-// Copyright (c) 2023, WSO2 LLC. (http://www.wso2.com).
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
 
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -14,18 +14,46 @@
 // specific language governing permissions and limitations
 // under the License.
 
-type PromptTemplate record {
-    string title;
-    string prompt;
+// Chunk types matching the chunk store format produced by the policy preprocessor.
+type PolicyChunk record {
+    string file_name;
+    string section_title;
+    int chunk_id;
+    string chunk_content;
 };
 
-type PromptStore record {
-    PromptTemplate[] templates;
+type ChunkStore record {
+    PolicyChunk[] supplementary;
+    PolicyChunk[] core;
+};
+
+// Request payload for the /generate HTTP endpoint.
+type GenerateRequest record {
+    string file_name;
+    string job_id?;
 };
 
 type QuestionnaireUploadPayload record {
     string file_name;
     string job_id;
-    map<json> questionnaires;
-    map<PromptTemplate> failed_scenarios;
+    json bundle;
+    map<json> failed_scenarios;
+};
+
+// Parsed severity counts from the reviewer agent's feedback report.
+type ReviewSeverity record {
+    int critical;
+    int errors;
+    int warnings;
+};
+
+// Extracted code entry from applicable codes content (returned by LLM extraction).
+type CodeEntry record {
+    string code;
+    string description;
+    string codeType; // "HCPCS", "CPT", or "ICD-10"
+};
+
+type ExtractedCodes record {
+    CodeEntry[] codes;
 };

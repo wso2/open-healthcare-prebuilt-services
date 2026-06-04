@@ -1,0 +1,4 @@
+# h11 CVE-2025-43859: h11 accepts some malformed Chunked-Encoding bodies
+# Fixed in h11 0.16.0 (pinned in requirements.txt), but base image scanner may still flag it
+# https://avd.aquasec.com/nvd/cve-2025-43859
+CVE-2025-43859

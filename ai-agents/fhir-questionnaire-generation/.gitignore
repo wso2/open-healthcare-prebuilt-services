@@ -1,0 +1,7 @@
+/data
+/.vscode
+
+.env
+
+
+start-services.sh

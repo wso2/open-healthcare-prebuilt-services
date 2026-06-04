@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# Build artifacts (rebuilt inside Docker)
+**/target/
+**/__pycache__/
+**/.venv/
+**/*.pyc
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Data directory (mounted as volume at runtime)
+data/
+
+# Documentation (keep README out of image)
+LICENSE
+
+# Per-service Dockerfiles (not needed inside the image)
+**/Dockerfile
+**/.dockerignore
+
+# Tests (not needed in production image)
+**/tests/
+

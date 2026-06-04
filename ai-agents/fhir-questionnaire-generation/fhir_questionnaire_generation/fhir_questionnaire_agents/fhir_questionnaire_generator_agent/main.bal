@@ -1,4 +1,4 @@
-// Copyright (c) 2023, WSO2 LLC. (http://www.wso2.com).
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
 
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -17,7 +17,8 @@
 import ballerina/ai;
 import ballerina/http;
 
-listener ai:Listener QuestionnaireGeneratorListener = new (listenOn = check http:getDefaultListener());
+listener http:Listener httpListener = check new (SERVICE_PORT);
+listener ai:Listener QuestionnaireGeneratorListener = new (listenOn = httpListener);
 
 service /QuestionnaireGenerator on QuestionnaireGeneratorListener {
     resource function post chat(@http:Payload ai:ChatReqMessage request) returns ai:ChatRespMessage|error {

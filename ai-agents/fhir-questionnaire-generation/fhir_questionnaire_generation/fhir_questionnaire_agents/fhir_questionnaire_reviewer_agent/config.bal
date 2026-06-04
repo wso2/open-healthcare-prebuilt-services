@@ -1,4 +1,4 @@
-// Copyright (c) 2023, WSO2 LLC. (http://www.wso2.com).
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
 
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -14,5 +14,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-configurable string ANTHROPIC_API_KEY = "";
+configurable string ANTHROPIC_API_KEY = ?;
 configurable string ANTHROPIC_REVIEWER_AGENT_AI_GATEWAY_URL = "https://api.anthropic.com/v1";
+configurable int SERVICE_PORT = 7081;

@@ -1,4 +1,4 @@
-// Copyright (c) 2023, WSO2 LLC. (http://www.wso2.com).
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
 
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -18,27 +18,19 @@ import ballerina/ftp;
 import ballerina/http;
 import ballerinax/ai.anthropic;
 
-final anthropic:ModelProvider anthropicModelprovider = check new (ANTHROPIC_API_KEY, "claude-3-7-sonnet-20250219");
-
-// HTTP Client for chunks service
-final http:Client UI_CLIENT = check new (UI_NOTIFICATION_URL, {
-    timeout: 30,
-    retryConfig: {
-        count: 3,
-        interval: 2
-    },
-    httpVersion: "1.1",
-    http1Settings: {
-        keepAlive: http:KEEPALIVE_AUTO,
-        chunking: http:CHUNKING_NEVER
-    }
-});
+final anthropic:ModelProvider anthropicModelprovider = check new (string `${ANTHROPIC_API_KEY}`, "claude-sonnet-4-20250514");
 
 // HTTP Client for PDF to MD conversion service
 final http:Client PDF_TO_MD_CLIENT = check new (PDF_TO_MD_SERVICE_URL);
 
-// FTP Client to store chunks
-final ftp:Client fileClient = check new ({
+// HTTP Client for FHIR Questionnaire Generation Service
+final http:Client FHIR_QUESTIONNAIRE_CLIENT = check new (FHIR_QUESTIONNAIRE_SERVICE_URL);
+
+// HTTP Client for FHIR Server (only initialized if FHIR_SERVER_URL is set)
+final http:Client? FHIR_SERVER_CLIENT = FHIR_SERVER_URL != "" ? check new (FHIR_SERVER_URL) : ();
+
+// FTP Client (only initialized if STORAGE_TYPE is "ftp")
+final ftp:Client? fileClient = STORAGE_TYPE == "ftp" ? check new ({
     host: FTP_HOST,
     port: FTP_PORT,
     auth: {
@@ -47,4 +39,4 @@ final ftp:Client fileClient = check new ({
             password: FTP_PASSWORD
         }
     }
-});
+}) : ();
