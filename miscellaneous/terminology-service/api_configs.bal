@@ -191,14 +191,39 @@ final r4:ResourceAPIConfig valueSetApiConfig = {
                 documentation: "http://hl7.org/fhir/SearchParameter/ValueSet-reference"
             }
         }
-    ],
+    ]
+    ,
     operations: [
         {
             name: "expand",
             active: true,
+            additionalProperties: {
+                meta: {
+                    operationLevels: [
+                        {
+                            "instanceLevel": true,
+                            "typeLevel": true,
+                            "systemLevel": false,
+                            "resource": [
+                                "ValueSet"
+                            ]
+                        }
+                    ]
+                }
+            },
             parameters: [
                 {
                     name: "url",
+                    active: true,
+                    min: 0
+                },
+                {
+                    name: "tx-resource",
+                    active: true,
+                    min: 0
+                },
+                {
+                    name: "uuid",
                     active: true,
                     min: 0
                 },
@@ -307,6 +332,20 @@ final r4:ResourceAPIConfig valueSetApiConfig = {
         {
             name: "validate-code",
             active: true,
+            additionalProperties: {
+                meta: {
+                    operationLevels: [
+                        {
+                            "instanceLevel": true,
+                            "typeLevel": true,
+                            "systemLevel": false,
+                            "resource": [
+                                "ValueSet"
+                            ]
+                        }
+                    ]
+                }
+            },
             parameters: [
                 {
                     name: "url",
@@ -558,6 +597,20 @@ final r4:ResourceAPIConfig codeSystemApiConfig = {
         {
             name: "lookup",
             active: true,
+            additionalProperties: {
+                meta: {
+                    operationLevels: [
+                        {
+                            "instanceLevel": false,
+                            "typeLevel": true,
+                            "systemLevel": false,
+                            "resource": [
+                                "CodeSystem"
+                            ]
+                        }
+                    ]
+                }
+            },
             parameters: [
                 {
                     name: "code",
@@ -599,6 +652,20 @@ final r4:ResourceAPIConfig codeSystemApiConfig = {
         {
             name: "validate-code",
             active: true,
+            additionalProperties: {
+                meta: {
+                    operationLevels: [
+                        {
+                            "instanceLevel": true,
+                            "typeLevel": true,
+                            "systemLevel": false,
+                            "resource": [
+                                "CodeSystem"
+                            ]
+                        }
+                    ]
+                }
+            },
             parameters: [
                 {
                     name: "url",
@@ -655,6 +722,20 @@ final r4:ResourceAPIConfig codeSystemApiConfig = {
         {
             name: "subsumes",
             active: true,
+            additionalProperties: {
+                meta: {
+                    operationLevels: [
+                        {
+                            "instanceLevel": true,
+                            "typeLevel": true,
+                            "systemLevel": false,
+                            "resource": [
+                                "CodeSystem"
+                            ]
+                        }
+                    ]
+                }
+            },
             parameters: [
                 {
                     name: "codeA",
@@ -1057,96 +1138,4 @@ final r4:ResourceAPIConfig conceptMapApiConfig = {
     ],
     serverConfig: (),
     authzConfig: ()
-};
-
-r4:InMemoryTerminologyLoader terminologyLoader = new([], []);
-r4:Terminology terminology = check terminologyLoader.load();
-readonly & r4:IGInfoRecord terminologyIgRecord = {
-    title: "Terminology",
-    name: "terminology",
-    terminology: terminology,
-    profiles: {
-        "http://hl7.org/fhir/StructureDefinition/CodeSystem": {
-            url: r4:PROFILE_BASE_CODESYSTEM,
-            resourceType: r4:RESOURCE_NAME_CODESYSTEM,
-            modelType: r4:CodeSystem
-        },
-        "http://hl7.org/fhir/StructureDefinition/ValueSet": {
-            url: r4:PROFILE_BASE_VALUESET,
-            resourceType: r4:RESOURCE_NAME_VALUESET,
-            modelType: r4:ValueSet
-        },
-        "http://hl7.org/fhir/StructureDefinition/Bundle": {
-            url: r4:PROFILE_BASE_BUNDLE,
-            resourceType: r4:RESOURCE_NAME_BUNDLE,
-            modelType: r4:Bundle
-        }          
-    },
-    searchParameters: [
-        {
-            "url": [
-                {
-                    name: "url",
-                    'type: r4:URI,
-                    base: [r4:RESOURCE_NAME_CODESYSTEM, r4:RESOURCE_NAME_VALUESET],
-                    expression: "CodeSystem.url"
-                }
-
-            ]
-        },
-        {
-            "version": [
-                {
-                    name: "version",
-                    'type: r4:STRING,
-                    base: [r4:RESOURCE_NAME_CODESYSTEM],
-                    expression: "CodeSystem.version"
-                }
-
-            ]
-        },
-        {
-            "title": [
-                {
-                    name: "title",
-                    'type: r4:STRING,
-                    base: [r4:RESOURCE_NAME_CODESYSTEM],
-                    expression: "CodeSystem.title"
-                }
-
-            ]
-        },
-        {
-            "status": [
-                {
-                    name: "status",
-                    'type: r4:STRING,
-                    base: [r4:RESOURCE_NAME_CODESYSTEM],
-                    expression: "CodeSystem.status"
-                }
-
-            ]
-        },
-        {
-            "name": [
-                {
-                    name: "name",
-                    'type: r4:STRING,
-                    base: [r4:RESOURCE_NAME_CODESYSTEM],
-                    expression: "CodeSystem.name"
-                }
-
-            ]
-        },
-        {
-            "publisher": [
-                {
-                    name: "publisher",
-                    'type: r4:STRING,
-                    base: [r4:RESOURCE_NAME_CODESYSTEM],
-                    expression: "CodeSystem.publisher"
-                }
-            ]
-        }
-    ]
 };
