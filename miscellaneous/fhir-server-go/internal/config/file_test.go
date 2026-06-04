@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/config"
 )
@@ -287,5 +288,62 @@ ig:
 	}
 	if cfg.IGPackages[0] != "hl7.fhir.us.core@6.1.0" {
 		t.Errorf("pkg[0] should be trimmed, got %q", cfg.IGPackages[0])
+	}
+}
+
+func TestLoadFromPath_Timeouts(t *testing.T) {
+	clearIGEnv(t)
+	path := writeConfig(t, `
+server:
+  readTimeout: 15s
+  writeTimeout: 5m
+  idleTimeout: 90s
+`)
+	cfg, err := config.LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ReadTimeout != 15*time.Second {
+		t.Errorf("ReadTimeout: got %v, want 15s", cfg.ReadTimeout)
+	}
+	if cfg.WriteTimeout != 5*time.Minute {
+		t.Errorf("WriteTimeout: got %v, want 5m", cfg.WriteTimeout)
+	}
+	if cfg.IdleTimeout != 90*time.Second {
+		t.Errorf("IdleTimeout: got %v, want 90s", cfg.IdleTimeout)
+	}
+}
+
+func TestLoadFromPath_Timeouts_EnvWinsOverFile(t *testing.T) {
+	clearIGEnv(t)
+	path := writeConfig(t, `
+server:
+  writeTimeout: 5m
+`)
+	t.Setenv("SERVER_WRITE_TIMEOUT", "7s")
+	cfg, err := config.LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.WriteTimeout != 7*time.Second {
+		t.Errorf("WriteTimeout: got %v, want 7s (env should win)", cfg.WriteTimeout)
+	}
+}
+
+func TestLoadFromPath_Timeouts_InvalidFileValue_NamesConfigKey(t *testing.T) {
+	clearIGEnv(t)
+	path := writeConfig(t, `
+server:
+  writeTimeout: not-a-duration
+`)
+	_, err := config.LoadFromPath(path)
+	if err == nil {
+		t.Fatal("expected error for invalid server.writeTimeout, got nil")
+	}
+	if !strings.Contains(err.Error(), "server.writeTimeout") {
+		t.Errorf("error should name the config key (server.writeTimeout), got: %v", err)
+	}
+	if strings.Contains(err.Error(), "SERVER_WRITE_TIMEOUT") {
+		t.Errorf("error should not blame the unset env var, got: %v", err)
 	}
 }

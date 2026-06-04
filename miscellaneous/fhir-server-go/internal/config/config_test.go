@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/wso2/open-healthcare-fhir-server-go/internal/config"
 )
@@ -186,9 +187,65 @@ func clearIGEnv(t *testing.T) {
 	for _, k := range []string{
 		"DATABASE_URL", "DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME",
 		"SERVER_PORT", "BASE_URL", "LOG_LEVEL",
+		"SERVER_READ_TIMEOUT", "SERVER_WRITE_TIMEOUT", "SERVER_IDLE_TIMEOUT",
 		"IG_PACKAGES", "IG_REGISTRY_URL", "IG_FORCE_RELOAD", "IG_CACHE_DIR",
 		"FHIR_SERVER_CONFIG",
 	} {
 		t.Setenv(k, "")
+	}
+}
+
+func TestLoad_Timeouts_Defaults(t *testing.T) {
+	clearIGEnv(t)
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ReadTimeout != 30*time.Second {
+		t.Errorf("default ReadTimeout: got %v, want 30s", cfg.ReadTimeout)
+	}
+	if cfg.WriteTimeout != 60*time.Second {
+		t.Errorf("default WriteTimeout: got %v, want 60s", cfg.WriteTimeout)
+	}
+	if cfg.IdleTimeout != 120*time.Second {
+		t.Errorf("default IdleTimeout: got %v, want 120s", cfg.IdleTimeout)
+	}
+}
+
+func TestLoad_Timeouts_EnvOverride(t *testing.T) {
+	clearIGEnv(t)
+	t.Setenv("SERVER_READ_TIMEOUT", "45s")
+	t.Setenv("SERVER_WRITE_TIMEOUT", "10m")
+	t.Setenv("SERVER_IDLE_TIMEOUT", "0") // 0 disables
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ReadTimeout != 45*time.Second {
+		t.Errorf("ReadTimeout: got %v, want 45s", cfg.ReadTimeout)
+	}
+	if cfg.WriteTimeout != 10*time.Minute {
+		t.Errorf("WriteTimeout: got %v, want 10m", cfg.WriteTimeout)
+	}
+	if cfg.IdleTimeout != 0 {
+		t.Errorf("IdleTimeout: got %v, want 0 (disabled)", cfg.IdleTimeout)
+	}
+}
+
+func TestLoad_Timeouts_Invalid(t *testing.T) {
+	clearIGEnv(t)
+	t.Setenv("SERVER_WRITE_TIMEOUT", "not-a-duration")
+	if _, err := config.Load(); err == nil {
+		t.Fatal("expected error for invalid SERVER_WRITE_TIMEOUT, got nil")
+	}
+}
+
+func TestLoad_Timeouts_NegativeRejected(t *testing.T) {
+	clearIGEnv(t)
+	t.Setenv("SERVER_READ_TIMEOUT", "-5s")
+	if _, err := config.Load(); err == nil {
+		t.Fatal("expected error for negative SERVER_READ_TIMEOUT, got nil")
 	}
 }

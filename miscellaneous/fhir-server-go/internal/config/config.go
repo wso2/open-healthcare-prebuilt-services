@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -21,16 +22,23 @@ import (
 //  2. The YAML configuration file (if one is specified)
 //  3. Built-in defaults
 type Config struct {
-	DatabaseURL   string
-	Port          int
-	BaseURL       string
-	LogLevel      string
+	DatabaseURL     string
+	Port            int
+	BaseURL         string
+	LogLevel        string
 	IGPackages      []string // e.g. ["hl7.fhir.us.core@6.1.0", "hl7.fhir.us.carin-bb@2.0.0"]
 	IGRegistryURL   string   // default: https://packages.fhir.org
 	IGForceReload   bool     // re-load IGs even if already recorded in ig_packages
 	IGCacheDir      string   // local .tgz cache dir (default: .fhir-ig-cache)
 	ValidateOnWrite bool     // enforce profile validation on create/update (default off)
 	TerminologyURL  string   // base URL of the FHIR terminology server for :in/:not-in (empty = disabled)
+
+	// HTTP server timeouts. WriteTimeout bounds the WHOLE handler execution in
+	// net/http, so it must accommodate the slowest legitimate request (e.g. a
+	// large transaction bundle); 0 disables a timeout entirely.
+	ReadTimeout  time.Duration // default 30s
+	WriteTimeout time.Duration // default 60s
+	IdleTimeout  time.Duration // default 120s
 }
 
 // FileConfig is the on-disk YAML schema. Each field is optional — anything
@@ -39,6 +47,10 @@ type FileConfig struct {
 	Server struct {
 		Port    int    `yaml:"port"`
 		BaseURL string `yaml:"baseUrl"`
+		// Go duration strings ("30s", "5m"); "0" disables that timeout.
+		ReadTimeout  string `yaml:"readTimeout"`
+		WriteTimeout string `yaml:"writeTimeout"`
+		IdleTimeout  string `yaml:"idleTimeout"`
 	} `yaml:"server"`
 
 	Logging struct {
@@ -123,6 +135,19 @@ func resolve(fc *FileConfig) (*Config, error) {
 	validateOnWrite := strings.EqualFold(os.Getenv("FHIR_VALIDATE_ON_WRITE"), "true")
 	terminologyURL := os.Getenv("FHIR_TERMINOLOGY_URL")
 
+	readTimeout, err := resolveTimeout("SERVER_READ_TIMEOUT", "server.readTimeout", fc.Server.ReadTimeout, 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	writeTimeout, err := resolveTimeout("SERVER_WRITE_TIMEOUT", "server.writeTimeout", fc.Server.WriteTimeout, 60*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	idleTimeout, err := resolveTimeout("SERVER_IDLE_TIMEOUT", "server.idleTimeout", fc.Server.IdleTimeout, 120*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		DatabaseURL:     dbURL,
 		Port:            serverPort,
@@ -134,7 +159,34 @@ func resolve(fc *FileConfig) (*Config, error) {
 		IGCacheDir:      igCacheDir,
 		ValidateOnWrite: validateOnWrite,
 		TerminologyURL:  terminologyURL,
+		ReadTimeout:     readTimeout,
+		WriteTimeout:    writeTimeout,
+		IdleTimeout:     idleTimeout,
 	}, nil
+}
+
+// resolveTimeout resolves one HTTP server timeout: env var > config file >
+// default. Values are Go duration strings ("30s", "5m"); "0" disables the
+// timeout (net/http treats zero as no timeout). Negative values are rejected.
+// Validation errors name the source that actually supplied the bad value
+// (the env var or the config-file key), so startup failures point at the
+// right place.
+func resolveTimeout(envVar, fileKey, fileVal string, def time.Duration) (time.Duration, error) {
+	raw, source := os.Getenv(envVar), envVar
+	if raw == "" {
+		raw, source = fileVal, fileKey
+	}
+	if raw == "" {
+		return def, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: %w", source, raw, err)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("invalid %s %q: must not be negative", source, raw)
+	}
+	return d, nil
 }
 
 func resolveDatabaseURL(fc *FileConfig) (string, error) {
