@@ -12,6 +12,14 @@
 server:
   port: 9090
   baseUrl: http://localhost:9090/fhir/r4
+  # HTTP server timeouts — Go duration strings; "0s" disables one entirely.
+  # Env equivalents: SERVER_READ_TIMEOUT / SERVER_WRITE_TIMEOUT / SERVER_IDLE_TIMEOUT.
+  # NOTE: writeTimeout bounds the WHOLE handler execution — raise it if you ingest
+  # large transaction bundles, or slow-but-legitimate requests get cut off after
+  # they already committed.
+  # readTimeout: 30s
+  # writeTimeout: 60s
+  # idleTimeout: 120s
 
 logging:
   # One of: debug, info, warn, error

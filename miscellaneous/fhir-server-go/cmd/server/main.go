@@ -95,13 +95,20 @@ func run() error {
 	router := handler.NewRouter(s, pool, registry, cfg.BaseURL, &igReady, cfg.ValidateOnWrite)
 	slog.Info("FHIR router initialized", "baseURL", cfg.BaseURL, "validateOnWrite", cfg.ValidateOnWrite, "igPackages", len(cfg.IGPackages))
 
+	// Timeouts are configurable (SERVER_READ/WRITE/IDLE_TIMEOUT or server.*Timeout
+	// in the config file): WriteTimeout bounds the whole handler execution, so the
+	// default can cut long-but-legitimate requests (e.g. multi-MB transaction
+	// bundles) AFTER they committed. Deployments ingesting large bundles should
+	// raise it; 0 disables.
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      router,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+		IdleTimeout:  cfg.IdleTimeout,
 	}
+	slog.Info("HTTP server timeouts configured",
+		"readTimeout", cfg.ReadTimeout, "writeTimeout", cfg.WriteTimeout, "idleTimeout", cfg.IdleTimeout)
 
 	// Start listening before IGs are loaded so liveness probes pass immediately
 	quit := make(chan os.Signal, 1)
