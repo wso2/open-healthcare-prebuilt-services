@@ -329,3 +329,21 @@ server:
 		t.Errorf("WriteTimeout: got %v, want 7s (env should win)", cfg.WriteTimeout)
 	}
 }
+
+func TestLoadFromPath_Timeouts_InvalidFileValue_NamesConfigKey(t *testing.T) {
+	clearIGEnv(t)
+	path := writeConfig(t, `
+server:
+  writeTimeout: not-a-duration
+`)
+	_, err := config.LoadFromPath(path)
+	if err == nil {
+		t.Fatal("expected error for invalid server.writeTimeout, got nil")
+	}
+	if !strings.Contains(err.Error(), "server.writeTimeout") {
+		t.Errorf("error should name the config key (server.writeTimeout), got: %v", err)
+	}
+	if strings.Contains(err.Error(), "SERVER_WRITE_TIMEOUT") {
+		t.Errorf("error should not blame the unset env var, got: %v", err)
+	}
+}

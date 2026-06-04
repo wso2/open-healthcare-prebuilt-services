@@ -135,15 +135,15 @@ func resolve(fc *FileConfig) (*Config, error) {
 	validateOnWrite := strings.EqualFold(os.Getenv("FHIR_VALIDATE_ON_WRITE"), "true")
 	terminologyURL := os.Getenv("FHIR_TERMINOLOGY_URL")
 
-	readTimeout, err := resolveTimeout("SERVER_READ_TIMEOUT", fc.Server.ReadTimeout, 30*time.Second)
+	readTimeout, err := resolveTimeout("SERVER_READ_TIMEOUT", "server.readTimeout", fc.Server.ReadTimeout, 30*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	writeTimeout, err := resolveTimeout("SERVER_WRITE_TIMEOUT", fc.Server.WriteTimeout, 60*time.Second)
+	writeTimeout, err := resolveTimeout("SERVER_WRITE_TIMEOUT", "server.writeTimeout", fc.Server.WriteTimeout, 60*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	idleTimeout, err := resolveTimeout("SERVER_IDLE_TIMEOUT", fc.Server.IdleTimeout, 120*time.Second)
+	idleTimeout, err := resolveTimeout("SERVER_IDLE_TIMEOUT", "server.idleTimeout", fc.Server.IdleTimeout, 120*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -168,17 +168,23 @@ func resolve(fc *FileConfig) (*Config, error) {
 // resolveTimeout resolves one HTTP server timeout: env var > config file >
 // default. Values are Go duration strings ("30s", "5m"); "0" disables the
 // timeout (net/http treats zero as no timeout). Negative values are rejected.
-func resolveTimeout(envVar, fileVal string, def time.Duration) (time.Duration, error) {
-	raw := pick(os.Getenv(envVar), fileVal)
+// Validation errors name the source that actually supplied the bad value
+// (the env var or the config-file key), so startup failures point at the
+// right place.
+func resolveTimeout(envVar, fileKey, fileVal string, def time.Duration) (time.Duration, error) {
+	raw, source := os.Getenv(envVar), envVar
+	if raw == "" {
+		raw, source = fileVal, fileKey
+	}
 	if raw == "" {
 		return def, nil
 	}
 	d, err := time.ParseDuration(raw)
 	if err != nil {
-		return 0, fmt.Errorf("invalid %s %q: %w", envVar, raw, err)
+		return 0, fmt.Errorf("invalid %s %q: %w", source, raw, err)
 	}
 	if d < 0 {
-		return 0, fmt.Errorf("invalid %s %q: must not be negative", envVar, raw)
+		return 0, fmt.Errorf("invalid %s %q: must not be negative", source, raw)
 	}
 	return d, nil
 }

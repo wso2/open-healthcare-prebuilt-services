@@ -107,6 +107,8 @@ func run() error {
 		WriteTimeout: cfg.WriteTimeout,
 		IdleTimeout:  cfg.IdleTimeout,
 	}
+	slog.Info("HTTP server timeouts configured",
+		"readTimeout", cfg.ReadTimeout, "writeTimeout", cfg.WriteTimeout, "idleTimeout", cfg.IdleTimeout)
 
 	// Start listening before IGs are loaded so liveness probes pass immediately
 	quit := make(chan os.Signal, 1)
