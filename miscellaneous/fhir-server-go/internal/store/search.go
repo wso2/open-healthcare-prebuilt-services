@@ -92,26 +92,33 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 		return SearchResult{}, b.err
 	}
 
-	// _total=none skips the count for performance; _summary=count always needs
-	// it. Total stays -1 (sentinel "not computed") when skipped.
-	total := -1
-	if sp.Total != "none" || sp.CountOnly {
+	// _summary=count: only the total is needed, no rows to fetch.
+	if sp.CountOnly {
 		n, err := b.count(ctx, s.pool)
 		if err != nil {
 			slog.Error("search count failed", "resourceType", sp.ResourceType, "err", err)
 			return SearchResult{}, err
 		}
-		total = n
+		return SearchResult{Total: n}, nil
 	}
 
-	// _summary=count returns only the total — skip fetching matches and includes.
-	if sp.CountOnly {
-		return SearchResult{Total: total}, nil
-	}
-
-	entries, err := b.fetch(ctx, s.pool, sp.PageSize, offset)
-	if err != nil {
-		return SearchResult{}, err
+	total := -1
+	var entries []map[string]any
+	if sp.Total == "none" {
+		// _total=none: skip the count entirely, just fetch rows.
+		var err error
+		entries, err = b.fetch(ctx, s.pool, sp.PageSize, offset)
+		if err != nil {
+			return SearchResult{}, err
+		}
+	} else {
+		// Default: fetch rows and total in a single query via COUNT(*) OVER().
+		var err error
+		total, entries, err = b.fetchWithCount(ctx, s.pool, sp.PageSize, offset)
+		if err != nil {
+			slog.Error("search failed", "resourceType", sp.ResourceType, "err", err)
+			return SearchResult{}, err
+		}
 	}
 
 	result := SearchResult{Total: total, Entries: entries}
@@ -1257,6 +1264,51 @@ func (b *queryBuilder) fetch(ctx context.Context, pool *pgxpool.Pool, limit, off
 		entries = append(entries, m)
 	}
 	return entries, rows.Err()
+}
+
+// fetchWithCount fetches matching rows and the total result count in a single
+// round-trip using COUNT(*) OVER() as a window function. This replaces the
+// previous pattern of firing a separate SELECT COUNT(*) query before the
+// paginated SELECT, halving database load on every search request.
+func (b *queryBuilder) fetchWithCount(ctx context.Context, pool *pgxpool.Pool, limit, offset int) (int, []map[string]any, error) {
+	orderBy := b.orderByClause()
+	limitP := b.next(limit)
+	offsetP := b.next(offset)
+	q := fmt.Sprintf(`
+		SELECT r.resource_json, r.version_id, r.last_updated, COUNT(*) OVER() AS total_count
+		FROM resources r
+		WHERE %s
+		ORDER BY %s
+		LIMIT %s OFFSET %s`,
+		b.where.String(), orderBy, limitP, offsetP,
+	)
+
+	rows, err := pool.Query(ctx, q, b.args...)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer rows.Close()
+
+	var total int
+	var entries []map[string]any
+	for rows.Next() {
+		var raw []byte
+		var versionID int
+		var lastUpdated time.Time
+		var totalCount int
+		if err := rows.Scan(&raw, &versionID, &lastUpdated, &totalCount); err != nil {
+			return 0, nil, err
+		}
+		if total == 0 {
+			total = totalCount // populated from the first row; same on every row
+		}
+		m, err := unmarshalWithMeta(raw, versionID, lastUpdated)
+		if err != nil {
+			return 0, nil, err
+		}
+		entries = append(entries, m)
+	}
+	return total, entries, rows.Err()
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
