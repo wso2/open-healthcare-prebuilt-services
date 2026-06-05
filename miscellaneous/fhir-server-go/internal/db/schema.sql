@@ -102,12 +102,7 @@ CREATE TABLE IF NOT EXISTS sp_token (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sp_tok_sys_code ON sp_token (resource_type, param_name, system, code);
--- idx_sp_tok_code removed: it is a strict subset of idx_sp_tok_sys_code (missing
--- the system column), so the planner chose it over the fuller index and was forced
--- to apply system as a post-scan filter instead of an index condition. Dropping it
--- lets the planner always use idx_sp_tok_sys_code for (resource_type, param_name,
--- system, code) lookups.
-DROP INDEX IF EXISTS idx_sp_tok_code;
+CREATE INDEX IF NOT EXISTS idx_sp_tok_code     ON sp_token (resource_type, param_name, code);
 CREATE INDEX IF NOT EXISTS idx_sp_tok_system   ON sp_token (resource_type, param_name, system);
 -- Source-keyed index: without it, the correlated EXISTS probe in multi-param
 -- searches (e.g. Encounter?patient=X&type=Y) degenerates into hashing every
@@ -216,14 +211,7 @@ CREATE TABLE IF NOT EXISTS sp_reference (
     FOREIGN KEY (resource_id, resource_type) REFERENCES resources (fhir_id, resource_type) ON DELETE CASCADE
 );
 
--- idx_sp_ref_source rebuilt: the original (resource_type, resource_id, param_name)
--- was missing target_id, forcing a post-scan filter on every correlated EXISTS
--- probe (e.g. Encounter?patient=X&type=Y). Adding target_id as the fourth column
--- makes the probe index-only and eliminates the filter entirely. resource_id leads
--- because it is the correlated column from the outer resources loop, mirroring the
--- same pattern used by idx_sp_tok_source on sp_token.
-DROP INDEX IF EXISTS idx_sp_ref_source;
-CREATE INDEX IF NOT EXISTS idx_sp_ref_source ON sp_reference (resource_id, resource_type, param_name, target_id);
+CREATE INDEX IF NOT EXISTS idx_sp_ref_source ON sp_reference (resource_type, resource_id, param_name);
 -- Replaced by idx_sp_ref_target_full: leading on target_id makes the index
 -- usable for bare-id reference searches (patient=123, no Type/ prefix), and the
 -- extra columns let reference predicates resolve index-only. (target_id,
@@ -334,23 +322,6 @@ CREATE TABLE IF NOT EXISTS "ClosureDeltaTable" (
     FOREIGN KEY ("SUBSUMED_ID") REFERENCES "ClosureConceptTable"("ID")  ON DELETE CASCADE,
     UNIQUE ("CONTEXT_ID", "SUBSUMES_ID", "SUBSUMED_ID")
 );
-
--- ─── Planner statistics ───────────────────────────────────────────────────────
--- The default statistics target (100) under-sampled high-cardinality columns on
--- sp_token and sp_reference, causing the planner to mis-estimate row counts by
--- orders of magnitude (estimated 1 row; actual 3,376). This led to the wrong join
--- order in multi-param searches. Raising the target to 1000 gives the planner
--- accurate histograms and lets it choose the optimal plan consistently.
-
-ALTER TABLE sp_token    ALTER COLUMN code          SET STATISTICS 1000;
-ALTER TABLE sp_token    ALTER COLUMN system        SET STATISTICS 1000;
-ALTER TABLE sp_token    ALTER COLUMN resource_type SET STATISTICS 1000;
-ALTER TABLE sp_token    ALTER COLUMN param_name    SET STATISTICS 1000;
-ALTER TABLE sp_reference ALTER COLUMN target_id   SET STATISTICS 1000;
-ALTER TABLE sp_reference ALTER COLUMN param_name  SET STATISTICS 1000;
-
-ANALYZE sp_token;
-ANALYZE sp_reference;
 
 -- ─── Stamp schema version ─────────────────────────────────────────────────────
 
