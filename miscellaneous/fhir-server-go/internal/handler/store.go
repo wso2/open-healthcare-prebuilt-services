@@ -18,6 +18,7 @@ type StoreAPI interface {
 	GetHistory(ctx context.Context, resourceType, resourceID string) ([]store.HistoryEntry, error)
 	GetTypeHistory(ctx context.Context, p store.HistoryParams) (store.HistoryResult, error)
 	Search(ctx context.Context, sp store.SearchParams) (store.SearchResult, error)
+	LastN(ctx context.Context, params map[string][]string, maxN int) (store.SearchResult, error)
 	ConditionalMatch(ctx context.Context, resourceType, rawQuery string) (string, int, error)
 	FetchReferences(ctx context.Context, resourceType, resourceID string, reverse bool) ([]map[string]any, error)
 	SyncSearchParameter(ctx context.Context, body map[string]any) error

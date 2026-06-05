@@ -53,6 +53,11 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, b
 		// System-level history
 		r.Get("/_history", h.systemHistory)
 
+		// System-level operations
+		r.Post("/$validate", h.validateSystem) // POST [base]/$validate
+		r.Post("/$convert", h.convert)         // POST [base]/$convert
+		r.Get("/$meta", h.metaSystem)          // GET  [base]/$meta
+
 		// System-level transaction / batch Bundle (trailing-slash form)
 		r.Post("/", h.bundle)
 
@@ -63,7 +68,10 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, b
 			r.Put("/", h.conditionalUpdate)    // PUT /{type}?<search>
 			r.Delete("/", h.conditionalDelete) // DELETE /{type}?<search>
 			r.Post("/_search", h.searchPost)
-			r.Post("/$validate", h.validate)
+			r.Post("/$validate", h.validate)        // type-level $validate
+			r.Get("/$meta", h.metaType)             // GET /{type}/$meta
+			r.Get("/$everything", h.everythingType) // type-level $everything
+			r.Get("/$lastn", h.lastN)               // GET /Observation/$lastn
 			r.Get("/_history", h.typeHistory)
 
 			r.Route("/{id}", func(r chi.Router) {
@@ -74,6 +82,11 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, b
 				r.Get("/_history", h.history)
 				r.Get("/_history/{vid}", h.vread)
 				r.Get("/$everything", h.everything)
+				r.Post("/$validate", h.validateInstance)  // instance-level $validate
+				r.Get("/$meta", h.metaInstance)           // GET /{type}/{id}/$meta
+				r.Post("/$meta-add", h.metaAdd)           // POST /{type}/{id}/$meta-add
+				r.Post("/$meta-delete", h.metaDelete)     // POST /{type}/{id}/$meta-delete
+				r.Get("/$document", h.document)           // GET /Composition/{id}/$document
 
 				// Compartment search: /Patient/{id}/Observation etc.
 				// Determined at runtime by checking if the URL's resourceType
