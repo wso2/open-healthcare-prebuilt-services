@@ -112,6 +112,7 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
             slog.Error("search failed", "resourceType", sp.ResourceType, "err", err)
             return SearchResult{}, err
         }
+		slog.Debug("search completed", "resourceType", sp.ResourceType, "returned", len(entries))
 	} else {
 		// Default: fetch rows and total in a single query via COUNT(*) OVER().
 		var err error
@@ -120,10 +121,7 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 			slog.Error("search failed", "resourceType", sp.ResourceType, "err", err)
 			return SearchResult{}, err
 		}
-		if log.IsDebugEnabled() {
-		    log.Debug("Search completed with total count", "resourceType", sp.ResourceType, "total", total,
-		    "returned", len(entries))
-		}
+		slog.Debug("search completed", "resourceType", sp.ResourceType, "total", total, "returned", len(entries))
 	}
 
 	result := SearchResult{Total: total, Entries: entries}
