@@ -109,8 +109,9 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 		var err error
 		entries, err = b.fetch(ctx, s.pool, sp.PageSize, offset)
 		if err != nil {
-			return SearchResult{}, err
-		}
+            slog.Error("search failed", "resourceType", sp.ResourceType, "err", err)
+            return SearchResult{}, err
+        }
 	} else {
 		// Default: fetch rows and total in a single query via COUNT(*) OVER().
 		var err error
@@ -118,6 +119,10 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 		if err != nil {
 			slog.Error("search failed", "resourceType", sp.ResourceType, "err", err)
 			return SearchResult{}, err
+		}
+		if log.IsDebugEnabled() {
+		    log.Debug("Search completed with total count", "resourceType", sp.ResourceType, "total", total,
+		    "returned", len(entries))
 		}
 	}
 
@@ -1267,9 +1272,11 @@ func (b *queryBuilder) fetch(ctx context.Context, pool *pgxpool.Pool, limit, off
 }
 
 // fetchWithCount fetches matching rows and the total result count in a single
-// round-trip using COUNT(*) OVER() as a window function. This replaces the
-// previous pattern of firing a separate SELECT COUNT(*) query before the
-// paginated SELECT, halving database load on every search request.
+// round-trip using COUNT(*) OVER() as a window function. COUNT(*) OVER() is
+// evaluated before LIMIT, so it returns the full match count regardless of
+// page size. This saves a round-trip compared to the previous pattern of a
+// separate SELECT COUNT(*) followed by a paginated SELECT; when ORDER BY
+// requires a sort (no covering index), it also halves the scan work.
 func (b *queryBuilder) fetchWithCount(ctx context.Context, pool *pgxpool.Pool, limit, offset int) (int, []map[string]any, error) {
 	orderBy := b.orderByClause()
 	limitP := b.next(limit)
@@ -1299,15 +1306,20 @@ func (b *queryBuilder) fetchWithCount(ctx context.Context, pool *pgxpool.Pool, l
 		if err := rows.Scan(&raw, &versionID, &lastUpdated, &totalCount); err != nil {
 			return 0, nil, err
 		}
-		if total == 0 {
-			total = totalCount // populated from the first row; same on every row
-		}
+		total = totalCount // same value on every row; unconditional assignment is clearer
 		m, err := unmarshalWithMeta(raw, versionID, lastUpdated)
 		if err != nil {
 			return 0, nil, err
 		}
 		entries = append(entries, m)
 	}
+	// If no rows were returned, we missed the window count. Run a separate count query.
+    if total == 0 && len(entries) == 0 {
+        total, err = b.count(ctx, pool)
+        if err != nil {
+            return 0, nil, err
+        }
+    }
 	return total, entries, rows.Err()
 }
 

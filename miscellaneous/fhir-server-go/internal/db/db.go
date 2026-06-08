@@ -18,8 +18,6 @@ func Connect(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
 
-	cfg.MaxConns = 20
-
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("open pool: %w", err)
