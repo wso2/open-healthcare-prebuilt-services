@@ -1311,13 +1311,6 @@ func (b *queryBuilder) fetchWithCount(ctx context.Context, pool *pgxpool.Pool, l
 		}
 		entries = append(entries, m)
 	}
-	// If no rows were returned, we missed the window count. Run a separate count query.
-    if total == 0 && len(entries) == 0 {
-        total, err = b.count(ctx, pool)
-        if err != nil {
-            return 0, nil, err
-        }
-    }
 	return total, entries, rows.Err()
 }
 
