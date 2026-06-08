@@ -116,8 +116,8 @@ func parseDiff(data []byte) ([]xmlPatchOp, error) {
 		case "replace":
 			// text content is the new value
 			var inner struct {
-				Text  string     `xml:",chardata"`
-				Child []xmlRaw   `xml:",any"`
+				Text  string   `xml:",chardata"`
+				Child []xmlRaw `xml:",any"`
 			}
 			if err := dec.DecodeElement(&inner, &se); err != nil {
 				return nil, err

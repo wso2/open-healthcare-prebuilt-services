@@ -1353,11 +1353,11 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cs := map[string]any{
-		"resourceType":        "CapabilityStatement",
-		"status":              "active",
-		"kind":                "instance",
-		"fhirVersion":         "4.0.1",
-		"format":              []string{"application/fhir+json", "application/fhir+xml", "application/fhir+turtle"},
+		"resourceType": "CapabilityStatement",
+		"status":       "active",
+		"kind":         "instance",
+		"fhirVersion":  "4.0.1",
+		"format":       []string{"application/fhir+json", "application/fhir+xml", "application/fhir+turtle"},
 		"patchFormat": []string{
 			"application/json-patch+json",
 			"application/merge-patch+json",
@@ -1493,7 +1493,7 @@ func (h *fhirHandler) compartmentSearch(w http.ResponseWriter, r *http.Request) 
 			writeFHIR(w, r, http.StatusOK, map[string]any{
 				"resourceType": "Bundle", "type": "searchset", "total": 1,
 				"entry": []any{map[string]any{
-					"fullUrl": fmt.Sprintf("%s/%s/%s", h.baseURL, ownerType, ownerID),
+					"fullUrl":  fmt.Sprintf("%s/%s/%s", h.baseURL, ownerType, ownerID),
 					"resource": resource, "search": map[string]any{"mode": "match"},
 				}},
 			})

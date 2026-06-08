@@ -22,7 +22,7 @@ services:
     ports:
       - "9090:9090"
     environment:
-      DATABASE_URL: postgres://fhir:fhir@db:5432/fhirdb?sslmode=disable
+      DATABASE_URL: postgres://fhir:fhir@db:5432/fhirdb?sslmode=disable&pool_max_conns=20
       SERVER_PORT: "9090"
       BASE_URL: http://localhost:9090/fhir/r4
       LOG_LEVEL: info
