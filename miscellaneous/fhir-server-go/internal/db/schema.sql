@@ -267,6 +267,10 @@ CREATE TABLE IF NOT EXISTS search_param_definitions (
     UNIQUE (resource_type, param_name)
 );
 
+ALTER TABLE search_param_definitions ADD COLUMN IF NOT EXISTS ig_source TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_param_definitions ADD COLUMN IF NOT EXISTS target_types TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_param_definitions ADD COLUMN IF NOT EXISTS components_json TEXT NOT NULL DEFAULT '';
+
 CREATE INDEX IF NOT EXISTS idx_spd_resource ON search_param_definitions (resource_type);
 CREATE INDEX IF NOT EXISTS idx_spd_custom   ON search_param_definitions (resource_type) WHERE is_custom = TRUE;
 CREATE INDEX IF NOT EXISTS idx_spd_ig       ON search_param_definitions (ig_source) WHERE ig_source != '';
