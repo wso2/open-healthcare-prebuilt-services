@@ -329,6 +329,16 @@ CREATE TABLE IF NOT EXISTS "ClosureDeltaTable" (
     UNIQUE ("CONTEXT_ID", "SUBSUMES_ID", "SUBSUMED_ID")
 );
 
+-- ─── Planner statistics ───────────────────────────────────────────────────────
+-- Raise statistics targets for high-cardinality columns so the planner
+-- produces accurate row-count estimates for multi-param searches.
+ALTER TABLE sp_token     ALTER COLUMN code          SET STATISTICS 1000;
+ALTER TABLE sp_token     ALTER COLUMN system        SET STATISTICS 1000;
+ALTER TABLE sp_token     ALTER COLUMN resource_type SET STATISTICS 1000;
+ALTER TABLE sp_token     ALTER COLUMN param_name    SET STATISTICS 1000;
+ALTER TABLE sp_reference ALTER COLUMN target_id     SET STATISTICS 1000;
+ALTER TABLE sp_reference ALTER COLUMN param_name    SET STATISTICS 1000;
+
 -- ─── Stamp schema version ─────────────────────────────────────────────────────
 
 INSERT INTO schema_version (version) VALUES (3) ON CONFLICT DO NOTHING;
