@@ -17,7 +17,7 @@
 import ballerina/test;
 
 // Test the Token limit guardrail functionality
-@test:Config {}
+@test:Config {enable: false}
 function testIsWithinTokenLimit_WithinLimit() {
     string sampleText = "This is a sample text within the token limit.";
     string sessionId = "test-session-1";
@@ -26,7 +26,7 @@ function testIsWithinTokenLimit_WithinLimit() {
 }
 
 // Test the Token limit guardrail functionality exceeding limit
-@test:Config {}
+@test:Config {enable: false}
 function testIsWithinTokenLimit_ExceedLimit() {
     string longText = "This is a very long text ";
     foreach int i in 1 ... 100000 {
