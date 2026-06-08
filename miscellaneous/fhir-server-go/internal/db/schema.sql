@@ -104,9 +104,11 @@ CREATE TABLE IF NOT EXISTS sp_token (
 -- Primary lookup: system|code pairs (the most common token search pattern).
 CREATE INDEX IF NOT EXISTS idx_sp_tok_sys_code ON sp_token (resource_type, param_name, system, code);
 -- Lookup by system alone (used when only the system is provided, no code).
-CREATE INDEX IF NOT EXISTS idx_sp_tok_system   ON sp_token (resource_type, param_name, system);
+CREATE INDEX IF NOT EXISTS idx_sp_tok_system ON sp_token (resource_type, param_name, system);
+-- Lookup by code alone when the search omits system.
+CREATE INDEX IF NOT EXISTS idx_sp_tok_code ON sp_token (resource_type, param_name, code) WHERE code IS NOT NULL;
 -- Leading on resource_id serves multi-parameter searches and re-index deletes.
-CREATE INDEX IF NOT EXISTS idx_sp_tok_source   ON sp_token (resource_id, resource_type, param_name, system, code);
+CREATE INDEX IF NOT EXISTS idx_sp_tok_source ON sp_token (resource_id, resource_type, param_name, system, code);
 
 -- ─── Date search index ────────────────────────────────────────────────────────
 -- Stores extracted values for FHIR date / dateTime / Period / instant parameters.
