@@ -42,9 +42,8 @@ function testValidateFHIRTemplate_ValidQuestionnaire() {
 function testValidateFHIRTemplate_InvalidQuestionnaire() {
     json invalidQuestionnaire = {
         "resourceType": "Questionnaire",
-        "id": "test-questionnaire",
-        "status": "active"
-        // Missing required fields: url, subjectType, text, etc.
+        "id": "test-questionnaire"
+        // Missing required fields: status, subjectType, text, etc.
     };
     
     string result = validateFHIRTemplate(invalidQuestionnaire);
