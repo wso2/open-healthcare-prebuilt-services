@@ -109,9 +109,9 @@ func (s *Store) Search(ctx context.Context, sp SearchParams) (SearchResult, erro
 		var err error
 		entries, err = b.fetch(ctx, s.pool, sp.PageSize, offset)
 		if err != nil {
-            slog.Error("search failed", "resourceType", sp.ResourceType, "err", err)
-            return SearchResult{}, err
-        }
+			slog.Error("search failed", "resourceType", sp.ResourceType, "err", err)
+			return SearchResult{}, err
+		}
 		slog.Debug("search completed", "resourceType", sp.ResourceType, "returned", len(entries))
 	} else {
 		// Default: fetch rows and total in a single query via COUNT(*) OVER().

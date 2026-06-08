@@ -818,11 +818,11 @@ func TestSearch_MultiHopChain(t *testing.T) {
 	org2, _ := s.Create(ctx, "Organization", map[string]any{"resourceType": "Organization", "name": "TopOrg"})
 	org1, _ := s.Create(ctx, "Organization", map[string]any{
 		"resourceType": "Organization", "name": "SubOrg",
-		"partOf":       map[string]any{"reference": "Organization/" + org2["id"].(string)},
+		"partOf": map[string]any{"reference": "Organization/" + org2["id"].(string)},
 	})
 	s.Create(ctx, "Patient", map[string]any{
-		"resourceType":        "Patient",
-		"name":                []any{map[string]any{"family": "TargetPatient"}},
+		"resourceType":         "Patient",
+		"name":                 []any{map[string]any{"family": "TargetPatient"}},
 		"managingOrganization": map[string]any{"reference": "Organization/" + org1["id"].(string)},
 	})
 	// Unrelated patient with no org link.
