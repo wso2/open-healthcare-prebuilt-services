@@ -82,7 +82,6 @@ public class ReadMapper {
     }
 
     // Search resources with filters - basic implementation
-    // Search resources with filters - basic implementation
     public isolated function searchResources(jdbc:Client? jdbcClient, string resourceType, map<string[]> queryParams, r4:PaginationContext? paginationContext = ()) returns json|error {
         if jdbcClient is () {
             return error("JDBC client is not initialized");
@@ -92,21 +91,29 @@ public class ReadMapper {
         string tableName = utils:getTableName(resourceType);
         string[] tableColumns = check mapperUtils:getTableColumns(jdbcClient, tableName);
 
-        // First, check if there are any custom extension search parameters
+        // Classify parameters into three types
         map<string[]> customParams = {};
+        map<string[]> refParams = {};
         map<string[]> standardParams = {};
 
         foreach var [paramName, paramValues] in queryParams.entries() {
             // Skip control parameters
-            if paramName.startsWith("_") || paramName.includes("/") {
+            if paramName.startsWith("_") {
                 standardParams[paramName] = paramValues;
                 continue;
             }
 
-            // Check if this is a custom extension parameter
-            boolean isCustom = check self.isCustomSearchParam(jdbcClient, resourceType, paramName);
-            if isCustom {
+            // Old-format reference: paramName itself is "ResourceType/id"
+            if paramName.includes("/") && !paramName.includes("://") {
+                refParams[paramName] = paramValues;
+                continue;
+            }
+
+            var paramDef = check self.getSearchParamDef(jdbcClient, resourceType, paramName);
+            if paramDef?.isCustom == true {
                 customParams[paramName] = paramValues;
+            } else if paramDef?.paramType == "reference" {
+                refParams[paramName] = paramValues;
             } else {
                 standardParams[paramName] = paramValues;
             }
@@ -125,45 +132,74 @@ public class ReadMapper {
 
         string primaryKey = utils:getPrimaryKeyColumn(resourceType);
 
-        // Check for reference parameters and query the REFERENCES table
+        // Process reference parameters and query the REFERENCES table
         string[]? matchingResourceIds = ();
-        boolean hasReferenceParams = false;
+        boolean hasReferenceParams = refParams.length() > 0;
 
-        foreach var [paramName, paramValues] in queryParams.entries() {
+        foreach var [paramName, paramValues] in refParams.entries() {
             if paramValues.length() == 0 {
                 continue;
             }
-
             string paramValue = paramValues[0];
+            string targetType = "";  // eg: "Patient"
+            string targetId = "";    // eg: "123"
 
-            // Check if this is a reference parameter
-            // Either: 1) paramName contains "/" (e.g., "Patient/123" as key)
-            //     or: 2) paramValue contains "/" (e.g., patient=Patient/123)
-            boolean isReferenceParam = paramName.includes("/") || paramValue.includes("/");
-
-            if isReferenceParam {
-                hasReferenceParams = true;
-                string refValue = "";
-
-                // Case 1: paramName is "Patient/123" (old format)
-                if paramName.includes("/") {
-                    refValue = paramName;
+            // Case 1: paramName is "Patient/123" (old format)
+            if paramName.includes("/") && !paramName.includes("://") {
+                string[] parts = regexp:split(re `/`, paramName);
+                // Catch "Patient/", "Patient/123/123", "/123"
+                if parts.length() == 2 && parts[0] != "" && parts[1] != "" {
+                    targetType = parts[0];
+                    targetId = parts[1];
+                } else {
+                    return error(string `Invalid reference format: '${paramName}'`);
                 }
-                // Case 2: patient=Patient/123 (proper FHIR search format)
-                else {
-                    refValue = paramValue;
+            }
+            // Case 2: patient=Patient/123 (proper FHIR search format)
+            else if paramValue.includes("/") && !paramValue.includes("://") {
+                string[] parts = regexp:split(re `/`, paramValue);
+
+                if parts.length() == 2 && parts[0] != "" && parts[1] != "" {
+                    targetType = parts[0];
+                    targetId = parts[1];
+                } else {
+                    return error(string `Invalid reference format for parameter '${paramName}': '${paramValue}'`);
                 }
+            }
+            // Case 3: patient=123 (just the resource ID without type prefix) - NOT SUPPORTED YET
+            else if !paramValue.includes("://") {
+                return error(string `Invalid reference: search parameter '${paramName}' must include resource type (e.g., '${paramName}=Patient/123', not '${paramName}=${paramValue}')`);
+            }
+            // Case 4: patient=http://example.com/fhir/Patient/123 (absolute URL) - NOT SUPPORTED YET
+            else {
+                return error(string `Invalid reference: absolute URL '${paramValue}' is not supported for parameter '${paramName}'. Use relative references instead (e.g., '${paramName}=Patient/123')`);
+            }
 
-                string[] parts = regexp:split(re `/`, refValue);
-                if parts.length() == 2 {
-                    string targetType = parts[0];
-                    string targetId = parts[1];
+            if targetType != "" && targetId != "" {
 
-                    // Build query without SOURCE_EXPRESSION filter
-                    // The TARGET_RESOURCE_TYPE already provides the specificity we need
-                    // (e.g., searching patient=Patient/123 matches any reference to that Patient,
-                    //  whether stored as "actor", "patient", "subject", etc.)
-                    string refQuery = string `SELECT DISTINCT "SOURCE_RESOURCE_ID" FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = '${utils:escapeSql(resourceType)}' AND "TARGET_RESOURCE_TYPE" = '${utils:escapeSql(targetType)}' AND "TARGET_RESOURCE_ID" = '${utils:escapeSql(targetId)}'`;
+                // For old-format references (e.g. paramName="Patient/123"), derive the search param name
+                // from the target resource type (e.g. "patient"). If old-format support is removed, use paramName directly.
+                record {|string[] sourceExpressions; string|string[] validTargetTypes;|} refInfo = check self.getSourceExpressionsAndTargetTypes(jdbcClient, resourceType, paramName.includes("/") ? targetType.toLowerAscii() : paramName);
+
+                    // "any" means no resolve() is constraint in the expression 
+                    // The target type is still implicitly filtered in the REFERENCES query via TARGET_RESOURCE_TYPE,
+                    // so subject=Practitioner/123 will return 0 results **if no such data exists** rather than an error.
+                    // TODO: By using SearchParameter.target we could verify this explicitly. For that need to add target types to the SEARCH_PARAM_RES_EXPRESSIONS table
+                    if refInfo.validTargetTypes != "any" {
+                        string[] allowedTypes = <string[]>refInfo.validTargetTypes;
+                        if allowedTypes.indexOf(targetType) is () {
+                            return error(string `Invalid reference: search parameter '${paramName}' does not support target type '${targetType}' (value: '${paramValue}').`);
+                        }
+                    }
+
+                    // Filter by SOURCE_EXPRESSION if we resolved the underlying element name(s)
+                    string sourceExprFilter = "";
+                    if refInfo.sourceExpressions.length() > 0 {
+                        string fieldList = string:'join(", ", ...from var f in refInfo.sourceExpressions select string `'${utils:escapeSql(f)}'`);
+                        sourceExprFilter = string ` AND "SOURCE_EXPRESSION" IN (${fieldList})`;
+                    }
+
+                    string refQuery = string `SELECT DISTINCT "SOURCE_RESOURCE_ID" FROM "REFERENCES" WHERE "SOURCE_RESOURCE_TYPE" = '${utils:escapeSql(resourceType)}'${sourceExprFilter} AND "TARGET_RESOURCE_TYPE" = '${utils:escapeSql(targetType)}' AND "TARGET_RESOURCE_ID" = '${utils:escapeSql(targetId)}'`;
 
                     sql:ParameterizedQuery query = new utils:RawSQLQuery(refQuery);
 
@@ -198,9 +234,7 @@ public class ReadMapper {
                         matchingResourceIds = intersection;
                     }
                 }
-            }
         }
-
         // If reference parameters were used but no matches found, return empty bundle
         if hasReferenceParams && (matchingResourceIds is string[] && matchingResourceIds.length() == 0) {
             json bundle = {
@@ -238,8 +272,10 @@ public class ReadMapper {
         }
 
         if finalResourceIds is string[] && finalResourceIds.length() > 0 {
-            string idList = string:'join("', '", ...finalResourceIds);
-            whereClause = string ` WHERE "${primaryKey}" IN ('${idList}')`;
+            string[] sanitizedFinalResourceIds = from var id in finalResourceIds
+                select utils:escapeSql(id);
+            string idList = string:'join("', '", ...sanitizedFinalResourceIds);
+            whereClause = string ` WHERE "${utils:escapeSql(primaryKey)}" IN ('${idList}')`;
         } else if finalResourceIds is string[] && finalResourceIds.length() == 0 {
             // No matches from filtering, return empty bundle
             return self.createEmptyBundle();
@@ -250,9 +286,9 @@ public class ReadMapper {
             string[] idValues = queryParams.get("_id");
             if idValues.length() > 0 {
                 if whereClause == "" {
-                    whereClause = string ` WHERE "${primaryKey}" = '${idValues[0]}'`;
+                    whereClause = string ` WHERE "${utils:escapeSql(primaryKey)}" = '${utils:escapeSql(idValues[0])}'`;
                 } else {
-                    whereClause = whereClause + string ` AND "${primaryKey}" = '${idValues[0]}'`;
+                    whereClause = whereClause + string ` AND "${utils:escapeSql(primaryKey)}" = '${utils:escapeSql(idValues[0])}'`;
                 }
             }
         }
@@ -286,16 +322,7 @@ public class ReadMapper {
                 continue;
             }
 
-            // Skip reference parameters (already processed above)
-            // Reference params have "/" BUT not token params (which use | for system|code)
-            // Token example: identifier=http://hospital.org|12345 (has "/" but is NOT a reference)
-            // Reference example: patient=Patient/123 (has "/" and IS a reference)
             boolean isTokenParam = paramValue.includes("|");
-            boolean hasSlash = paramName.includes("/") || paramValue.includes("/");
-
-            if hasSlash && !isTokenParam {
-                continue;
-            }
 
             // Skip _count parameter (sent by default) and _include/_revinclude/_profile parameters (handled separately after main search)
             if paramName == "_count" || paramName == "_include" || paramName == "_revinclude" || paramName == "_profile" {
@@ -1199,25 +1226,92 @@ public class ReadMapper {
         return revIncludedEntries;
     }
 
-    // Check if a search parameter is a custom extension parameter
-    private isolated function isCustomSearchParam(jdbc:Client jdbcClient, string resourceType, string paramName) returns boolean|error {
+
+    // Parse "resolve() is X" from a expression in SEARCH_PARAM_RES_EXPRESSIONS table and return X, or () if not present.
+    // Example: "Condition.subject.where(resolve() is Patient)" → "Patient"
+    private isolated function extractTargetTypeFromExpression(string expression) returns string? {
+        string marker = "resolve() is ";
+        int? markerIdx = expression.indexOf(marker);
+        if markerIdx is int {
+            string afterMarker = expression.substring(markerIdx + marker.length());
+            regexp:Span? typeNameEnd = regexp:find(re `[^A-Za-z]`, afterMarker);
+            string typeName = typeNameEnd is regexp:Span ? afterMarker.substring(0, typeNameEnd.startIndex) : afterMarker;
+            if typeName.length() > 0 {
+                return typeName;
+            }
+        }
+        return ();
+    }
+
+    // Extract the reference field name from a FHIRPath expression — the last path segment before ".where(" or end.
+    // Example: "Condition.subject.where(resolve() is Patient)" → "subject"
+    // Example: "Patient.generalPractitioner" → "generalPractitioner"
+    private isolated function extractReferenceFieldFromExpression(string expression) returns string? {
+        int? whereIdx = expression.indexOf(".where(");
+        string pathPart = whereIdx is int ? expression.substring(0, whereIdx) : expression;
+        int? lastDot = pathPart.lastIndexOf(".");
+        string 'field = lastDot is int ? pathPart.substring(lastDot + 1) : pathPart;
+        return 'field.length() > 0 ? 'field : ();
+    }
+
+    // Given a reference search param name, extracts from SEARCH_PARAM_RES_EXPRESSIONS:
+    //   sourceExpressions — FHIRPath element names (e.g. "subject") that this param maps to.
+    //                       Multiple search params (e.g. "patient", "subject") can map to the same element.
+    //   validTargetTypes  — allowed target resource types from "resolve() is X", or "any" if unconstrained.
+    //                       "any" means the expression has no type restriction — the REFERENCES query
+    //                       will naturally return 0 results if no matching data exists.
+    //
+    // Example: "patient" on Condition → "Condition.subject.where(resolve() is Patient)"
+    //          → {sourceExpressions: ["subject"], validTargetTypes: ["Patient"]}
+    // Example: "subject" on Condition → "Condition.subject"
+    //          → {sourceExpressions: ["subject"], validTargetTypes: "any"}
+    private isolated function getSourceExpressionsAndTargetTypes(jdbc:Client jdbcClient, string resourceType, string paramName)
+            returns record {|string[] sourceExpressions; string|string[] validTargetTypes;|}|error {
+        stream<record {|string EXPRESSION;|}, sql:Error?> spStream = jdbcClient->query(
+            `SELECT "EXPRESSION" FROM "SEARCH_PARAM_RES_EXPRESSIONS"
+             WHERE "RESOURCE_NAME" = ${resourceType}
+               AND "SEARCH_PARAM_NAME" = ${paramName}
+               AND "SEARCH_PARAM_TYPE" = 'reference'`
+        );
+        record {|string EXPRESSION;|}[] rows = check from var r in spStream select r;
+
+        string[] sourceExpressions = [];
+        string[] validTargetTypes = [];
+        foreach var row in rows {
+            string? sourceExpr = self.extractReferenceFieldFromExpression(row.EXPRESSION);
+            if sourceExpr is string && sourceExpressions.indexOf(sourceExpr) is () {
+                sourceExpressions.push(sourceExpr);
+            }
+            string? targetType = self.extractTargetTypeFromExpression(row.EXPRESSION);
+            if targetType is string && validTargetTypes.indexOf(targetType) is () {
+                validTargetTypes.push(targetType);
+            }
+        }
+        // "any" means no resolve() is constraint was found — all target types are permitted
+        return {sourceExpressions, validTargetTypes: validTargetTypes.length() > 0 ? validTargetTypes : "any"};
+    }
+
+    // Fetch the registered definition of a search parameter from SEARCH_PARAM_RES_EXPRESSIONS.
+    // Returns () when the parameter is not registered.
+    private isolated function getSearchParamDef(jdbc:Client jdbcClient, string resourceType, string paramName)
+            returns record {|string paramType; boolean isCustom;|}?|error {
         sql:ParameterizedQuery query = `
-            SELECT COUNT(*) as count
-            FROM "SEARCH_PARAM_RES_EXPRESSIONS" 
+            SELECT "SEARCH_PARAM_TYPE" AS paramType, "IS_CUSTOM" AS isCustom
+            FROM "SEARCH_PARAM_RES_EXPRESSIONS"
             WHERE "RESOURCE_NAME" = ${resourceType}
-            AND "SEARCH_PARAM_NAME" = ${paramName}
-            AND "IS_CUSTOM" = ${true}
+              AND "SEARCH_PARAM_NAME" = ${paramName}
+            LIMIT 1
         `;
 
-        stream<record {int count;}, sql:Error?> resultStream = jdbcClient->query(query);
-        record {|record {int count;} value;|}|sql:Error? nextRecord = resultStream.next();
+        stream<record {|string paramType; boolean isCustom;|}, sql:Error?> resultStream = jdbcClient->query(query);
+        record {|record {|string paramType; boolean isCustom;|} value;|}? nextRecord = check resultStream.next();
         check resultStream.close();
 
-        if nextRecord is record {|record {int count;} value;|} {
-            return nextRecord.value.count > 0;
+        if nextRecord is record {|record {|string paramType; boolean isCustom;|} value;|} {
+            return nextRecord.value;
         }
 
-        return false;
+        return ();
     }
 
     // Create an empty FHIR Bundle
