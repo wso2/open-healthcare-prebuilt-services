@@ -1101,28 +1101,72 @@ func (h *fhirHandler) serveHistory(w http.ResponseWriter, r *http.Request, rt st
 	})
 }
 
+// validate is the type-level $validate (POST /{type}/$validate).
 func (h *fhirHandler) validate(w http.ResponseWriter, r *http.Request) {
 	rt := chi.URLParam(r, "resourceType")
-
 	if !requireFHIRContent(w, r) {
 		return
 	}
-
 	body, err := readFHIRBody(r)
 	if err != nil {
 		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
 		return
 	}
-
 	if bodyRT, ok := body["resourceType"].(string); ok && bodyRT != "" && bodyRT != rt {
 		operationOutcome(w, http.StatusUnprocessableEntity, "error", "invalid",
 			fmt.Sprintf("body resourceType %q does not match URL resource type %q", bodyRT, rt))
 		return
 	}
+	h.runValidate(w, r, body)
+}
 
-	// Determine which profiles to validate against:
-	//   ?profile=<url>  → the named profile only
-	//   no param        → all profiles declared in meta.profile on the resource
+// validateSystem is the system-level $validate (POST [base]/$validate). The
+// resource type is taken from the body.
+func (h *fhirHandler) validateSystem(w http.ResponseWriter, r *http.Request) {
+	if !requireFHIRContent(w, r) {
+		return
+	}
+	body, err := readFHIRBody(r)
+	if err != nil {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
+		return
+	}
+	h.runValidate(w, r, body)
+}
+
+// validateInstance is the instance-level $validate (POST /{type}/{id}/$validate).
+// With no body it validates the stored resource; with a body it validates that
+// (the body must match the URL type/id when both are present).
+func (h *fhirHandler) validateInstance(w http.ResponseWriter, r *http.Request) {
+	rt := chi.URLParam(r, "resourceType")
+	id := chi.URLParam(r, "id")
+
+	var body map[string]any
+	if r.ContentLength != 0 {
+		if !requireFHIRContent(w, r) {
+			return
+		}
+		b, err := readFHIRBody(r)
+		if err != nil {
+			operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid JSON: "+err.Error())
+			return
+		}
+		body = b
+	} else {
+		stored, err := h.store.Read(r.Context(), rt, id)
+		if err != nil {
+			handleError(w, err)
+			return
+		}
+		body = stored
+	}
+	h.runValidate(w, r, body)
+}
+
+// runValidate validates a resource against the profiles named by ?profile= or
+// meta.profile and writes the OperationOutcome (200 informational when valid,
+// 422 with issues when not).
+func (h *fhirHandler) runValidate(w http.ResponseWriter, r *http.Request, body map[string]any) {
 	var profileURLs []string
 	if p := r.URL.Query().Get("profile"); p != "" {
 		profileURLs = []string{p}
@@ -1162,6 +1206,20 @@ func (h *fhirHandler) validate(w http.ResponseWriter, r *http.Request) {
 		"resourceType": "OperationOutcome",
 		"issue":        fhirIssues,
 	})
+}
+
+// convert is the system-level $convert operation: it parses the posted resource
+// (in any supported wire format) and re-serialises it in the requested format.
+func (h *fhirHandler) convert(w http.ResponseWriter, r *http.Request) {
+	if !requireFHIRContent(w, r) {
+		return
+	}
+	body, err := readFHIRBody(r)
+	if err != nil {
+		operationOutcome(w, http.StatusBadRequest, "error", "invalid", "invalid input: "+err.Error())
+		return
+	}
+	writeFHIR(w, r, http.StatusOK, body)
 }
 
 // validateAgainstProfiles looks up each profile URL in ig_profiles and runs
@@ -1295,11 +1353,11 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cs := map[string]any{
-		"resourceType":        "CapabilityStatement",
-		"status":              "active",
-		"kind":                "instance",
-		"fhirVersion":         "4.0.1",
-		"format":              []string{"application/fhir+json", "application/fhir+xml", "application/fhir+turtle"},
+		"resourceType": "CapabilityStatement",
+		"status":       "active",
+		"kind":         "instance",
+		"fhirVersion":  "4.0.1",
+		"format":       []string{"application/fhir+json", "application/fhir+xml", "application/fhir+turtle"},
 		"patchFormat": []string{
 			"application/json-patch+json",
 			"application/merge-patch+json",
@@ -1324,6 +1382,13 @@ func (h *fhirHandler) metadata(w http.ResponseWriter, r *http.Request) {
 				map[string]any{"name": "everything", "definition": "http://hl7.org/fhir/OperationDefinition/Patient-everything"},
 				map[string]any{"name": "everything", "definition": "http://hl7.org/fhir/OperationDefinition/Encounter-everything"},
 				map[string]any{"name": "everything", "definition": "http://hl7.org/fhir/OperationDefinition/Group-everything"},
+				map[string]any{"name": "validate", "definition": "http://hl7.org/fhir/OperationDefinition/Resource-validate"},
+				map[string]any{"name": "meta", "definition": "http://hl7.org/fhir/OperationDefinition/Resource-meta"},
+				map[string]any{"name": "meta-add", "definition": "http://hl7.org/fhir/OperationDefinition/Resource-meta-add"},
+				map[string]any{"name": "meta-delete", "definition": "http://hl7.org/fhir/OperationDefinition/Resource-meta-delete"},
+				map[string]any{"name": "convert", "definition": "http://hl7.org/fhir/OperationDefinition/Resource-convert"},
+				map[string]any{"name": "lastn", "definition": "http://hl7.org/fhir/OperationDefinition/Observation-lastn"},
+				map[string]any{"name": "document", "definition": "http://hl7.org/fhir/OperationDefinition/Composition-document"},
 			},
 		}},
 	}
@@ -1428,7 +1493,7 @@ func (h *fhirHandler) compartmentSearch(w http.ResponseWriter, r *http.Request) 
 			writeFHIR(w, r, http.StatusOK, map[string]any{
 				"resourceType": "Bundle", "type": "searchset", "total": 1,
 				"entry": []any{map[string]any{
-					"fullUrl": fmt.Sprintf("%s/%s/%s", h.baseURL, ownerType, ownerID),
+					"fullUrl":  fmt.Sprintf("%s/%s/%s", h.baseURL, ownerType, ownerID),
 					"resource": resource, "search": map[string]any{"mode": "match"},
 				}},
 			})

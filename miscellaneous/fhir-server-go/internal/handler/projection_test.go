@@ -65,13 +65,13 @@ func TestApplyProjection_SummaryData(t *testing.T) {
 func TestApplyProjection_SummaryTrue_UsesR4SummaryElements(t *testing.T) {
 	// Patient with both summary (name, gender) and non-summary (birthDate) fields.
 	res := map[string]any{
-		"resourceType": "Patient",
-		"id":           "p1",
-		"meta":         map[string]any{"versionId": "1"},
-		"name":         []any{map[string]any{"family": "Smith"}},
-		"gender":       "female",
+		"resourceType":  "Patient",
+		"id":            "p1",
+		"meta":          map[string]any{"versionId": "1"},
+		"name":          []any{map[string]any{"family": "Smith"}},
+		"gender":        "female",
 		"maritalStatus": map[string]any{"text": "Single"}, // NOT in Patient summary
-		"text":         map[string]any{"status": "generated", "div": "<div/>"},
+		"text":          map[string]any{"status": "generated", "div": "<div/>"},
 	}
 	out := applyProjection(res, "true", nil)
 	// maritalStatus is not a Patient summary element — must be excluded.

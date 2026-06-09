@@ -27,7 +27,7 @@ logging:
 
 database:
   # Either supply a full DSN ...
-  url: postgres://fhir:fhir@localhost:5432/fhirdb?sslmode=disable
+  url: postgres://fhir:fhir@localhost:5432/fhirdb?sslmode=disable&pool_max_conns=20
   # ... or the individual components (ignored when `url` is set):
   # host: localhost
   # port: "5432"

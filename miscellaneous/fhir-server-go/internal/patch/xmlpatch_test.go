@@ -70,9 +70,9 @@ func TestXMLPatch_IndexedPath(t *testing.T) {
 
 func TestXPathToPointer(t *testing.T) {
 	cases := map[string]string{
-		"/f:Patient/f:gender/@value":             "/gender",
-		"/f:Patient/f:active":                    "/active",
-		"/f:Patient/f:name[1]/f:family/@value":   "/name/0/family",
+		"/f:Patient/f:gender/@value":                      "/gender",
+		"/f:Patient/f:active":                             "/active",
+		"/f:Patient/f:name[1]/f:family/@value":            "/name/0/family",
 		"/f:Observation/f:code/f:coding[2]/f:code/@value": "/code/coding/1/code",
 	}
 	for sel, want := range cases {

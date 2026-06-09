@@ -129,7 +129,7 @@ func TestValidate_Slicing(t *testing.T) {
 		{"path": "Observation.category", "min": float64(0), "max": "*",
 			"slicing": map[string]any{
 				"discriminator": []any{map[string]any{"type": "pattern", "path": "$this"}},
-				"ordered": false, "rules": "open",
+				"ordered":       false, "rules": "open",
 			}},
 		// The named slice with a required pattern.
 		{"path": "Observation.category", "sliceName": "VSCat", "min": float64(1), "max": "1",

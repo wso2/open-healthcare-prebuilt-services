@@ -23,7 +23,7 @@ type ComponentDef struct {
 type Definition struct {
 	ResourceType string
 	ParamName    string
-	ParamType    string         // string|token|date|number|quantity|uri|reference|composite|special
+	ParamType    string // string|token|date|number|quantity|uri|reference|composite|special
 	FHIRPath     string
 	IsCustom     bool
 	IGSource     string         // '' = base FHIR R4, 'user' = user-defined, 'name@ver' = IG package
@@ -33,9 +33,9 @@ type Definition struct {
 
 type Registry struct {
 	mu      sync.RWMutex
-	byRes   map[string][]Definition   // resource_type → []Definition
-	byKey   map[string]Definition     // "ResourceType.paramName" → Definition
-	revIncl map[string][]string       // targetType → []"SourceType:paramName" for _revinclude
+	byRes   map[string][]Definition // resource_type → []Definition
+	byKey   map[string]Definition   // "ResourceType.paramName" → Definition
+	revIncl map[string][]string     // targetType → []"SourceType:paramName" for _revinclude
 }
 
 func NewRegistry() *Registry {

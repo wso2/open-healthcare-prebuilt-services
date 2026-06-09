@@ -14,5 +14,11 @@
     "cors": "^2.8.5"
   },
   "keywords": ["fhir", "cql", "dtr", "questionnaire", "prior-authorization", "cms-0057-f", "wso2"],
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "pnpm": {
+    "overrides": {
+      "path-to-regexp": ">=0.1.13",
+      "qs": ">=6.15.2"
+    }
+  }
 }
