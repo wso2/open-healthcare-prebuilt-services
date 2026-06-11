@@ -80,7 +80,7 @@ func runWithContainer(m *testing.M) int {
 		fmt.Fprintln(os.Stderr, "conn string:", err)
 		return 1
 	}
-	pool, err := db.Connect(ctx, connStr)
+	pool, err := db.Connect(ctx, connStr, db.PoolConfig{})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "connect:", err)
 		return 1

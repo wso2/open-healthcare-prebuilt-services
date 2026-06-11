@@ -55,7 +55,10 @@ func run() error {
 	defer cancel()
 
 	// Database
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
+	pool, err := db.Connect(ctx, cfg.DatabaseURL, db.PoolConfig{
+		MaxConns: cfg.DBPoolMaxConns,
+		MinConns: cfg.DBPoolMinConns,
+	})
 	if err != nil {
 		return fmt.Errorf("connect db: %w", err)
 	}

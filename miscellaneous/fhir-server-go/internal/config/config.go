@@ -33,6 +33,10 @@ type Config struct {
 	ValidateOnWrite bool     // enforce profile validation on create/update (default off)
 	TerminologyURL  string   // base URL of the FHIR terminology server for :in/:not-in (empty = disabled)
 
+	// DB connection pool sizing. 0 = auto (max(20, NumCPU*4) for MaxConns, NumCPU for MinConns).
+	DBPoolMaxConns int // DB_POOL_MAX_CONNS
+	DBPoolMinConns int // DB_POOL_MIN_CONNS
+
 	// HTTP server timeouts. WriteTimeout bounds the WHOLE handler execution in
 	// net/http, so it must accommodate the slowest legitimate request (e.g. a
 	// large transaction bundle); 0 disables a timeout entirely.
@@ -58,12 +62,14 @@ type FileConfig struct {
 	} `yaml:"logging"`
 
 	Database struct {
-		URL      string `yaml:"url"`
-		Host     string `yaml:"host"`
-		Port     string `yaml:"port"`
-		User     string `yaml:"user"`
-		Password string `yaml:"password"`
-		Name     string `yaml:"name"`
+		URL         string `yaml:"url"`
+		Host        string `yaml:"host"`
+		Port        string `yaml:"port"`
+		User        string `yaml:"user"`
+		Password    string `yaml:"password"`
+		Name        string `yaml:"name"`
+		PoolMaxConns int   `yaml:"poolMaxConns"`
+		PoolMinConns int   `yaml:"poolMinConns"`
 	} `yaml:"database"`
 
 	IG struct {
@@ -135,6 +141,9 @@ func resolve(fc *FileConfig) (*Config, error) {
 	validateOnWrite := strings.EqualFold(os.Getenv("FHIR_VALIDATE_ON_WRITE"), "true")
 	terminologyURL := os.Getenv("FHIR_TERMINOLOGY_URL")
 
+	dbPoolMaxConns := resolveIntConfig("DB_POOL_MAX_CONNS", fc.Database.PoolMaxConns)
+	dbPoolMinConns := resolveIntConfig("DB_POOL_MIN_CONNS", fc.Database.PoolMinConns)
+
 	readTimeout, err := resolveTimeout("SERVER_READ_TIMEOUT", "server.readTimeout", fc.Server.ReadTimeout, 30*time.Second)
 	if err != nil {
 		return nil, err
@@ -162,6 +171,8 @@ func resolve(fc *FileConfig) (*Config, error) {
 		ReadTimeout:     readTimeout,
 		WriteTimeout:    writeTimeout,
 		IdleTimeout:     idleTimeout,
+		DBPoolMaxConns:  dbPoolMaxConns,
+		DBPoolMinConns:  dbPoolMinConns,
 	}, nil
 }
 
@@ -258,4 +269,16 @@ func pick(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// resolveIntConfig resolves an integer config value from an env var or file field.
+// Returns 0 when neither is set, which callers treat as "use auto default".
+func resolveIntConfig(envVar string, fileVal int) int {
+	if v := os.Getenv(envVar); v != "" {
+		n, err := strconv.Atoi(v)
+		if err == nil && n > 0 {
+			return n
+		}
+	}
+	return fileVal
 }

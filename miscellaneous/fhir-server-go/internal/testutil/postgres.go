@@ -43,7 +43,7 @@ func MustDB(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("get connection string: %v", err)
 	}
 
-	pool, err := db.Connect(ctx, connStr)
+	pool, err := db.Connect(ctx, connStr, db.PoolConfig{})
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}

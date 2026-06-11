@@ -83,19 +83,33 @@ func (s *Store) createInTx(ctx context.Context, tx pgx.Tx, resourceType string, 
 		return nil, fmt.Errorf("marshal resource: %w", err)
 	}
 
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO resources (fhir_id, resource_type, version_id, last_updated, is_deleted, resource_json)
-		VALUES ($1, $2, 1, $3, FALSE, $4)`,
+	// Build one batch: resources INSERT + sp_* INSERTs + history INSERT.
+	// Three separate round-trips collapsed into one SendBatch call.
+	batch := &pgx.Batch{}
+	batch.Queue(
+		`INSERT INTO resources (fhir_id, resource_type, version_id, last_updated, is_deleted, resource_json)
+		 VALUES ($1, $2, 1, $3, FALSE, $4)`,
 		resourceID, resourceType, now, raw,
-	); err != nil {
+	)
+	s.extractor.Queue(batch, resourceType, resourceID, body)
+	spCount := batch.Len() - 1 // number of sp_* statements queued
+	queueHistory(batch, resourceType, resourceID, 1, "POST", raw, now)
+
+	br := tx.SendBatch(ctx, batch)
+	if _, err := br.Exec(); err != nil { // resources INSERT
+		_ = br.Close()
 		return nil, fmt.Errorf("insert resource: %w", err)
 	}
-
-	if err := s.extractor.Index(ctx, tx, resourceType, resourceID, body); err != nil {
-		return nil, fmt.Errorf("index resource: %w", err)
+	for i := 0; i < spCount; i++ { // sp_* INSERTs (non-fatal)
+		if _, err := br.Exec(); err != nil {
+			slog.Warn("index insert", "type", resourceType, "i", i, "err", err)
+		}
 	}
-
-	if err := saveHistory(ctx, tx, resourceType, resourceID, 1, "POST", raw, now); err != nil {
+	if _, err := br.Exec(); err != nil { // history INSERT
+		_ = br.Close()
+		return nil, fmt.Errorf("insert history: %w", err)
+	}
+	if err := br.Close(); err != nil {
 		return nil, err
 	}
 
@@ -174,21 +188,40 @@ func (s *Store) updateInTx(ctx context.Context, tx pgx.Tx, resourceType, resourc
 		return nil, err
 	}
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE resources SET version_id = $1, last_updated = $2, resource_json = $3, is_deleted = FALSE
-		WHERE fhir_id = $4 AND resource_type = $5`,
+	// Build one batch: UPDATE resources + 7 sp_* DELETEs + sp_* INSERTs + history INSERT.
+	batch := &pgx.Batch{}
+	batch.Queue(
+		`UPDATE resources SET version_id = $1, last_updated = $2, resource_json = $3, is_deleted = FALSE
+		 WHERE fhir_id = $4 AND resource_type = $5`,
 		newVersion, lastUpdated, raw, resourceID, resourceType,
-	); err != nil {
-		return nil, err
-	}
+	)
+	index.QueueDelete(batch, resourceType, resourceID) // 7 DELETEs at positions 1-7
+	s.extractor.Queue(batch, resourceType, resourceID, body)
+	spInsertEnd := batch.Len() // position just before history INSERT
+	queueHistory(batch, resourceType, resourceID, newVersion, "PUT", raw, lastUpdated)
 
-	if err := index.Delete(ctx, tx, resourceType, resourceID); err != nil {
+	br := tx.SendBatch(ctx, batch)
+	if _, err := br.Exec(); err != nil { // UPDATE resources
+		_ = br.Close()
 		return nil, err
 	}
-	if err := s.extractor.Index(ctx, tx, resourceType, resourceID, body); err != nil {
-		return nil, err
+	for i := 0; i < 7; i++ { // 7 sp_* DELETEs
+		if _, err := br.Exec(); err != nil {
+			_ = br.Close()
+			return nil, fmt.Errorf("delete index entry %d: %w", i, err)
+		}
 	}
-	if err := saveHistory(ctx, tx, resourceType, resourceID, newVersion, "PUT", raw, lastUpdated); err != nil {
+	spInsertCount := spInsertEnd - 8 // 1 UPDATE + 7 DELETEs = 8 leading ops
+	for i := 0; i < spInsertCount; i++ { // sp_* INSERTs (non-fatal)
+		if _, err := br.Exec(); err != nil {
+			slog.Warn("index insert", "type", resourceType, "i", i, "err", err)
+		}
+	}
+	if _, err := br.Exec(); err != nil { // history INSERT
+		_ = br.Close()
+		return nil, fmt.Errorf("insert history: %w", err)
+	}
+	if err := br.Close(); err != nil {
 		return nil, err
 	}
 
@@ -257,20 +290,40 @@ func (s *Store) patchInTx(ctx context.Context, tx pgx.Tx, resourceType, resource
 		return nil, 0, err
 	}
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE resources SET version_id = $1, last_updated = $2, resource_json = $3, is_deleted = FALSE
-		WHERE fhir_id = $4 AND resource_type = $5`,
+	// Build one batch: UPDATE resources + 7 sp_* DELETEs + sp_* INSERTs + history INSERT.
+	batch := &pgx.Batch{}
+	batch.Queue(
+		`UPDATE resources SET version_id = $1, last_updated = $2, resource_json = $3, is_deleted = FALSE
+		 WHERE fhir_id = $4 AND resource_type = $5`,
 		newVersion, now, mergedRaw, resourceID, resourceType,
-	); err != nil {
+	)
+	index.QueueDelete(batch, resourceType, resourceID)
+	s.extractor.Queue(batch, resourceType, resourceID, merged)
+	spInsertEnd := batch.Len()
+	queueHistory(batch, resourceType, resourceID, newVersion, "PATCH", mergedRaw, now)
+
+	br := tx.SendBatch(ctx, batch)
+	if _, err := br.Exec(); err != nil { // UPDATE resources
+		_ = br.Close()
 		return nil, 0, err
 	}
-	if err := index.Delete(ctx, tx, resourceType, resourceID); err != nil {
-		return nil, 0, err
+	for i := 0; i < 7; i++ { // 7 sp_* DELETEs
+		if _, err := br.Exec(); err != nil {
+			_ = br.Close()
+			return nil, 0, fmt.Errorf("delete index entry %d: %w", i, err)
+		}
 	}
-	if err := s.extractor.Index(ctx, tx, resourceType, resourceID, merged); err != nil {
-		return nil, 0, err
+	spInsertCount := spInsertEnd - 8
+	for i := 0; i < spInsertCount; i++ { // sp_* INSERTs (non-fatal)
+		if _, err := br.Exec(); err != nil {
+			slog.Warn("index insert", "type", resourceType, "i", i, "err", err)
+		}
 	}
-	if err := saveHistory(ctx, tx, resourceType, resourceID, newVersion, "PATCH", mergedRaw, now); err != nil {
+	if _, err := br.Exec(); err != nil { // history INSERT
+		_ = br.Close()
+		return nil, 0, fmt.Errorf("insert history: %w", err)
+	}
+	if err := br.Close(); err != nil {
 		return nil, 0, err
 	}
 
@@ -348,23 +401,33 @@ func (s *Store) deleteInTx(ctx context.Context, tx pgx.Tx, resourceType, resourc
 	// DELETE is a new version in FHIR — bump to avoid UNIQUE(fhir_id, resource_type, version_id) conflict.
 	deleteVersion := versionID + 1
 	now := time.Now().UTC()
-	if err := saveHistory(ctx, tx, resourceType, resourceID, deleteVersion, "DELETE", raw, now); err != nil {
-		return err
-	}
 
-	if err := index.Delete(ctx, tx, resourceType, resourceID); err != nil {
-		return err
-	}
-
-	if _, err := tx.Exec(ctx, `
-		UPDATE resources SET is_deleted = TRUE, version_id = $1, last_updated = $2
-		WHERE fhir_id = $3 AND resource_type = $4`,
+	// Build one batch: history INSERT + 7 sp_* DELETEs + UPDATE resources.
+	batch := &pgx.Batch{}
+	queueHistory(batch, resourceType, resourceID, deleteVersion, "DELETE", raw, now)
+	index.QueueDelete(batch, resourceType, resourceID) // 7 DELETEs
+	batch.Queue(
+		`UPDATE resources SET is_deleted = TRUE, version_id = $1, last_updated = $2
+		 WHERE fhir_id = $3 AND resource_type = $4`,
 		deleteVersion, now, resourceID, resourceType,
-	); err != nil {
+	)
+
+	br := tx.SendBatch(ctx, batch)
+	if _, err := br.Exec(); err != nil { // history INSERT
+		_ = br.Close()
+		return fmt.Errorf("insert delete history: %w", err)
+	}
+	for i := 0; i < 7; i++ { // 7 sp_* DELETEs
+		if _, err := br.Exec(); err != nil {
+			_ = br.Close()
+			return fmt.Errorf("delete index entry %d: %w", i, err)
+		}
+	}
+	if _, err := br.Exec(); err != nil { // UPDATE resources
+		_ = br.Close()
 		return err
 	}
-
-	return nil
+	return br.Close()
 }
 
 // ─── History ──────────────────────────────────────────────────────────────────
@@ -489,13 +552,15 @@ func (s *Store) GetVersion(ctx context.Context, resourceType, resourceID string,
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-func saveHistory(ctx context.Context, tx pgx.Tx, resourceType, resourceID string, versionID int, op string, raw []byte, ts time.Time) error {
-	_, err := tx.Exec(ctx, `
-		INSERT INTO resource_history (fhir_id, resource_type, version_id, operation, resource_json, recorded_at)
-		VALUES ($1, $2, $3, $4, $5, $6)`,
+// queueHistory adds a resource_history INSERT to an existing batch.
+// All four write paths (create/update/patch/delete) call this instead of
+// issuing their own Exec so the history write shares the same round-trip.
+func queueHistory(batch *pgx.Batch, resourceType, resourceID string, versionID int, op string, raw []byte, ts time.Time) {
+	batch.Queue(
+		`INSERT INTO resource_history (fhir_id, resource_type, version_id, operation, resource_json, recorded_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
 		resourceID, resourceType, versionID, op, raw, ts,
 	)
-	return err
 }
 
 // metaVersionID returns the meta.versionId string of a resource, or "" if absent.
