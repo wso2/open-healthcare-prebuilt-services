@@ -211,7 +211,7 @@ func (s *Store) updateInTx(ctx context.Context, tx pgx.Tx, resourceType, resourc
 			return nil, fmt.Errorf("delete index entry %d: %w", i, err)
 		}
 	}
-	spInsertCount := spInsertEnd - 8 // 1 UPDATE + 7 DELETEs = 8 leading ops
+	spInsertCount := spInsertEnd - 8     // 1 UPDATE + 7 DELETEs = 8 leading ops
 	for i := 0; i < spInsertCount; i++ { // sp_* INSERTs (non-fatal)
 		if _, err := br.Exec(); err != nil {
 			slog.Warn("index insert", "type", resourceType, "i", i, "err", err)

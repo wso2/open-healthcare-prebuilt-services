@@ -62,14 +62,14 @@ type FileConfig struct {
 	} `yaml:"logging"`
 
 	Database struct {
-		URL         string `yaml:"url"`
-		Host        string `yaml:"host"`
-		Port        string `yaml:"port"`
-		User        string `yaml:"user"`
-		Password    string `yaml:"password"`
-		Name        string `yaml:"name"`
-		PoolMaxConns int   `yaml:"poolMaxConns"`
-		PoolMinConns int   `yaml:"poolMinConns"`
+		URL          string `yaml:"url"`
+		Host         string `yaml:"host"`
+		Port         string `yaml:"port"`
+		User         string `yaml:"user"`
+		Password     string `yaml:"password"`
+		Name         string `yaml:"name"`
+		PoolMaxConns int    `yaml:"poolMaxConns"`
+		PoolMinConns int    `yaml:"poolMinConns"`
 	} `yaml:"database"`
 
 	IG struct {
