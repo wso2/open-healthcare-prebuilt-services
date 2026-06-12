@@ -259,15 +259,3 @@ func pick(vals ...string) string {
 	}
 	return ""
 }
-
-// resolveIntConfig resolves an integer config value from an env var or file field.
-// Returns 0 when neither is set, which callers treat as "use auto default".
-func resolveIntConfig(envVar string, fileVal int) int {
-	if v := os.Getenv(envVar); v != "" {
-		n, err := strconv.Atoi(v)
-		if err == nil && n > 0 {
-			return n
-		}
-	}
-	return fileVal
-}
