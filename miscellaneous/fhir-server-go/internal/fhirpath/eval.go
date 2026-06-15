@@ -13,6 +13,7 @@ package fhirpath
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // Evaluate evaluates a FHIRPath expression against a FHIR resource (as
@@ -68,9 +69,35 @@ type node struct {
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
 
+// parseCache memoises the compiled AST for every distinct FHIRPath expression.
+// Search-parameter expressions are a small fixed set re-evaluated against every
+// indexed resource, so without this each resource re-tokenises and re-parses
+// ~20–40 expressions from scratch — pure wasted CPU on the ingest hot path.
+//
+// The cached *parseResult is treated as immutable: evalNode only reads the node
+// tree, never mutates it, so a single compiled AST is safe to share across
+// concurrent evaluations.
+var parseCache sync.Map // map[string]*parseResult
+
+type parseResult struct {
+	chains [][]node
+	err    error
+}
+
 // parse splits a union expression and returns one node-chain per alternative.
 // Each chain is evaluated sequentially; results across chains are unioned.
+// Results (including parse errors) are memoised per expression string.
 func parse(expr string) ([][]node, error) {
+	if cached, ok := parseCache.Load(expr); ok {
+		pr := cached.(*parseResult)
+		return pr.chains, pr.err
+	}
+	chains, err := parseUncached(expr)
+	parseCache.Store(expr, &parseResult{chains: chains, err: err})
+	return chains, err
+}
+
+func parseUncached(expr string) ([][]node, error) {
 	parts := splitUnion(expr)
 	var chains [][]node
 	for _, p := range parts {
