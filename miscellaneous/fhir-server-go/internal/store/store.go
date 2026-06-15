@@ -91,6 +91,7 @@ func (s *Store) createInTx(ctx context.Context, tx pgx.Tx, resourceType string, 
 		 VALUES ($1, $2, 1, $3, FALSE, $4)`,
 		resourceID, resourceType, now, raw,
 	)
+	slog.Info("creating resource", "type", resourceType, "id", resourceID)
 	s.extractor.Queue(batch, resourceType, resourceID, body)
 	spCount := batch.Len() - 1 // number of sp_* statements queued
 	queueHistory(batch, resourceType, resourceID, 1, "POST", raw, now)

@@ -29,6 +29,7 @@ func New(registry *searchparam.Registry) *Extractor {
 // Index extracts all search parameter values from resource and inserts them
 // into the sp_* tables within tx using a single batched round-trip.
 func (e *Extractor) Index(ctx context.Context, tx pgx.Tx, resourceType, resourceID string, resource map[string]any) error {
+	slog.Info("Starting index extraction", "resourceType", resourceType, "resourceID", resourceID)
 	batch := &pgx.Batch{}
 
 	defs := e.registry.ForResource(resourceType)
@@ -46,6 +47,7 @@ func (e *Extractor) Index(ctx context.Context, tx pgx.Tx, resourceType, resource
 
 	br := tx.SendBatch(ctx, batch)
 	n := batch.Len()
+	slog.Debug("sending index batch", "batchSize", n, "resourceType", resourceType)
 	for i := 0; i < n; i++ {
 		if _, err := br.Exec(); err != nil {
 			slog.Warn("index batch exec failed", "type", resourceType, "i", i, "err", err)
@@ -132,11 +134,11 @@ func (e *Extractor) Queue(batch *pgx.Batch, resourceType, resourceID string, res
 // QueueDelete adds one DELETE statement per sp_* table for the given resource
 // to an external batch without sending it. Returns the number of statements queued.
 func QueueDelete(batch *pgx.Batch, resourceType, resourceID string) int {
-    tables := []string{"sp_string", "sp_token", "sp_date", "sp_number", "sp_quantity", "sp_uri", "sp_reference"}
-    for _, tbl := range tables {
-        batch.Queue(fmt.Sprintf(`DELETE FROM %s WHERE resource_id = $1 AND resource_type = $2`, tbl), resourceID, resourceType)
-    }
-    return len(tables)
+	tables := []string{"sp_string", "sp_token", "sp_date", "sp_number", "sp_quantity", "sp_uri", "sp_reference"}
+	for _, tbl := range tables {
+		batch.Queue(fmt.Sprintf(`DELETE FROM %s WHERE resource_id = $1 AND resource_type = $2`, tbl), resourceID, resourceType)
+	}
+	return len(tables)
 }
 
 // DeleteWithPool removes all sp_* rows using a pool (for soft-delete paths
