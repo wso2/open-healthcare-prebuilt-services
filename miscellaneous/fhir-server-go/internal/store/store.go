@@ -91,7 +91,7 @@ func (s *Store) createInTx(ctx context.Context, tx pgx.Tx, resourceType string, 
 		 VALUES ($1, $2, 1, $3, FALSE, $4)`,
 		resourceID, resourceType, now, raw,
 	)
-	slog.Info("creating resource", "type", resourceType, "id", resourceID)
+	slog.Debug("creating resource", "type", resourceType, "id", resourceID)
 	s.extractor.Queue(batch, resourceType, resourceID, body)
 	spCount := batch.Len() - 1 // number of sp_* statements queued
 	queueHistory(batch, resourceType, resourceID, 1, "POST", raw, now)
@@ -204,7 +204,6 @@ func (s *Store) updateInTx(ctx context.Context, tx pgx.Tx, resourceType, resourc
 	br := tx.SendBatch(ctx, batch)
 	if _, err := br.Exec(); err != nil { // UPDATE resources
 		_ = br.Close()
-		slog.Error("failed to update resource", "type", resourceType, "id", resourceID, "err", err)
 		return nil, err
 	}
 	for i := 0; i < nDeletes; i++ { // nDeletes sp_* DELETEs

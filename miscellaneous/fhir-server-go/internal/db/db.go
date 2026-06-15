@@ -15,7 +15,6 @@ var schemaFS embed.FS
 func Connect(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-	    slog.Error("Failed to parse database connection string", "error", err.Error())
 		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
 

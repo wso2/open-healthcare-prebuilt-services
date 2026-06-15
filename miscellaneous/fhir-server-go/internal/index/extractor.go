@@ -29,7 +29,7 @@ func New(registry *searchparam.Registry) *Extractor {
 // Index extracts all search parameter values from resource and inserts them
 // into the sp_* tables within tx using a single batched round-trip.
 func (e *Extractor) Index(ctx context.Context, tx pgx.Tx, resourceType, resourceID string, resource map[string]any) error {
-	slog.Info("Starting index extraction", "resourceType", resourceType, "resourceID", resourceID)
+	slog.Debug("Starting index extraction", "resourceType", resourceType, "resourceID", resourceID)
 	batch := &pgx.Batch{}
 
 	defs := e.registry.ForResource(resourceType)
