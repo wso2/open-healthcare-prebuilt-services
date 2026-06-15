@@ -58,12 +58,12 @@ type FileConfig struct {
 	} `yaml:"logging"`
 
 	Database struct {
-		URL          string `yaml:"url"`
-		Host         string `yaml:"host"`
-		Port         string `yaml:"port"`
-		User         string `yaml:"user"`
-		Password     string `yaml:"password"`
-		Name         string `yaml:"name"`
+		URL      string `yaml:"url"`
+		Host     string `yaml:"host"`
+		Port     string `yaml:"port"`
+		User     string `yaml:"user"`
+		Password string `yaml:"password"`
+		Name     string `yaml:"name"`
 	} `yaml:"database"`
 
 	IG struct {
