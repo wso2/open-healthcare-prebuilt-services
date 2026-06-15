@@ -130,14 +130,13 @@ func (e *Extractor) Queue(batch *pgx.Batch, resourceType, resourceID string, res
 }
 
 // QueueDelete adds one DELETE statement per sp_* table for the given resource
-// to an external batch without sending it. Seven statements total.
-func QueueDelete(batch *pgx.Batch, resourceType, resourceID string) {
-	for _, tbl := range []string{"sp_string", "sp_token", "sp_date", "sp_number", "sp_quantity", "sp_uri", "sp_reference"} {
-		batch.Queue(
-			fmt.Sprintf(`DELETE FROM %s WHERE resource_id = $1 AND resource_type = $2`, tbl),
-			resourceID, resourceType,
-		)
-	}
+// to an external batch without sending it. Returns the number of statements queued.
+func QueueDelete(batch *pgx.Batch, resourceType, resourceID string) int {
+    tables := []string{"sp_string", "sp_token", "sp_date", "sp_number", "sp_quantity", "sp_uri", "sp_reference"}
+    for _, tbl := range tables {
+        batch.Queue(fmt.Sprintf(`DELETE FROM %s WHERE resource_id = $1 AND resource_type = $2`, tbl), resourceID, resourceType)
+    }
+    return len(tables)
 }
 
 // DeleteWithPool removes all sp_* rows using a pool (for soft-delete paths

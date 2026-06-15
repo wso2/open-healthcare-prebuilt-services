@@ -188,14 +188,14 @@ func (s *Store) updateInTx(ctx context.Context, tx pgx.Tx, resourceType, resourc
 		return nil, err
 	}
 
-	// Build one batch: UPDATE resources + 7 sp_* DELETEs + sp_* INSERTs + history INSERT.
+	// Build one batch: UPDATE resources + nDeletes sp_* DELETEs + sp_* INSERTs + history INSERT.
 	batch := &pgx.Batch{}
 	batch.Queue(
 		`UPDATE resources SET version_id = $1, last_updated = $2, resource_json = $3, is_deleted = FALSE
 		 WHERE fhir_id = $4 AND resource_type = $5`,
 		newVersion, lastUpdated, raw, resourceID, resourceType,
 	)
-	index.QueueDelete(batch, resourceType, resourceID) // 7 DELETEs at positions 1-7
+	nDeletes := index.QueueDelete(batch, resourceType, resourceID) // nDeletes DELETEs at positions 1-nDeletes
 	s.extractor.Queue(batch, resourceType, resourceID, body)
 	spInsertEnd := batch.Len() // position just before history INSERT
 	queueHistory(batch, resourceType, resourceID, newVersion, "PUT", raw, lastUpdated)
@@ -203,16 +203,17 @@ func (s *Store) updateInTx(ctx context.Context, tx pgx.Tx, resourceType, resourc
 	br := tx.SendBatch(ctx, batch)
 	if _, err := br.Exec(); err != nil { // UPDATE resources
 		_ = br.Close()
+		slog.Error("failed to update resource", "type", resourceType, "id", resourceID, "err", err)
 		return nil, err
 	}
-	for i := 0; i < 7; i++ { // 7 sp_* DELETEs
+	for i := 0; i < nDeletes; i++ { // nDeletes sp_* DELETEs
 		if _, err := br.Exec(); err != nil {
 			_ = br.Close()
 			return nil, fmt.Errorf("delete index entry %d: %w", i, err)
 		}
 	}
-	spInsertCount := spInsertEnd - 8     // 1 UPDATE + 7 DELETEs = 8 leading ops
-	for i := 0; i < spInsertCount; i++ { // sp_* INSERTs (non-fatal)
+	spInsertCount := spInsertEnd - 1 - nDeletes // 1 UPDATE + nDeletes DELETEs precede the sp_* INSERTs
+	for i := 0; i < spInsertCount; i++ {        // sp_* INSERTs (non-fatal)
 		if _, err := br.Exec(); err != nil {
 			slog.Warn("index insert", "type", resourceType, "i", i, "err", err)
 		}
@@ -290,14 +291,14 @@ func (s *Store) patchInTx(ctx context.Context, tx pgx.Tx, resourceType, resource
 		return nil, 0, err
 	}
 
-	// Build one batch: UPDATE resources + 7 sp_* DELETEs + sp_* INSERTs + history INSERT.
+	// Build one batch: UPDATE resources + nDeletes sp_* DELETEs + sp_* INSERTs + history INSERT.
 	batch := &pgx.Batch{}
 	batch.Queue(
 		`UPDATE resources SET version_id = $1, last_updated = $2, resource_json = $3, is_deleted = FALSE
 		 WHERE fhir_id = $4 AND resource_type = $5`,
 		newVersion, now, mergedRaw, resourceID, resourceType,
 	)
-	index.QueueDelete(batch, resourceType, resourceID)
+	nDeletes := index.QueueDelete(batch, resourceType, resourceID)
 	s.extractor.Queue(batch, resourceType, resourceID, merged)
 	spInsertEnd := batch.Len()
 	queueHistory(batch, resourceType, resourceID, newVersion, "PATCH", mergedRaw, now)
@@ -307,13 +308,13 @@ func (s *Store) patchInTx(ctx context.Context, tx pgx.Tx, resourceType, resource
 		_ = br.Close()
 		return nil, 0, err
 	}
-	for i := 0; i < 7; i++ { // 7 sp_* DELETEs
+	for i := 0; i < nDeletes; i++ { // nDeletes sp_* DELETEs
 		if _, err := br.Exec(); err != nil {
 			_ = br.Close()
 			return nil, 0, fmt.Errorf("delete index entry %d: %w", i, err)
 		}
 	}
-	spInsertCount := spInsertEnd - 8
+	spInsertCount := spInsertEnd - 1 - nDeletes
 	for i := 0; i < spInsertCount; i++ { // sp_* INSERTs (non-fatal)
 		if _, err := br.Exec(); err != nil {
 			slog.Warn("index insert", "type", resourceType, "i", i, "err", err)
@@ -402,10 +403,10 @@ func (s *Store) deleteInTx(ctx context.Context, tx pgx.Tx, resourceType, resourc
 	deleteVersion := versionID + 1
 	now := time.Now().UTC()
 
-	// Build one batch: history INSERT + 7 sp_* DELETEs + UPDATE resources.
+	// Build one batch: history INSERT + nDeletes sp_* DELETEs + UPDATE resources.
 	batch := &pgx.Batch{}
 	queueHistory(batch, resourceType, resourceID, deleteVersion, "DELETE", raw, now)
-	index.QueueDelete(batch, resourceType, resourceID) // 7 DELETEs
+	nDeletes := index.QueueDelete(batch, resourceType, resourceID) // nDeletes DELETEs
 	batch.Queue(
 		`UPDATE resources SET is_deleted = TRUE, version_id = $1, last_updated = $2
 		 WHERE fhir_id = $3 AND resource_type = $4`,
@@ -417,7 +418,7 @@ func (s *Store) deleteInTx(ctx context.Context, tx pgx.Tx, resourceType, resourc
 		_ = br.Close()
 		return fmt.Errorf("insert delete history: %w", err)
 	}
-	for i := 0; i < 7; i++ { // 7 sp_* DELETEs
+	for i := 0; i < nDeletes; i++ { // nDeletes sp_* DELETEs
 		if _, err := br.Exec(); err != nil {
 			_ = br.Close()
 			return fmt.Errorf("delete index entry %d: %w", i, err)
