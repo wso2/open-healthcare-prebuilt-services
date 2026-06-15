@@ -49,7 +49,7 @@ func TestIntegration_Meta_Family(t *testing.T) {
 	srv := newRealServer(t)
 	id, _ := iCreate(t, srv, "Patient", map[string]any{
 		"resourceType": "Patient",
-		"meta": map[string]any{"tag": []any{map[string]any{"system": "urn:s", "code": "orig"}}},
+		"meta":         map[string]any{"tag": []any{map[string]any{"system": "urn:s", "code": "orig"}}},
 	})
 
 	// $meta-add a new tag.
@@ -148,8 +148,8 @@ func TestIntegration_LastN(t *testing.T) {
 	for _, d := range []string{"2024-01-01", "2024-02-01", "2024-03-01"} {
 		iCreate(t, srv, "Observation", map[string]any{
 			"resourceType": "Observation", "status": "final",
-			"subject":          map[string]any{"reference": "Patient/" + patID},
-			"code":             map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8480-6"}}},
+			"subject":           map[string]any{"reference": "Patient/" + patID},
+			"code":              map[string]any{"coding": []any{map[string]any{"system": "http://loinc.org", "code": "8480-6"}}},
 			"effectiveDateTime": d,
 		})
 	}

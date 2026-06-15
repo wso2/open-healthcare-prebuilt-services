@@ -27,84 +27,118 @@ func New(registry *searchparam.Registry) *Extractor {
 }
 
 // Index extracts all search parameter values from resource and inserts them
-// into the sp_* tables within tx.
+// into the sp_* tables within tx using a single batched round-trip.
 func (e *Extractor) Index(ctx context.Context, tx pgx.Tx, resourceType, resourceID string, resource map[string]any) error {
+	slog.Debug("Starting index extraction", "resourceType", resourceType, "resourceID", resourceID)
+	batch := &pgx.Batch{}
+
 	defs := e.registry.ForResource(resourceType)
 	for _, d := range defs {
-		if err := e.indexParam(ctx, tx, resourceType, resourceID, resource, d); err != nil {
-			slog.Warn("index param failed", "type", resourceType, "param", d.ParamName, "err", err)
-			// Non-fatal — continue indexing other params
-		}
+		e.queueParam(batch, resourceType, resourceID, resource, d)
 	}
 	// Universal meta.* params (_tag/_security/_profile/_source) and the
 	// resource-level language. These live on Resource/DomainResource and so
 	// aren't in the per-resource registry; index them uniformly for every type.
-	if err := indexMeta(ctx, tx, resourceType, resourceID, resource); err != nil {
-		slog.Warn("index meta failed", "type", resourceType, "err", err)
+	queueMeta(batch, resourceType, resourceID, resource)
+
+	if batch.Len() == 0 {
+		return nil
 	}
-	return nil
+
+	br := tx.SendBatch(ctx, batch)
+	n := batch.Len()
+	slog.Debug("sending index batch", "batchSize", n, "resourceType", resourceType)
+	for i := 0; i < n; i++ {
+		if _, err := br.Exec(); err != nil {
+			slog.Warn("index batch exec failed", "type", resourceType, "i", i, "err", err)
+			// Non-fatal — continue draining the batch
+		}
+	}
+	return br.Close()
 }
 
-// indexMeta indexes the universal meta search params for any resource:
+// queueMeta queues sp_* rows for the universal meta search params:
 //
-//	_tag, _security  → sp_token (system|code from meta.tag / meta.security Codings)
-//	_profile, _source → sp_uri  (meta.profile canonical URLs, meta.source URI)
-//	_language        → sp_token (the resource's top-level language code)
-func indexMeta(ctx context.Context, tx pgx.Tx, rt, rid string, resource map[string]any) error {
+//	_tag, _security  → sp_token  (Codings from meta.tag / meta.security)
+//	_profile, _source → sp_uri   (meta.profile URLs, meta.source URI)
+//	_language        → sp_token  (top-level language code)
+func queueMeta(batch *pgx.Batch, rt, rid string, resource map[string]any) {
 	if meta, ok := resource["meta"].(map[string]any); ok {
 		for _, m := range []struct{ field, param string }{{"tag", "_tag"}, {"security", "_security"}} {
 			if arr, ok := meta[m.field].([]any); ok {
 				for _, c := range arr {
-					if err := insertToken(ctx, tx, rt, rid, m.param, c); err != nil {
-						return err
-					}
+					queueToken(batch, rt, rid, m.param, c)
 				}
 			}
 		}
 		if arr, ok := meta["profile"].([]any); ok {
 			for _, p := range arr {
-				if err := insertURIValue(ctx, tx, rt, rid, "_profile", asString(p)); err != nil {
-					return err
-				}
+				queueURIValue(batch, rt, rid, "_profile", asString(p))
 			}
 		}
-		if err := insertURIValue(ctx, tx, rt, rid, "_source", asString(meta["source"])); err != nil {
-			return err
-		}
+		queueURIValue(batch, rt, rid, "_source", asString(meta["source"]))
 	}
 	if lang := asString(resource["language"]); lang != "" {
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
-			VALUES ($1, $2, '_language', '', $3, '')`, rid, rt, lang); err != nil {
-			return err
-		}
+		batch.Queue(
+			`INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
+			 VALUES ($1, $2, '_language', '', $3, '')`,
+			rid, rt, lang,
+		)
 	}
-	return nil
 }
 
-// insertURIValue inserts a single sp_uri row, skipping empty values.
-func insertURIValue(ctx context.Context, tx pgx.Tx, rt, rid, param, value string) error {
+// queueURIValue queues a single sp_uri row, skipping empty values.
+func queueURIValue(batch *pgx.Batch, rt, rid, param, value string) {
 	if value == "" {
-		return nil
+		return
 	}
-	_, err := tx.Exec(ctx, `
-		INSERT INTO sp_uri (resource_id, resource_type, param_name, value)
-		VALUES ($1, $2, $3, $4)`, rid, rt, param, value)
-	return err
+	batch.Queue(
+		`INSERT INTO sp_uri (resource_id, resource_type, param_name, value)
+		 VALUES ($1, $2, $3, $4)`,
+		rid, rt, param, value,
+	)
 }
 
-// Delete removes all sp_* rows for a resource.
+// Delete removes all sp_* rows for a resource in a single batched round-trip.
 func Delete(ctx context.Context, tx pgx.Tx, resourceType, resourceID string) error {
 	tables := []string{"sp_string", "sp_token", "sp_date", "sp_number", "sp_quantity", "sp_uri", "sp_reference"}
+	batch := &pgx.Batch{}
 	for _, tbl := range tables {
-		if _, err := tx.Exec(ctx,
+		batch.Queue(
 			fmt.Sprintf(`DELETE FROM %s WHERE resource_id = $1 AND resource_type = $2`, tbl),
 			resourceID, resourceType,
-		); err != nil {
+		)
+	}
+	br := tx.SendBatch(ctx, batch)
+	for _, tbl := range tables {
+		if _, err := br.Exec(); err != nil {
+			_ = br.Close()
 			return fmt.Errorf("delete from %s: %w", tbl, err)
 		}
 	}
-	return nil
+	return br.Close()
+}
+
+// Queue adds all search parameter insert statements for the given resource to
+// an external batch without sending it. The caller is responsible for sending
+// and draining the batch. This allows callers to merge index inserts with other
+// write operations into a single round-trip.
+func (e *Extractor) Queue(batch *pgx.Batch, resourceType, resourceID string, resource map[string]any) {
+	defs := e.registry.ForResource(resourceType)
+	for _, d := range defs {
+		e.queueParam(batch, resourceType, resourceID, resource, d)
+	}
+	queueMeta(batch, resourceType, resourceID, resource)
+}
+
+// QueueDelete adds one DELETE statement per sp_* table for the given resource
+// to an external batch without sending it. Returns the number of statements queued.
+func QueueDelete(batch *pgx.Batch, resourceType, resourceID string) int {
+	tables := []string{"sp_string", "sp_token", "sp_date", "sp_number", "sp_quantity", "sp_uri", "sp_reference"}
+	for _, tbl := range tables {
+		batch.Queue(fmt.Sprintf(`DELETE FROM %s WHERE resource_id = $1 AND resource_type = $2`, tbl), resourceID, resourceType)
+	}
+	return len(tables)
 }
 
 // DeleteWithPool removes all sp_* rows using a pool (for soft-delete paths
@@ -121,87 +155,78 @@ func DeleteWithPool(ctx context.Context, pool *pgxpool.Pool, resourceType, resou
 	return tx.Commit(ctx)
 }
 
-func (e *Extractor) indexParam(ctx context.Context, tx pgx.Tx, resourceType, resourceID string, resource map[string]any, d searchparam.Definition) error {
+func (e *Extractor) queueParam(batch *pgx.Batch, resourceType, resourceID string, resource map[string]any, d searchparam.Definition) {
 	vals, err := fhirpath.EvaluatePolymorphic(d.FHIRPath, resource)
 	if err != nil || len(vals) == 0 {
-		return nil
+		return
 	}
 
 	switch d.ParamType {
 	case "string":
-		return indexString(ctx, tx, resourceType, resourceID, d.ParamName, vals)
+		queueString(batch, resourceType, resourceID, d.ParamName, vals)
 	case "token":
-		return indexToken(ctx, tx, resourceType, resourceID, d.ParamName, vals)
+		queueTokenValues(batch, resourceType, resourceID, d.ParamName, vals)
 	case "date", "dateTime", "instant", "Period":
-		return indexDate(ctx, tx, resourceType, resourceID, d.ParamName, vals)
+		queueDate(batch, resourceType, resourceID, d.ParamName, vals)
 	case "number":
-		return indexNumber(ctx, tx, resourceType, resourceID, d.ParamName, vals)
+		queueNumber(batch, resourceType, resourceID, d.ParamName, vals)
 	case "quantity":
-		return indexQuantity(ctx, tx, resourceType, resourceID, d.ParamName, vals)
+		queueQuantity(batch, resourceType, resourceID, d.ParamName, vals)
 	case "uri":
-		return indexURI(ctx, tx, resourceType, resourceID, d.ParamName, vals)
+		queueURI(batch, resourceType, resourceID, d.ParamName, vals)
 	case "reference":
-		return indexReference(ctx, tx, resourceType, resourceID, d.ParamName, vals)
+		queueReference(batch, resourceType, resourceID, d.ParamName, vals)
 	}
-	return nil
 }
 
 // ─── sp_string ────────────────────────────────────────────────────────────────
 
-func indexString(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals []any) error {
+func queueString(batch *pgx.Batch, rt, rid, param string, vals []any) {
 	for _, v := range vals {
 		s := asString(v)
 		if s == "" {
 			continue
 		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO sp_string (resource_id, resource_type, param_name, value_exact, value_lower)
-			VALUES ($1, $2, $3, $4, $5)`,
+		batch.Queue(
+			`INSERT INTO sp_string (resource_id, resource_type, param_name, value_exact, value_lower)
+			 VALUES ($1, $2, $3, $4, $5)`,
 			rid, rt, param, s, strings.ToLower(s),
-		); err != nil {
-			return err
-		}
+		)
 	}
-	return nil
 }
 
 // ─── sp_token ─────────────────────────────────────────────────────────────────
 
-func indexToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals []any) error {
+func queueTokenValues(batch *pgx.Batch, rt, rid, param string, vals []any) {
 	for _, v := range vals {
 		switch val := v.(type) {
 		case map[string]any: // Coding or CodeableConcept
 			if codings, ok := val["coding"].([]any); ok {
 				for _, c := range codings {
-					if err := insertToken(ctx, tx, rt, rid, param, c); err != nil {
-						return err
-					}
+					queueToken(batch, rt, rid, param, c)
 				}
 			} else {
 				// Plain Coding
-				if err := insertToken(ctx, tx, rt, rid, param, val); err != nil {
-					return err
-				}
+				queueToken(batch, rt, rid, param, val)
 			}
 		case bool:
 			code := "false"
 			if val {
 				code = "true"
 			}
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
-				VALUES ($1, $2, $3, '', $4, '')`, rid, rt, param, code); err != nil {
-				return err
-			}
+			batch.Queue(
+				`INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
+				 VALUES ($1, $2, $3, '', $4, '')`,
+				rid, rt, param, code,
+			)
 		case string:
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
-				VALUES ($1, $2, $3, '', $4, '')`, rid, rt, param, val); err != nil {
-				return err
-			}
+			batch.Queue(
+				`INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
+				 VALUES ($1, $2, $3, '', $4, '')`,
+				rid, rt, param, val,
+			)
 		}
 	}
-	return nil
 }
 
 // OfTypeSuffix is appended to a token param name to store the auxiliary index
@@ -209,10 +234,10 @@ func indexToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals []an
 // coding (system, code) plus the identifier value in the display column.
 const OfTypeSuffix = ":of-type"
 
-func insertToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, v any) error {
+func queueToken(batch *pgx.Batch, rt, rid, param string, v any) {
 	m, ok := v.(map[string]any)
 	if !ok {
-		return nil
+		return
 	}
 	sys := asString(m["system"])
 	code := asString(m["code"])
@@ -224,15 +249,13 @@ func insertToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, v any) e
 		code = value
 	}
 	if code == "" {
-		return nil
+		return
 	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
-		VALUES ($1, $2, $3, $4, $5, $6)`,
+	batch.Queue(
+		`INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
 		rid, rt, param, sys, code, display,
-	); err != nil {
-		return err
-	}
+	)
 
 	// :of-type support — only for Identifiers that carry a type.coding and a value.
 	// Store an auxiliary row keyed by "<param>:of-type" with the type's
@@ -250,37 +273,31 @@ func insertToken(ctx context.Context, tx pgx.Tx, rt, rid, param string, v any) e
 					if tCode == "" {
 						continue
 					}
-					if _, err := tx.Exec(ctx, `
-						INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
-						VALUES ($1, $2, $3, $4, $5, $6)`,
+					batch.Queue(
+						`INSERT INTO sp_token (resource_id, resource_type, param_name, system, code, display)
+						 VALUES ($1, $2, $3, $4, $5, $6)`,
 						rid, rt, param+OfTypeSuffix, tSys, tCode, value,
-					); err != nil {
-						return err
-					}
+					)
 				}
 			}
 		}
 	}
-	return nil
 }
 
 // ─── sp_date ──────────────────────────────────────────────────────────────────
 
-func indexDate(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals []any) error {
+func queueDate(batch *pgx.Batch, rt, rid, param string, vals []any) {
 	for _, v := range vals {
 		low, high, err := parseDateRange(v)
 		if err != nil {
 			continue
 		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO sp_date (resource_id, resource_type, param_name, value_low, value_high)
-			VALUES ($1, $2, $3, $4, $5)`,
+		batch.Queue(
+			`INSERT INTO sp_date (resource_id, resource_type, param_name, value_low, value_high)
+			 VALUES ($1, $2, $3, $4, $5)`,
 			rid, rt, param, low, high,
-		); err != nil {
-			return err
-		}
+		)
 	}
-	return nil
 }
 
 func parseDateRange(v any) (low, high time.Time, err error) {
@@ -367,7 +384,7 @@ func expandDateString(s string) (low, high time.Time, err error) {
 
 // ─── sp_number ────────────────────────────────────────────────────────────────
 
-func indexNumber(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals []any) error {
+func queueNumber(batch *pgx.Batch, rt, rid, param string, vals []any) {
 	for _, v := range vals {
 		f, ok := toFloat(v)
 		if !ok {
@@ -375,21 +392,17 @@ func indexNumber(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals []a
 		}
 		// ±5 ULP as implicit precision range
 		eps := math.Abs(f) * 1e-7
-		low, high := f-eps, f+eps
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO sp_number (resource_id, resource_type, param_name, value_low, value_high)
-			VALUES ($1, $2, $3, $4, $5)`,
-			rid, rt, param, low, high,
-		); err != nil {
-			return err
-		}
+		batch.Queue(
+			`INSERT INTO sp_number (resource_id, resource_type, param_name, value_low, value_high)
+			 VALUES ($1, $2, $3, $4, $5)`,
+			rid, rt, param, f-eps, f+eps,
+		)
 	}
-	return nil
 }
 
 // ─── sp_quantity ──────────────────────────────────────────────────────────────
 
-func indexQuantity(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals []any) error {
+func queueQuantity(batch *pgx.Batch, rt, rid, param string, vals []any) {
 	for _, v := range vals {
 		m, ok := v.(map[string]any)
 		if !ok {
@@ -402,52 +415,44 @@ func indexQuantity(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals [
 		sys := asString(m["system"])
 		code := asString(m["code"])
 		eps := math.Abs(f) * 1e-7
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO sp_quantity (resource_id, resource_type, param_name, value, value_low, value_high, system, code)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		batch.Queue(
+			`INSERT INTO sp_quantity (resource_id, resource_type, param_name, value, value_low, value_high, system, code)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 			rid, rt, param, f, f-eps, f+eps, sys, code,
-		); err != nil {
-			return err
-		}
+		)
 	}
-	return nil
 }
 
 // ─── sp_uri ───────────────────────────────────────────────────────────────────
 
-func indexURI(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals []any) error {
+func queueURI(batch *pgx.Batch, rt, rid, param string, vals []any) {
 	for _, v := range vals {
 		s := asString(v)
 		if s == "" {
 			continue
 		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO sp_uri (resource_id, resource_type, param_name, value)
-			VALUES ($1, $2, $3, $4)`,
+		batch.Queue(
+			`INSERT INTO sp_uri (resource_id, resource_type, param_name, value)
+			 VALUES ($1, $2, $3, $4)`,
 			rid, rt, param, s,
-		); err != nil {
-			return err
-		}
+		)
 	}
-	return nil
 }
 
 // ─── sp_reference ─────────────────────────────────────────────────────────────
 
-func indexReference(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals []any) error {
+func queueReference(batch *pgx.Batch, rt, rid, param string, vals []any) {
 	for _, v := range vals {
 		m, ok := v.(map[string]any)
 		if !ok {
 			// May be a plain reference string
 			if s := asString(v); s != "" {
 				tType, tID := parseRefString(s)
-				if _, err := tx.Exec(ctx, `
-					INSERT INTO sp_reference (resource_id, resource_type, param_name, target_type, target_id, identifier_system, identifier_value)
-					VALUES ($1, $2, $3, $4, $5, '', '')`,
+				batch.Queue(
+					`INSERT INTO sp_reference (resource_id, resource_type, param_name, target_type, target_id, identifier_system, identifier_value)
+					 VALUES ($1, $2, $3, $4, $5, '', '')`,
 					rid, rt, param, tType, tID,
-				); err != nil {
-					return err
-				}
+				)
 			}
 			continue
 		}
@@ -460,15 +465,12 @@ func indexReference(ctx context.Context, tx pgx.Tx, rt, rid, param string, vals 
 			idVal = asString(id["value"])
 		}
 
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO sp_reference (resource_id, resource_type, param_name, target_type, target_id, identifier_system, identifier_value)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		batch.Queue(
+			`INSERT INTO sp_reference (resource_id, resource_type, param_name, target_type, target_id, identifier_system, identifier_value)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 			rid, rt, param, tType, tID, idSys, idVal,
-		); err != nil {
-			return err
-		}
+		)
 	}
-	return nil
 }
 
 // parseRefString splits "Patient/123" into ("Patient", "123"). Versioned

@@ -82,11 +82,11 @@ func NewRouter(s StoreAPI, pool *pgxpool.Pool, registry *searchparam.Registry, b
 				r.Get("/_history", h.history)
 				r.Get("/_history/{vid}", h.vread)
 				r.Get("/$everything", h.everything)
-				r.Post("/$validate", h.validateInstance)  // instance-level $validate
-				r.Get("/$meta", h.metaInstance)           // GET /{type}/{id}/$meta
-				r.Post("/$meta-add", h.metaAdd)           // POST /{type}/{id}/$meta-add
-				r.Post("/$meta-delete", h.metaDelete)     // POST /{type}/{id}/$meta-delete
-				r.Get("/$document", h.document)           // GET /Composition/{id}/$document
+				r.Post("/$validate", h.validateInstance) // instance-level $validate
+				r.Get("/$meta", h.metaInstance)          // GET /{type}/{id}/$meta
+				r.Post("/$meta-add", h.metaAdd)          // POST /{type}/{id}/$meta-add
+				r.Post("/$meta-delete", h.metaDelete)    // POST /{type}/{id}/$meta-delete
+				r.Get("/$document", h.document)          // GET /Composition/{id}/$document
 
 				// Compartment search: /Patient/{id}/Observation etc.
 				// Determined at runtime by checking if the URL's resourceType

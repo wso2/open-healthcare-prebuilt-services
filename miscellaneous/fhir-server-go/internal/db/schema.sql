@@ -339,6 +339,37 @@ ALTER TABLE sp_token     ALTER COLUMN param_name    SET STATISTICS 1000;
 ALTER TABLE sp_reference ALTER COLUMN target_id     SET STATISTICS 1000;
 ALTER TABLE sp_reference ALTER COLUMN param_name    SET STATISTICS 1000;
 
+-- ─── Autovacuum tuning for high-churn tables ─────────────────────────────────
+-- Default autovacuum_vacuum_scale_factor=0.20 means PostgreSQL waits until 20%
+-- of a table is dead before cleaning up. On tables with millions of rows that
+-- is millions of dead tuples — causing index bloat, planner misstimation, and
+-- the throughput degradation visible after ~500 s in all load test runs.
+-- Tighten to 2% so autovacuum stays ahead of write-heavy workloads.
+--
+-- These ALTER TABLE SET (...) statements are idempotent: safe to re-run on
+-- an existing database.
+
+ALTER TABLE resources SET (
+    autovacuum_vacuum_scale_factor  = 0.02,
+    autovacuum_analyze_scale_factor = 0.01
+);
+
+ALTER TABLE resource_history SET (
+    autovacuum_vacuum_scale_factor  = 0.02,
+    autovacuum_analyze_scale_factor = 0.01
+);
+
+-- sp_* tables are DELETE+INSERT heavy on every UPDATE; keep them lean so
+-- index bloat does not accumulate between vacuum cycles.
+ALTER TABLE sp_string    SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.01);
+ALTER TABLE sp_token     SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.01);
+ALTER TABLE sp_date      SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.01);
+ALTER TABLE sp_number    SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.01);
+ALTER TABLE sp_quantity  SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.01);
+ALTER TABLE sp_uri       SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.01);
+ALTER TABLE sp_reference SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.01);
+ALTER TABLE sp_coords    SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.01);
+
 -- ─── Stamp schema version ─────────────────────────────────────────────────────
 
-INSERT INTO schema_version (version) VALUES (3) ON CONFLICT DO NOTHING;
+INSERT INTO schema_version (version) VALUES (4) ON CONFLICT DO NOTHING;
