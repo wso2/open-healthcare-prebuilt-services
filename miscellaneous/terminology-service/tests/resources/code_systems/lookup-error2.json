@@ -1,24 +1,24 @@
 {
-    "resourceType": "OperationOutcome",
-    "meta": {
-        "profile": [
-            "http://hl7.org/fhir/StructureDefinition/OperationOutcome"
-        ]
-    },
-    "issue": [
-        {
-            "severity": "error",
-            "diagnostics": "01ee1fd9-03f7-1cde-b763-15b8e9227c30",
-            "code": "required",
-            "details": {
-                "coding": [
-                    {
-                        "system": "http://hl7.org/fhir/issue-type",
-                        "code": "400"
-                    }
-                ],
-                "text": "Invalid Coding value"
-            }
-        }
+  "resourceType": "OperationOutcome",
+  "meta": {
+    "profile": [
+      "http://hl7.org/fhir/StructureDefinition/OperationOutcome"
     ]
+  },
+  "issue": [
+    {
+      "severity": "error",
+      "diagnostics": "01f158ba-ac1d-1ee6-8f81-b2e734622b6d : Payload for operation \"$lookup\" is not a valid \"Parameters\" or \"Bundle\" resource. Please provide a valid resource as the payload.",
+      "code": "processing",
+      "details": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/issue-type",
+            "code": "400"
+          }
+        ],
+        "text": "Invalid operation payload due to Payload for operation \"$lookup\" is not a valid \"Parameters\" or \"Bundle\" resource. Please provide a valid resource as the payload."
+      }
+    }
+  ]
 }

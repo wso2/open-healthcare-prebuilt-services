@@ -17,14 +17,12 @@
 import terminology_service.loinc_to_fhir as loinc;
 import terminology_service.snomed_to_fhir as snomed;
 
-import ballerina/data.jsondata;
-import ballerina/data.xmldata;
 import ballerina/http;
 import ballerina/regex;
 import ballerina/time;
 import ballerinax/health.fhir.r4;
-import ballerinax/health.fhir.r4.international401;
 import ballerinax/health.fhir.r4.terminology;
+import ballerina/log;
 
 final TerminologySource terminology_source = new TerminologySource();
 
@@ -60,9 +58,19 @@ public isolated function readValueSetByUrl(string url) returns r4:ValueSet|r4:FH
     return terminology:readValueSetByUrl(url = value_set_url, version = value_set_url_version, terminology = terminology_source);
 }
 
-public isolated function searchValueSet(http:Request request) returns r4:Bundle|r4:FHIRError {
-    map<string[]> searchParams = request.getQueryParams();
-    map<r4:RequestSearchParameter[]> params = prepareRequestSearchParameter(searchParams);
+public isolated function searchValueSet(r4:FHIRContext ctx) returns r4:Bundle|r4:FHIRError {
+    
+    map<r4:RequestSearchParameter[]>|error params = getSearchParametersFromFHIRContext(ctx);
+
+    if params is error {
+        log:printError("Failed to get search parameters from FHIR context", 'error = params);
+        return r4:createFHIRError(
+                "Invalid search parameters",
+                r4:ERROR,
+                r4:INVALID_REQUIRED,
+                cause = params,
+                httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
 
     r4:ValueSet[] valueSets = check terminology:searchValueSets(params, terminology = terminology_source);
 
@@ -78,11 +86,19 @@ public isolated function searchValueSet(http:Request request) returns r4:Bundle|
     };
 }
 
-public isolated function searchCodeSystem(http:Request request) returns r4:Bundle|r4:FHIRError {
-    map<string[]> searchParams = request.getQueryParams();
-    map<r4:RequestSearchParameter[]> params = prepareRequestSearchParameter(searchParams);
+public isolated function searchCodeSystem(r4:FHIRContext ctx) returns r4:Bundle|r4:FHIRError {
+    map<r4:RequestSearchParameter[] & readonly> & readonly params = ctx.getRequestSearchParameters();
+    map<r4:RequestSearchParameter[]>|error clonedParams =  params.cloneWithType();
 
-    r4:CodeSystem[] codeSystems = check terminology:searchCodeSystems(params, terminology = terminology_source);
+    if clonedParams is error {
+        return r4:createFHIRError(
+                "Invalid search parameters blah",
+                r4:ERROR,
+                r4:INVALID_REQUIRED,
+                httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    r4:CodeSystem[] codeSystems = check terminology:searchCodeSystems(clonedParams, terminology = terminology_source);
 
     r4:BundleEntry[] entries = codeSystems.'map(c => <r4:BundleEntry>{'resource: c.toJson(), search: {mode: r4:MATCH}});
 
@@ -96,77 +112,75 @@ public isolated function searchCodeSystem(http:Request request) returns r4:Bundl
     };
 }
 
-public isolated function valueSetExpansionGet(http:Request request, string? id = ()) returns r4:ValueSet|r4:FHIRError {
-    map<string[]> searchParams = request.getQueryParams();
-    map<r4:RequestSearchParameter[]> searchParameters = prepareRequestSearchParameter(searchParams);
+public isolated function valueSetExpansionGet(r4:FHIRContext ctx, string? id = ()) returns r4:ValueSet|r4:FHIRError {
+    map<r4:RequestSearchParameter[] & readonly> & readonly searchParameters = ctx.getRequestSearchParameters();
+    map<r4:RequestSearchParameter[]> mutableParams = {};
+    foreach var [k, v] in searchParameters.entries() {
+        mutableParams[k] = v;
+    }
 
     r4:ValueSet valueSet = {status: "unknown"};
 
     if id is string {
-        valueSet = check terminology:valueSetExpansion(searchParameters, vs = check readValueSetById(id), terminology = terminology_source);
+        valueSet = check terminology:valueSetExpansion(mutableParams, vs = check readValueSetById(id), terminology = terminology_source);
     } else {
-        string|() system = request.getQueryParamValue("url") ?: ();
-        valueSet = check terminology:valueSetExpansion(searchParameters, system = system, terminology = terminology_source);
+        string? system = searchParameters["url"] is r4:RequestSearchParameter[] ? (<r4:RequestSearchParameter[]>searchParameters["url"])[0].value : ();
+        valueSet = check terminology:valueSetExpansion(mutableParams, system = system, terminology = terminology_source);
     }
 
     return valueSet;
 }
 
-public isolated function valueSetExpansionPost(http:Request request, string? id = ()) returns r4:ValueSet|r4:FHIRError {
-    map<string[]> searchParams = request.getQueryParams();
-    map<r4:RequestSearchParameter[]> searchParameters = prepareRequestSearchParameter(searchParams);
+public isolated function valueSetExpansionPost(r4:FHIRContext ctx, r4:Parameters parameters, string? id = ()) returns r4:ValueSet|r4:FHIRError {
+    map<r4:RequestSearchParameter[] & readonly> & readonly searchParameters = ctx.getRequestSearchParameters();
+    map<r4:RequestSearchParameter[]> mutableParams = {};
+    foreach var [k, v] in searchParameters.entries() {
+        mutableParams[k] = v;
+    }
 
     r4:ValueSet valueSet = {status: "unknown"};
     if id is string {
-        valueSet = check terminology:valueSetExpansion(searchParameters, vs = check readValueSetById(id), terminology = terminology_source);
+        valueSet = check terminology:valueSetExpansion(mutableParams, vs = check readValueSetById(id), terminology = terminology_source);
     } else {
-        json|http:ClientError jsonPayload = request.getJsonPayload();
-
-        if jsonPayload is json {
-            international401:Parameters|error parameters = jsonPayload.cloneWithType(international401:Parameters);
-            if parameters is international401:Parameters && parameters.'parameter is international401:ParametersParameter[] {
-                foreach var item in <international401:ParametersParameter[]>parameters.'parameter {
-                    match item.name {
-                        "valueSet" => {
-                            anydata temp = item.'resource is r4:Resource ? item.'resource : ();
-                            r4:ValueSet|error cloneWithType = temp.cloneWithType(r4:ValueSet);
-                            valueSet = cloneWithType is r4:ValueSet ? cloneWithType : valueSet;
-                        }
+        json paramsJson = parameters.toJson();
+        json parametersArray = (paramsJson is map<json>) ? (paramsJson["parameter"] ?: []) : [];
+        if parametersArray is json[] && parametersArray.length() > 0 {
+            foreach json paramItem in parametersArray {
+                if paramItem is map<json> && paramItem["name"] == "valueSet" {
+                    json? resourceJson = paramItem["resource"];
+                    if resourceJson is map<json> {
+                        r4:ValueSet|error vs = resourceJson.cloneWithType(r4:ValueSet);
+                        valueSet = vs is r4:ValueSet ? vs : valueSet;
                     }
                 }
-
-                valueSet = check terminology:valueSetExpansion(searchParameters, vs = valueSet, terminology = terminology_source);
-            } else {
-                return r4:createFHIRError(
-                        "Invalid request payload",
-                        r4:ERROR,
-                        r4:INVALID_REQUIRED,
-                        cause = parameters is error ? parameters : (),
-                        httpStatusCode = http:STATUS_BAD_REQUEST);
             }
+            valueSet = check terminology:valueSetExpansion(mutableParams, vs = valueSet, terminology = terminology_source);
         } else {
-            string|() system = request.getQueryParamValue("url") ?: ();
-
-            valueSet = check terminology:valueSetExpansion(searchParameters, system = system, terminology = terminology_source);
+            string? system = searchParameters["url"] is r4:RequestSearchParameter[] ? (<r4:RequestSearchParameter[]>searchParameters["url"])[0].value : ();
+            valueSet = check terminology:valueSetExpansion(mutableParams, system = system, terminology = terminology_source);
         }
     }
     return valueSet;
 }
 
-public isolated function valueSetValidateCodePost(http:Request request) returns international401:Parameters|r4:FHIRError {
-    international401:Parameters|r4:FHIRError concept = valueSetLookUpPost(request);
+public isolated function valueSetValidateCodePost(r4:FHIRContext ctx, r4:Parameters parameters) returns r4:Parameters|r4:FHIRError {
+    r4:Parameters|r4:FHIRError concept = valueSetLookUpPost(ctx, parameters);
     return validationResultToParameters(concept);
 }
 
-public isolated function valueSetValidateCodeGet(http:Request request, string? id = ()) returns international401:Parameters|r4:FHIRError {
-    international401:Parameters|r4:FHIRError concept = valueSetLookUpGet(request, id);
+public isolated function valueSetValidateCodeGet(r4:FHIRContext ctx, string? id = ()) returns r4:Parameters|r4:FHIRError {
+    r4:Parameters|r4:FHIRError concept = valueSetLookUpGet(ctx, id);
     return validationResultToParameters(concept);
 }
 
-public isolated function codeSystemLookUpGet(http:RequestContext ctx, http:Request request, string? id = ()) returns international401:Parameters|r4:FHIRError {
-    string? system = request.getQueryParamValue("system");
-    string? codeValue = request.getQueryParamValue("code");
-    string? 'version = request.getQueryParamValue("version") ?: ();
+public isolated function codeSystemLookUpGet(r4:FHIRContext ctx, string? id = ()) returns r4:Parameters|r4:FHIRError {
+
+    map<r4:RequestSearchParameter[] & readonly> & readonly idParam = ctx.getRequestSearchParameters();
+
+    string? system = idParam["system"] is r4:RequestSearchParameter[] ? (<r4:RequestSearchParameter[]>idParam["system"])[0].value : ();
+    string? code = idParam["code"] is r4:RequestSearchParameter[] ? (<r4:RequestSearchParameter[]>idParam["code"])[0].value : ();
+    string? 'version = idParam["version"] is r4:RequestSearchParameter[] ? (<r4:RequestSearchParameter[]>idParam["version"])[0].value : ();
+    r4:code|r4:Coding? codeValue = code;
 
     if codeValue !is r4:code|r4:Coding {
         return r4:createFHIRError(
@@ -193,35 +207,29 @@ public isolated function codeSystemLookUpGet(http:RequestContext ctx, http:Reque
     return codesystemConceptsToParameters(result);
 }
 
-public isolated function codeSystemLookUpPost(http:RequestContext ctx, http:Request request) returns international401:Parameters|r4:FHIRError {
+public isolated function codeSystemLookUpPost(r4:FHIRContext ctx, r4:Parameters parameters) returns r4:Parameters|r4:FHIRError {
     r4:Coding? codingValue = ();
     r4:uri? system = ();
 
-    json|http:ClientError jsonPayload = request.getJsonPayload();
-    if jsonPayload is json {
-        international401:Parameters|error parse = jsonPayload.cloneWithType(international401:Parameters);
-        if parse is international401:Parameters && parse.'parameter is international401:ParametersParameter[] {
-            foreach var item in <international401:ParametersParameter[]>parse.'parameter {
-                match item.name {
-                    "coding" => {
-                        codingValue = item.valueCoding;
-                        if (<r4:Coding>codingValue).system is r4:uri {
-                            system = (<r4:Coding>codingValue).system;
-                        }
+    r4:Parameters|error typedParams = parameters.toJson().cloneWithType(r4:Parameters);
+    if typedParams is error {
+        return r4:createFHIRError("Invalid request payload", r4:ERROR, r4:INVALID_REQUIRED, httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    if typedParams.'parameter is r4:ParametersParameter[] {
+        foreach var item in <r4:ParametersParameter[]>typedParams.'parameter {
+            match item.name {
+                "coding" => {
+                    codingValue = item.valueCoding;
+                    if (<r4:Coding>codingValue).system is r4:uri {
+                        system = (<r4:Coding>codingValue).system;
                     }
                 }
             }
-        } else {
-            return r4:createFHIRError(
-                    "Invalid Coding value",
-                    r4:ERROR,
-                    r4:INVALID_REQUIRED,
-                    cause = parse is error ? parse : (),
-                    httpStatusCode = http:STATUS_BAD_REQUEST);
         }
     } else {
         return r4:createFHIRError(
-                "Empty request payload",
+                "Invalid Coding value",
                 r4:ERROR,
                 r4:INVALID_REQUIRED,
                 httpStatusCode = http:STATUS_BAD_REQUEST);
@@ -247,46 +255,37 @@ public isolated function codeSystemLookUpPost(http:RequestContext ctx, http:Requ
     return codesystemConceptsToParameters(result);
 }
 
-public isolated function valueSetLookUpPost(http:Request request) returns international401:Parameters|r4:FHIRError {
+public isolated function valueSetLookUpPost(r4:FHIRContext ctx, r4:Parameters parameters) returns r4:Parameters|r4:FHIRError {
     r4:Coding?|r4:CodeableConcept? codingValue = ();
     r4:ValueSet? valueSet = ();
 
-    json|http:ClientError jsonPayload = request.getJsonPayload();
-    if jsonPayload is json {
-        international401:Parameters|error parse = jsonPayload.cloneWithType(international401:Parameters);
-        if parse is international401:Parameters && parse.'parameter is international401:ParametersParameter[] {
-            foreach var item in <international401:ParametersParameter[]>parse.'parameter {
-                match item.name {
-                    "coding" => {
-                        codingValue = <r4:Coding>item.valueCoding;
-                    }
+    r4:Parameters|error parse = parameters.toJson().cloneWithType(r4:Parameters);
+    if parse is r4:Parameters && parse.'parameter is r4:ParametersParameter[] {
+        foreach var item in <r4:ParametersParameter[]>parse.'parameter {
+            match item.name {
+                "coding" => {
+                    codingValue = <r4:Coding>item.valueCoding;
+                }
 
-                    "codeableConcept" => {
-                        codingValue = <r4:CodeableConcept>item.valueCodeableConcept;
-                    }
+                "codeableConcept" => {
+                    codingValue = <r4:CodeableConcept>item.valueCodeableConcept;
+                }
 
-                    "valueSet" => {
-                        anydata temp = item.'resource is r4:Resource ? item.'resource : ();
-                        r4:ValueSet|error cloneWithType = temp.cloneWithType(r4:ValueSet);
-                        if cloneWithType is r4:ValueSet {
-                            valueSet = cloneWithType;
-                        }
+                "valueSet" => {
+                    anydata temp = item.'resource is r4:Resource ? item.'resource : ();
+                    r4:ValueSet|error cloneWithType = temp.cloneWithType(r4:ValueSet);
+                    if cloneWithType is r4:ValueSet {
+                        valueSet = cloneWithType;
                     }
                 }
             }
-        } else {
-            return r4:createFHIRError(
-                    "Invalid request payload",
-                    r4:ERROR,
-                    r4:INVALID_REQUIRED,
-                    cause = parse is error ? parse : (),
-                    httpStatusCode = http:STATUS_BAD_REQUEST);
         }
     } else {
         return r4:createFHIRError(
-                "Empty request payload",
+                "Invalid request payload",
                 r4:ERROR,
                 r4:INVALID_REQUIRED,
+                cause = parse is error ? parse : (),
                 httpStatusCode = http:STATUS_BAD_REQUEST);
     }
 
@@ -301,9 +300,10 @@ public isolated function valueSetLookUpPost(http:Request request) returns intern
     }
 }
 
-public isolated function valueSetLookUpGet(http:Request request, string? id = (), string? reqSystem = (), string? reqCodeValue = ()) returns international401:Parameters|r4:FHIRError {
-    string? system = request.getQueryParamValue("system") ?: reqSystem;
-    r4:code? codeValue = request.getQueryParamValue("code") ?: reqCodeValue;
+public isolated function valueSetLookUpGet(r4:FHIRContext ctx, string? id = (), string? reqSystem = (), string? reqCodeValue = ()) returns r4:Parameters|r4:FHIRError {
+    map<r4:RequestSearchParameter[] & readonly> & readonly searchParams = ctx.getRequestSearchParameters();
+    string? system = searchParams["system"] is r4:RequestSearchParameter[] ? (<r4:RequestSearchParameter[]>searchParams["system"])[0].value : reqSystem;
+    r4:code? codeValue = searchParams["code"] is r4:RequestSearchParameter[] ? (<r4:RequestSearchParameter[]>searchParams["code"])[0].value : reqCodeValue;
 
     if codeValue !is r4:code|r4:Coding|r4:CodeableConcept {
         return r4:createFHIRError(
@@ -333,11 +333,13 @@ public isolated function valueSetLookUpGet(http:Request request, string? id = ()
     return codesystemConceptsToParameters(result);
 }
 
-public isolated function subsumesGet(http:RequestContext ctx, http:Request request) returns international401:Parameters|r4:FHIRError {
-    string? 'version = request.getQueryParamValue("version");
-    r4:uri? system = request.getQueryParamValue("system");
-    r4:code? codeA = request.getQueryParamValue("codeA");
-    r4:code? codeB = request.getQueryParamValue("codeB");
+public isolated function subsumesGet(r4:FHIRContext ctx) returns r4:Parameters|r4:FHIRError {
+    map<r4:RequestSearchParameter[] & readonly> & readonly idParam = ctx.getRequestSearchParameters();
+
+    string? 'version = idParam["version"] is r4:RequestSearchParameter[] ? (<r4:RequestSearchParameter[]>idParam["version"])[0].value : ();
+    r4:uri? system = idParam["system"] is r4:RequestSearchParameter[] ? (<r4:RequestSearchParameter[]>idParam["system"])[0].value : ();
+    r4:code? codeA = idParam["codeA"] is r4:RequestSearchParameter[] ? (<r4:RequestSearchParameter[]>idParam["codeA"])[0].value : ();
+    r4:code? codeB = idParam["codeB"] is r4:RequestSearchParameter[] ? (<r4:RequestSearchParameter[]>idParam["codeB"])[0].value : ();
 
     if system is string && codeA is r4:code && codeB is r4:code {
         // NOTE: replace the subsume function in terminology library by this subsume function
@@ -352,43 +354,38 @@ public isolated function subsumesGet(http:RequestContext ctx, http:Request reque
     }
 }
 
-public isolated function subsumesPost(http:RequestContext ctx, http:Request request) returns international401:Parameters|r4:FHIRError {
+public isolated function subsumesPost(r4:FHIRContext ctx, r4:Parameters parameters) returns r4:Parameters|r4:FHIRError {
     string? 'version = ();
     r4:uri? system = ();
     r4:Coding? codingA = ();
     r4:Coding? codingB = ();
 
-    json|http:ClientError jsonPayload = request.getJsonPayload();
-    if jsonPayload is json {
-        international401:Parameters|error parameters = jsonPayload.cloneWithType(international401:Parameters);
-        if parameters is international401:Parameters && parameters.'parameter is international401:ParametersParameter[] {
+    r4:Parameters|error typedParams = parameters.toJson().cloneWithType(r4:Parameters);
+    if typedParams is error {
+        return r4:createFHIRError("Invalid request payload", r4:ERROR, r4:INVALID_REQUIRED, httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
 
-            foreach var item in <international401:ParametersParameter[]>parameters.'parameter {
-                match item.name {
-                    "codingA" => {
-                        codingA = item.valueCoding ?: {};
-                    }
+    // json|http:ClientError jsonPayload = request.getJsonPayload();
+    if typedParams.'parameter is r4:ParametersParameter[] {
+        foreach var item in <r4:ParametersParameter[]>typedParams.'parameter {
+            match item.name {
+                "codingA" => {
+                    codingA = item.valueCoding ?: ();
+                }
 
-                    "codingB" => {
-                        codingB = item.valueCoding ?: {};
-                    }
+                "codingB" => {
+                    codingB = item.valueCoding ?: ();
+                }
 
-                    "version" => {
-                        'version = item.valueString ?: ();
-                    }
+                "version" => {
+                    'version = item.valueString ?: ();
+                }
 
-                    "system" => {
-                        system = item.valueUri ?: ();
-                    }
+                "system" => {
+                    system = item.valueUri ?: ();
                 }
             }
         }
-    } else {
-        return r4:createFHIRError(
-                "Empty request payload or invalid json format",
-                r4:ERROR,
-                r4:INVALID_REQUIRED,
-                httpStatusCode = http:STATUS_BAD_REQUEST);
     }
 
     if system is string && codingA is r4:Coding && codingB is r4:Coding {
@@ -404,25 +401,9 @@ public isolated function subsumesPost(http:RequestContext ctx, http:Request requ
     }
 }
 
-public isolated function batchValidateValueSets(http:Request request) returns r4:Bundle|r4:FHIRError {
-    json|error payload = request.getJsonPayload();
-    if payload is error {
-        return r4:createFHIRError(
-                "Invalid or empty request payload",
-                r4:ERROR,
-                r4:INVALID_REQUIRED,
-                httpStatusCode = http:STATUS_BAD_REQUEST);
-    }
-
-    r4:Bundle|error bundleIn = payload.cloneWithType(r4:Bundle);
-    if bundleIn is error {
-        return r4:createFHIRError(
-                "Cannot parse request as a FHIR Bundle",
-                r4:ERROR,
-                r4:INVALID_REQUIRED,
-                httpStatusCode = http:STATUS_BAD_REQUEST);
-    }
-    if bundleIn.'type != r4:BUNDLE_TYPE_BATCH {
+public isolated function batchValidateValueSets(r4:Bundle bundle) returns r4:Bundle|r4:FHIRError {
+    
+    if bundle.'type != r4:BUNDLE_TYPE_BATCH {
         return r4:createFHIRError(
                 "Not a batch type bundle",
                 r4:ERROR,
@@ -431,28 +412,41 @@ public isolated function batchValidateValueSets(http:Request request) returns r4
     }
 
     r4:BundleEntry[] responseEntries = [];
-    if bundleIn.entry is r4:BundleEntry[] {
-        foreach r4:BundleEntry entry in <r4:BundleEntry[]>bundleIn.entry {
+    r4:BundleEntry[]? entries = bundle.entry;
+    if entries != () {
+        foreach r4:BundleEntry entry in entries {
             if entry.request is r4:BundleEntryRequest {
-                // cast to http request
-                r4:BundleEntryRequest entryRequest = <r4:BundleEntryRequest>entry.request;
-
-                http:Request entryRequestHttp = new;
+                
+                r4:BundleEntryRequest? entryRequest = entry.request;
+                
+                if entryRequest is () {
+                    return r4:createFHIRError(
+                        "No entry requests found in the bundle",
+                        r4:ERROR,
+                        r4:INVALID_REQUIRED,
+                        httpStatusCode = http:STATUS_BAD_REQUEST);
+                }
 
                 // split the url to get system and code
                 map<string> urlParts = getSystemAndCode(entryRequest.url);
                 string? system = urlParts["system"];
-                string? code = urlParts["code"];
+                r4:code? code = urlParts["code"];
 
-                international401:Parameters|r4:FHIRError result = valueSetLookUpGet(entryRequestHttp, reqSystem = system, reqCodeValue = code);
+                r4:Parameters|r4:FHIRError result;
+                if code is r4:code && system is string {
+                    r4:CodeSystemConcept[]|r4:CodeSystemConcept|r4:FHIRError lookupResult = terminology:valueSetLookUp(code, vs = check readValueSetByUrl(system), terminology = terminology_source);
+                    result = lookupResult is r4:FHIRError ? lookupResult : codesystemConceptsToParameters(lookupResult);
+                } else {
+                    result = r4:createFHIRError("Missing required parameters", r4:ERROR, r4:INVALID_REQUIRED, httpStatusCode = http:STATUS_BAD_REQUEST);
+                }
 
-                if result is international401:Parameters {
+                if result is r4:Parameters {
                     responseEntries.push({
                         'resource: check validationResultToParameters(result)
                     });
                 } else {
                     responseEntries.push({
-                        'resource: <international401:Parameters>{
+                        'resource: <r4:Parameters>{
                             'parameter: [
                                 {
                                     name: "result",
@@ -513,68 +507,9 @@ isolated function getSystemAndCode(string input) returns map<string> {
     return {"system": system, "code": code};
 }
 
-public isolated function addCodeSystem(http:Request req) returns r4:FHIRError? {
+public isolated function addCodeSystem(r4:FHIRContext ctx, r4:CodeSystem codeSystem) returns r4:FHIRError? {
     do {
-        string contentType = req.getContentType();
-        r4:CodeSystem codeSystem;
-
-        // for JSON content
-        if contentType == JSON || contentType == FHIR_JSON {
-            ParseCodeSystem parsedCodeSystem = check jsondata:parseStream(check req.getByteStream());
-
-            if parsedCodeSystem.content is () || parsedCodeSystem.status is () {
-                return r4:createFHIRError(
-                        "Invalid request payload",
-                        r4:ERROR,
-                        r4:INVALID_REQUIRED,
-                        httpStatusCode = http:STATUS_BAD_REQUEST);
-            }
-
-            codeSystem = parseCodeSystemToR4CodeSystem(parsedCodeSystem);
-        }
-
-        // for XML content
-        else if contentType == XML || contentType == FHIR_XML {
-            XMLCodeSystem parsedCodeSystem = check xmldata:parseStream(check req.getByteStream());
-
-            if parsedCodeSystem.content is () || parsedCodeSystem.status is () {
-                return r4:createFHIRError(
-                        "Invalid request payload",
-                        r4:ERROR,
-                        r4:INVALID_REQUIRED,
-                        httpStatusCode = http:STATUS_BAD_REQUEST);
-            }
-
-            codeSystem = xmlCodeSystemToR4CodeSystem(parsedCodeSystem);
-        }
-
-        // for zip
-        else if contentType == ZIP {
-            string path = req.getQueryParamValue("target-path") ?: "";
-            string dirPath = createNewTempDirectory();
-
-            check saveCompressedPayload(check req.getByteStream(), dirPath);
-            check extractZipFile(dirPath);
-
-            json[] codeSystems = check readFilesAsJsons(dirPath + ZIP_FILE_EXTRACTION_PATH + (path != "" ? "/" + path : ""));
-
-            _ = terminology:addCodeSystemsAsJson(codeSystems, terminology = terminology_source);
-
-            _ = start removeDirectory(dirPath);
-            return;
-        }
-
-        // not supported
-        else {
-            return r4:createFHIRError(
-                    "Invalid request payload, content type is not supported",
-                    r4:ERROR,
-                    r4:INVALID_REQUIRED,
-                    httpStatusCode = http:STATUS_BAD_REQUEST);
-        }
-
         return terminology:addCodeSystem(codeSystem, terminology = terminology_source);
-
     } on fail var e {
         return r4:createFHIRError(
                 "Invalid request payload, " + e.message(),
@@ -585,51 +520,9 @@ public isolated function addCodeSystem(http:Request req) returns r4:FHIRError? {
     }
 }
 
-public isolated function addValueSet(http:Request req) returns r4:FHIRError? {
+public isolated function addValueSet(r4:FHIRContext ctx, r4:ValueSet valueSet) returns r4:FHIRError? {
     do {
-        string contentType = req.getContentType();
-
-        // for JSON content
-        if contentType == JSON || contentType == FHIR_JSON {
-            stream<byte[], error?> payloadStream = check req.getByteStream();
-            ParseValueSet parseValueSet = check jsondata:parseStream(s = payloadStream);
-            if parseValueSet.status is () {
-                return r4:createFHIRError(
-                        "Invalid request payload",
-                        r4:ERROR,
-                        r4:INVALID_REQUIRED,
-                        httpStatusCode = http:STATUS_BAD_REQUEST);
-            }
-
-            r4:ValueSet valueSet = parseValueSetToR4ValueSet(parseValueSet);
-
-            return terminology:addValueSet(valueSet, terminology = terminology_source);
-        }
-
-        // for zip
-        else if contentType == ZIP {
-            string path = req.getQueryParamValue("target-path") ?: "";
-            string dirPath = createNewTempDirectory();
-
-            check saveCompressedPayload(check req.getByteStream(), dirPath);
-            check extractZipFile(dirPath);
-
-            json[] codeSystems = check readFilesAsJsons(dirPath + ZIP_FILE_EXTRACTION_PATH + (path != "" ? "/" + path : ""));
-
-            _ = terminology:addValueSetsAsJson(codeSystems, terminology = terminology_source);
-
-            _ = start removeDirectory(dirPath);
-            return;
-        }
-
-        // not supported
-        else {
-            return r4:createFHIRError(
-                    "Invalid request payload, content type is not supported",
-                    r4:ERROR,
-                    r4:INVALID_REQUIRED,
-                    httpStatusCode = http:STATUS_BAD_REQUEST);
-        }
+        return terminology:addValueSet(valueSet, terminology = terminology_source);
     } on fail var e {
         return r4:createFHIRError(
                 "Invalid request payload, " + e.message(),
@@ -766,9 +659,9 @@ public isolated function findCodePost(http:Request request) returns r4:Bundle|r4
 
     json|http:ClientError jsonPayload = request.getJsonPayload();
     if jsonPayload is json {
-        international401:Parameters|error parameters = jsonPayload.cloneWithType(international401:Parameters);
-        if parameters is international401:Parameters && parameters.'parameter is international401:ParametersParameter[] {
-            foreach var item in <international401:ParametersParameter[]>parameters.'parameter {
+        r4:Parameters|error parameters = jsonPayload.cloneWithType(r4:Parameters);
+        if parameters is r4:Parameters && parameters.'parameter is r4:ParametersParameter[] {
+            foreach var item in <r4:ParametersParameter[]>parameters.'parameter {
                 match item.name {
                     "property" => {
                         property = item.valueString ?: DISPLAY;

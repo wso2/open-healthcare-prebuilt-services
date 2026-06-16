@@ -24,8 +24,8 @@ import ballerina/persist;
 import ballerina/regex;
 import ballerina/sql;
 import ballerinax/health.fhir.r4;
-import ballerinax/health.fhir.r4.international401;
 import ballerinax/health.fhir.r4.terminology;
+// import ballerina/io;
 
 // Improve after the issue https://github.com/wso2/open-healthcare-prebuilt-services/issues/151 is fixed
 final store_pg:Client sClient = check initializeClient();
@@ -243,7 +243,7 @@ public isolated class TerminologySource {
         }
 
         if offset is int && count is int {
-            whereClause = sql:queryConcat(whereClause, getLimitClause(count, offset));
+            whereClause = sql:queryConcat(whereClause, ` `, getLimitClause(count, offset));
         }
 
         stream<store_h2:CodeSystem, persist:Error?> codeSystemStream = sClient->/codesystems(store_h2:CodeSystem, whereClause);
@@ -262,6 +262,7 @@ public isolated class TerminologySource {
         foreach store_h2:CodeSystem dbCodeSystem in dbCodeSystems {
             r4:CodeSystem|error parsedCodeSystem = byteToCodeSystem(dbCodeSystem.codeSystem);
             if parsedCodeSystem is error {
+                log:printError("Error while parsing CodeSystem: " + parsedCodeSystem.message());
                 // Skip this CodeSystem if parsing fails
                 continue;
             }
@@ -272,33 +273,34 @@ public isolated class TerminologySource {
     }
 
     public isolated function searchValueSet(map<r4:RequestSearchParameter[]> params, int? offset, int? count) returns r4:ValueSet[]|r4:FHIRError {
-        sql:ParameterizedQuery whereClause = ``;
-        boolean isFirst = true;
+        
+        stream<store_h2:ValueSet, persist:Error?> valueSetStream;
 
-        foreach var [paramName, paramList] in params.entries() {
-            if terminology:CODESYSTEMS_SEARCH_PARAMS.hasKey(paramName) {
-                foreach var param in paramList {
-                    sql:ParameterizedQuery fragment = sql:queryConcat(escapeToQuery(paramName == "system" ? "url" : paramName), ` = ${param.value}`);
-                    if fragment.strings.length() > 0 {
-                        if isFirst {
-                            whereClause = fragment;
-                            isFirst = false;
-                        } else {
-                            whereClause = sql:queryConcat(whereClause, ` AND `, fragment);
+        if params.length() == 0 {
+            valueSetStream = sClient->/valuesets(store_h2:ValueSet);
+        } else {
+            sql:ParameterizedQuery whereClause = ``;
+            foreach var [paramName, paramList] in params.entries() {
+                if terminology:CODESYSTEMS_SEARCH_PARAMS.hasKey(paramName) {
+                    foreach var param in paramList {
+                        sql:ParameterizedQuery fragment = sql:queryConcat(escapeToQuery(paramName == "system" ? "url" : paramName), ` = ${param.value}`);
+                        if fragment.strings.length() > 0 {
+                            whereClause = sql:queryConcat(fragment);
                         }
                     }
                 }
             }
-        }
 
-        if offset is int && count is int {
-            whereClause = sql:queryConcat(whereClause, getLimitClause(count, offset));
+            if offset is int && count is int {
+                whereClause = sql:queryConcat(whereClause, ` `, getLimitClause(count, offset));
+            }
+            valueSetStream = sClient->/valuesets(store_h2:ValueSet, whereClause);
         }
-
-        stream<store_h2:ValueSet, persist:Error?> valueSetStream = sClient->/valuesets(store_h2:ValueSet, whereClause);
+        
         store_h2:ValueSet[]|error dbValueSets = streamToStoreValueSet(valueSetStream);
 
         if dbValueSets is error {
+            log:printError("Error while streaming ValueSets: " + dbValueSets.message());
             return r4:createFHIRError(
                     dbValueSets.message(),
                     r4:ERROR,
@@ -447,7 +449,7 @@ public isolated class TerminologySource {
         return valueSet;
     }
 
-    public isolated function subsumes(r4:uri system, r4:code codeA, r4:code codeB, string? version) returns international401:Parameters|r4:FHIRError {
+    public isolated function subsumes(r4:uri system, r4:code codeA, r4:code codeB, string? version) returns r4:Parameters|r4:FHIRError {
         var codeSystem = getStoreCodeSystemByURL(system, version);
 
         if codeSystem !is store_h2:CodeSystem {
@@ -931,8 +933,12 @@ isolated function getConceptNode(string code, int codeSystemId) returns ConceptN
 
 isolated function extractConceptsFromCodeSystem(r4:CodeSystem codeSystem, int codeSystemId) {
     if codeSystem.concept !is () {
-        foreach var concept in <r4:CodeSystemConcept[]>codeSystem.concept {
-            _ = start extractConceptsFromCodeSystemRecursive(concept.clone(), codeSystemId);
+        r4:CodeSystemConcept[]? concepts = codeSystem.concept;
+        // Flow will not go inside this if condition since the code system is already validated for concepts in a previous point
+        if concepts !is () {
+            foreach var concept in concepts {
+                _ = start extractConceptsFromCodeSystemRecursive(concept.clone(), codeSystemId);
+            }
         }
     }
 }
@@ -944,8 +950,11 @@ isolated function extractConceptsFromCodeSystemRecursive(r4:CodeSystemConcept va
     }
 
     if var_concept.concept !is () {
-        foreach var subConcept in <r4:CodeSystemConcept[]>var_concept.concept {
-            _ = start extractConceptsFromCodeSystemRecursive(subConcept.clone(), codeSystemId, (result is int) ? result : ());
+        r4:CodeSystemConcept[]? concepts = var_concept.concept;
+        if concepts != () && concepts.length() > 0 {
+            foreach var subConcept in concepts {
+                _ = start extractConceptsFromCodeSystemRecursive(subConcept.clone(), codeSystemId, (result is int) ? result : ());
+            }
         }
     }
 }
@@ -966,8 +975,9 @@ isolated function saveCodeSystemConcept(r4:CodeSystemConcept concept, int codeSy
 
 // Extract concepts from a ValueSet and save them recursively
 isolated function extractConceptsFromValueSet(r4:ValueSet valueSet, int valueSetId) {
-    if valueSet.compose is r4:ValueSetCompose {
-        foreach r4:ValueSetComposeInclude include in (<r4:ValueSetCompose>valueSet.compose).include {
+    r4:ValueSetCompose? compose = valueSet.compose;
+    if compose !is () {
+        foreach r4:ValueSetComposeInclude include in compose.include {
             error? result = saveValueSetComposeInclude(include, valueSetId);
             if result is error {
                 log:printError("Error while saving ValueSet concept: " + result.message());
@@ -983,11 +993,13 @@ isolated function saveValueSetComposeInclude(r4:ValueSetComposeInclude include, 
         // find he CodeSystem in the database
         store_h2:CodeSystem codesystem = check getStoreCodeSystemByURL(<string>include.system, include.'version);
 
-        if include.concept is r4:ValueSetComposeIncludeConcept[] {
-            foreach r4:ValueSetComposeIncludeConcept item in <r4:ValueSetComposeIncludeConcept[]>include.concept {
+        r4:ValueSetComposeIncludeConcept[]? valueSetComposeIncludeConcept = include.concept;
+        if valueSetComposeIncludeConcept !is () {
+            foreach r4:ValueSetComposeIncludeConcept item in valueSetComposeIncludeConcept {
                 // save valueset concept
                 _ = start saveValueSetConcept(item.clone(), valueSetId, codesystem.codeSystemId);
             }
+            
         } else {
             // save valueset code system
             _ = start saveValueSetCodeSystem(valueSetId, codesystem.codeSystemId);
@@ -997,7 +1009,10 @@ isolated function saveValueSetComposeInclude(r4:ValueSetComposeInclude include, 
     // check for nested ValueSet references
     else if include.valueSet is r4:canonical[] {
         // save valueset reference
-        _ = start saveValueSetValueSet(valueSetId, <r4:canonical[]>include.valueSet.clone());
+        r4:canonical[]? canonicalArray = include.valueSet;
+        if canonicalArray !is () {
+            _ = start saveValueSetValueSet(valueSetId, canonicalArray.clone());
+        }
     }
 }
 

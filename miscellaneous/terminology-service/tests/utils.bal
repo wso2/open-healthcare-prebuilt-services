@@ -17,7 +17,6 @@
 import ballerina/io;
 import ballerina/test;
 import ballerinax/health.fhir.r4;
-import ballerinax/health.fhir.r4.international401;
 import ballerinax/health.fhir.r4.terminology;
 
 function returnCodeSystemData(string fileName) returns json {
@@ -104,9 +103,9 @@ isolated function addExampleDataToTestDB() returns error? {
     }
 }
 
-function assertParametersEqual(international401:Parameters expected, international401:Parameters actual) returns boolean {
-    international401:ParametersParameter[]? expectedParams = expected.'parameter;
-    international401:ParametersParameter[]? actualParams = actual.'parameter;
+function assertParametersEqual(r4:Parameters expected, r4:Parameters actual) returns boolean {
+    r4:ParametersParameter[]? expectedParams = expected.'parameter;
+    r4:ParametersParameter[]? actualParams = actual.'parameter;
 
     if expectedParams is () || actualParams is () {
         test:assertFail("Parameter arrays are empty. Expected: " + expected.'parameter.count().toString() + ", Actual: " + actual.'parameter.count().toString());

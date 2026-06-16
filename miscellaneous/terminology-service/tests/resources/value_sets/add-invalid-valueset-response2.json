@@ -8,7 +8,7 @@
   "issue": [
     {
       "severity": "error",
-      "diagnostics": "01f159b2-cc30-1d8e-aec9-4c3dd8bd0ce4 : Invalid JSON content detected, missing required element: \"resourceType\"",
+      "diagnostics": "01f159b2-1108-13fe-a3f5-7d263a8782d7 : Invalid JSON content detected, missing required element: \"resourceType\"",
       "code": "processing",
       "details": {
         "coding": [

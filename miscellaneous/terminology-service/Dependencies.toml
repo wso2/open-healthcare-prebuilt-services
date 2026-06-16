@@ -41,7 +41,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "crypto"
-version = "2.10.1"
+version = "2.12.1"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "time"}
@@ -64,9 +64,6 @@ dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.object"}
 ]
-modules = [
-	{org = "ballerina", packageName = "data.jsondata", moduleName = "data.jsondata"}
-]
 
 [[package]]
 org = "ballerina"
@@ -75,9 +72,6 @@ version = "1.6.2"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.object"}
-]
-modules = [
-	{org = "ballerina", packageName = "data.xmldata", moduleName = "data.xmldata"}
 ]
 
 [[package]]
@@ -97,7 +91,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "ftp"
-version = "2.16.0"
+version = "2.17.1"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "data.csv"},
@@ -113,7 +107,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "http"
-version = "2.14.10"
+version = "2.14.11"
 dependencies = [
 	{org = "ballerina", name = "auth"},
 	{org = "ballerina", name = "cache"},
@@ -146,7 +140,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "io"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.value"}
@@ -281,7 +275,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "mime"
-version = "2.12.1"
+version = "2.12.2"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -359,7 +353,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "task"
-version = "2.11.1"
+version = "2.11.2"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "time"},
@@ -526,6 +520,21 @@ modules = [
 
 [[package]]
 org = "ballerinax"
+name = "health.fhir.r4.ips"
+version = "4.0.1"
+dependencies = [
+	{org = "ballerina", name = "constraint"},
+	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "log"},
+	{org = "ballerina", name = "time"},
+	{org = "ballerina", name = "uuid"},
+	{org = "ballerinax", name = "health.clients.fhir"},
+	{org = "ballerinax", name = "health.fhir.r4"},
+	{org = "ballerinax", name = "health.fhir.r4.international401"}
+]
+
+[[package]]
+org = "ballerinax"
 name = "health.fhir.r4.parser"
 version = "7.1.1"
 dependencies = [
@@ -572,6 +581,31 @@ dependencies = [
 	{org = "ballerinax", name = "health.fhir.r4"},
 	{org = "ballerinax", name = "health.fhir.r4.international401"},
 	{org = "ballerinax", name = "health.fhir.r4.parser"}
+]
+
+[[package]]
+org = "ballerinax"
+name = "health.fhirr4"
+version = "3.0.8"
+dependencies = [
+	{org = "ballerina", name = "file"},
+	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "io"},
+	{org = "ballerina", name = "jballerina.java"},
+	{org = "ballerina", name = "jwt"},
+	{org = "ballerina", name = "lang.regexp"},
+	{org = "ballerina", name = "log"},
+	{org = "ballerina", name = "task"},
+	{org = "ballerina", name = "time"},
+	{org = "ballerina", name = "url"},
+	{org = "ballerinai", name = "observe"},
+	{org = "ballerinax", name = "health.fhir.r4"},
+	{org = "ballerinax", name = "health.fhir.r4.international401"},
+	{org = "ballerinax", name = "health.fhir.r4.ips"},
+	{org = "ballerinax", name = "health.fhir.r4.parser"}
+]
+modules = [
+	{org = "ballerinax", packageName = "health.fhirr4", moduleName = "health.fhirr4"}
 ]
 
 [[package]]
@@ -633,8 +667,6 @@ org = "wso2"
 name = "terminology_service"
 version = "0.1.1"
 dependencies = [
-	{org = "ballerina", name = "data.jsondata"},
-	{org = "ballerina", name = "data.xmldata"},
 	{org = "ballerina", name = "file"},
 	{org = "ballerina", name = "http"},
 	{org = "ballerina", name = "io"},
@@ -653,6 +685,7 @@ dependencies = [
 	{org = "ballerinax", name = "health.fhir.r4.international401"},
 	{org = "ballerinax", name = "health.fhir.r4.parser"},
 	{org = "ballerinax", name = "health.fhir.r4.terminology"},
+	{org = "ballerinax", name = "health.fhirr4"},
 	{org = "ballerinax", name = "java.jdbc"},
 	{org = "ballerinax", name = "persist.sql"},
 	{org = "ballerinax", name = "postgresql"},
