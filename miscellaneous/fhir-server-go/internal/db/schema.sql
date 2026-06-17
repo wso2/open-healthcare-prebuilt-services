@@ -78,9 +78,11 @@ CREATE TABLE IF NOT EXISTS sp_string (
 -- a sequential scan. The operator class also serves equality lookups.
 CREATE INDEX IF NOT EXISTS idx_sp_str_lower_pattern ON sp_string (resource_type, param_name, value_lower text_pattern_ops);
 CREATE INDEX IF NOT EXISTS idx_sp_str_exact         ON sp_string (resource_type, param_name, value_exact);
--- Leading on resource_id serves multi-parameter searches (which join back to
--- the outer resource row) and per-resource deletes during re-indexing.
-CREATE INDEX IF NOT EXISTS idx_sp_str_source        ON sp_string (resource_id, resource_type, param_name, value_lower);
+-- Narrow re-index/cascade index. Serves per-resource re-index DELETEs
+-- (WHERE resource_id, resource_type) and FK ON DELETE CASCADE. Slimmed from the
+-- former wide form (…param_name, value_lower) to cut ingest write amplification;
+-- the wide form's only extra benefit was index-only multi-param search joins.
+CREATE INDEX IF NOT EXISTS idx_sp_str_source        ON sp_string (resource_id, resource_type);
 -- Uncomment for :contains support (requires pg_trgm extension):
 -- CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- CREATE INDEX idx_sp_str_trgm ON sp_string USING GIN (value_lower gin_trgm_ops);
@@ -103,12 +105,13 @@ CREATE TABLE IF NOT EXISTS sp_token (
 
 -- Primary lookup: system|code pairs (the most common token search pattern).
 CREATE INDEX IF NOT EXISTS idx_sp_tok_sys_code ON sp_token (resource_type, param_name, system, code);
--- Lookup by system alone (used when only the system is provided, no code).
-CREATE INDEX IF NOT EXISTS idx_sp_tok_system ON sp_token (resource_type, param_name, system);
+-- (idx_sp_tok_system dropped: it was a strict prefix of idx_sp_tok_sys_code
+--  above, which the planner already uses for system-only lookups — the separate
+--  index only added write cost on the heaviest sp_* table.)
 -- Lookup by code alone when the search omits system.
 CREATE INDEX IF NOT EXISTS idx_sp_tok_code ON sp_token (resource_type, param_name, code) WHERE code IS NOT NULL;
--- Leading on resource_id serves multi-parameter searches and re-index deletes.
-CREATE INDEX IF NOT EXISTS idx_sp_tok_source ON sp_token (resource_id, resource_type, param_name, system, code);
+-- Narrow re-index/cascade index (slimmed from …param_name, system, code).
+CREATE INDEX IF NOT EXISTS idx_sp_tok_source ON sp_token (resource_id, resource_type);
 
 -- ─── Date search index ────────────────────────────────────────────────────────
 -- Stores extracted values for FHIR date / dateTime / Period / instant parameters.
@@ -129,7 +132,8 @@ CREATE TABLE IF NOT EXISTS sp_date (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sp_date_range  ON sp_date (resource_type, param_name, value_low, value_high);
-CREATE INDEX IF NOT EXISTS idx_sp_date_source ON sp_date (resource_id, resource_type, param_name, value_low, value_high);
+-- Narrow re-index/cascade index (slimmed from …param_name, value_low, value_high).
+CREATE INDEX IF NOT EXISTS idx_sp_date_source ON sp_date (resource_id, resource_type);
 
 -- ─── Number search index ──────────────────────────────────────────────────────
 -- Stores extracted values for FHIR number search parameters.
@@ -149,7 +153,8 @@ CREATE TABLE IF NOT EXISTS sp_number (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sp_num_range  ON sp_number (resource_type, param_name, value_low, value_high);
-CREATE INDEX IF NOT EXISTS idx_sp_num_source ON sp_number (resource_id, resource_type, param_name, value_low, value_high);
+-- Narrow re-index/cascade index (slimmed from …param_name, value_low, value_high).
+CREATE INDEX IF NOT EXISTS idx_sp_num_source ON sp_number (resource_id, resource_type);
 
 -- ─── Quantity search index ────────────────────────────────────────────────────
 -- Stores extracted values for FHIR quantity search parameters.
@@ -174,7 +179,8 @@ CREATE TABLE IF NOT EXISTS sp_quantity (
 
 -- Raw value range search (same system+code, no unit conversion needed).
 CREATE INDEX IF NOT EXISTS idx_sp_qty_raw       ON sp_quantity (resource_type, param_name, value_low, value_high, system, code);
-CREATE INDEX IF NOT EXISTS idx_sp_qty_source    ON sp_quantity (resource_id, resource_type, param_name);
+-- Narrow re-index/cascade index (slimmed from …param_name).
+CREATE INDEX IF NOT EXISTS idx_sp_qty_source    ON sp_quantity (resource_id, resource_type);
 -- Canonical search (cross-unit comparison via UCUM normalisation).
 CREATE INDEX IF NOT EXISTS idx_sp_qty_canonical ON sp_quantity (resource_type, param_name, canonical_value, canonical_units)
     WHERE canonical_value IS NOT NULL;
@@ -195,7 +201,8 @@ CREATE TABLE IF NOT EXISTS sp_uri (
 CREATE INDEX IF NOT EXISTS idx_sp_uri_exact  ON sp_uri (resource_type, param_name, value);
 -- text_pattern_ops enables efficient LIKE 'prefix%' for the :below modifier.
 CREATE INDEX IF NOT EXISTS idx_sp_uri_prefix ON sp_uri (resource_type, param_name, value text_pattern_ops);
-CREATE INDEX IF NOT EXISTS idx_sp_uri_source ON sp_uri (resource_id, resource_type, param_name, value);
+-- Narrow re-index/cascade index (slimmed from …param_name, value).
+CREATE INDEX IF NOT EXISTS idx_sp_uri_source ON sp_uri (resource_id, resource_type);
 
 -- ─── Reference search index ───────────────────────────────────────────────────
 -- Stores extracted values for FHIR reference search parameters.
@@ -219,9 +226,8 @@ CREATE TABLE IF NOT EXISTS sp_reference (
     FOREIGN KEY (resource_id, resource_type) REFERENCES resources (fhir_id, resource_type) ON DELETE CASCADE
 );
 
--- Used when searching by source: multi-param searches join back to the outer
--- resource row by resource_id; including target_id avoids a post-scan filter.
-CREATE INDEX IF NOT EXISTS idx_sp_ref_source      ON sp_reference (resource_id, resource_type, param_name, target_id);
+-- Narrow re-index/cascade index (slimmed from …param_name, target_id).
+CREATE INDEX IF NOT EXISTS idx_sp_ref_source      ON sp_reference (resource_id, resource_type);
 -- Used when searching by target (e.g. ?patient=123): leading on target_id
 -- serves bare-id lookups; extra columns allow the predicate to resolve index-only.
 CREATE INDEX IF NOT EXISTS idx_sp_ref_target_full ON sp_reference (target_id, target_type, param_name, resource_type, resource_id);
@@ -372,4 +378,8 @@ ALTER TABLE sp_coords    SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_
 
 -- ─── Stamp schema version ─────────────────────────────────────────────────────
 
-INSERT INTO schema_version (version) VALUES (4) ON CONFLICT DO NOTHING;
+-- v5: ingest write-amplification diet — slimmed the 7 sp_* _source indexes to
+-- (resource_id, resource_type) and dropped redundant idx_sp_tok_system. Fresh
+-- installs get the lean form; existing DBs need a migration to DROP+recreate
+-- (CREATE INDEX IF NOT EXISTS won't alter an index that already exists).
+INSERT INTO schema_version (version) VALUES (5) ON CONFLICT DO NOTHING;
