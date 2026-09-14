@@ -855,7 +855,13 @@ public isolated function codeSystemValidateCodePost(r4:FHIRContext ctx, r4:Param
 
     r4:CodeSystem? cs = inlineCodeSystem;
     if cs is () && effectiveUrl is r4:uri {
-        r4:CodeSystem|r4:FHIRError csResult = readCodeSystemByUrl(effectiveUrl);
+        // readCodeSystemByUrl only pins a version when the url carries a
+        // "|version" suffix - append the separately-supplied 'version here so
+        // the resolved cs (used below for the response's system/version
+        // metadata) actually matches the version being validated against,
+        // instead of whatever version resolves by default.
+        string urlToResolve = 'version is string ? effectiveUrl + "|" + 'version : effectiveUrl;
+        r4:CodeSystem|r4:FHIRError csResult = readCodeSystemByUrl(urlToResolve);
         if csResult is r4:CodeSystem {
             cs = csResult;
         } else {
@@ -926,11 +932,16 @@ public isolated function codeSystemValidateCodeGet(r4:FHIRContext ctx, string? i
                 httpStatusCode = http:STATUS_BAD_REQUEST);
     }
 
+    // readCodeSystemById/ByUrl only pin a version when the id/url carries a
+    // "|version" suffix - append the separately-supplied 'version here so the
+    // resolved cs (used below for the response's system/version metadata)
+    // actually matches the version being validated against, instead of
+    // whatever version resolves by default.
     r4:CodeSystem cs;
     if id is string {
-        cs = check readCodeSystemById(id);
+        cs = check readCodeSystemById('version is string ? id + "|" + 'version : id);
     } else if url is string {
-        cs = check readCodeSystemByUrl(url);
+        cs = check readCodeSystemByUrl('version is string ? url + "|" + 'version : url);
     } else {
         return r4:createFHIRError(
                 "Can not find a CodeSystem",
@@ -976,11 +987,17 @@ isolated function validateCodeResultToParameters(r4:CodeSystem cs, r4:CodeSystem
 # + return - The matching concept if found, or a `FHIRError` if no coding matches an entry in the CodeSystem
 isolated function lookupInInlineCodeSystem(r4:Coding|r4:CodeableConcept codeValue, r4:CodeSystem codeSystem) returns r4:CodeSystemConcept|r4:FHIRError {
     r4:code[] codesToCheck = [];
-    if codeValue is r4:Coding && codeValue.code is r4:code {
-        codesToCheck = [<r4:code>codeValue.code];
+    // Only consider a coding whose own system is unset or matches this
+    // CodeSystem's url - otherwise a code that happens to collide with one
+    // from a different system would wrongly validate against it.
+    if codeValue is r4:Coding {
+        r4:Coding coding = codeValue;
+        if coding.code is r4:code && (coding.system is () || coding.system == codeSystem.url) {
+            codesToCheck = [<r4:code>coding.code];
+        }
     } else if codeValue is r4:CodeableConcept {
         foreach r4:Coding c in (codeValue.coding ?: []) {
-            if c.code is r4:code {
+            if c.code is r4:code && (c.system is () || c.system == codeSystem.url) {
                 codesToCheck.push(<r4:code>c.code);
             }
         }
@@ -991,8 +1008,12 @@ isolated function lookupInInlineCodeSystem(r4:Coding|r4:CodeableConcept codeValu
         return found;
     }
 
+    // Message must match the "Can not find any valid concepts for the
+    // code:.*" contract validationResultToParameters recognizes, so an
+    // unknown inline code converts to a `result: false` Parameters response
+    // instead of propagating as a raw 404 error.
     return r4:createFHIRError(
-            "Concept not found in the provided CodeSystem",
+            "Can not find any valid concepts for the code: no matching concept found in the inline CodeSystem",
             r4:ERROR,
             r4:PROCESSING_NOT_FOUND,
             cause = error("No matching concept found in the inline CodeSystem"),

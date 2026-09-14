@@ -341,3 +341,67 @@ public function testApplyDisplayCheckFlipsResultOnMismatch() {
             "Display \"Wrong Display\" does not match the expected display \"Display 1\"");
 }
 
+@test:Config {
+    groups: ["unit", "validate_code_shape", "successful_scenario"]
+}
+public function testLookupInInlineCodeSystemMatchesSameSystemCoding() {
+    r4:CodeSystem codeSystem = {
+        content: "complete",
+        status: "active",
+        url: "http://example.org/fhir/CodeSystem/inline-a",
+        concept: [{code: "shared-code", display: "From System A"}]
+    };
+    r4:Coding coding = {system: "http://example.org/fhir/CodeSystem/inline-a", code: "shared-code"};
+
+    r4:CodeSystemConcept|r4:FHIRError result = lookupInInlineCodeSystem(coding, codeSystem);
+    if result is r4:FHIRError {
+        test:assertFail("Expected a matching concept, got: " + result.message());
+    }
+    test:assertEquals(result.display, "From System A");
+}
+
+@test:Config {
+    groups: ["unit", "validate_code_shape", "failure_scenario"]
+}
+public function testLookupInInlineCodeSystemRejectsDifferentSystemCoding() {
+    // A coding whose own system differs from the inline CodeSystem's url
+    // must not match just because the code string happens to collide.
+    r4:CodeSystem codeSystem = {
+        content: "complete",
+        status: "active",
+        url: "http://example.org/fhir/CodeSystem/inline-a",
+        concept: [{code: "shared-code", display: "From System A"}]
+    };
+    r4:Coding coding = {system: "http://example.org/fhir/CodeSystem/inline-b", code: "shared-code"};
+
+    r4:CodeSystemConcept|r4:FHIRError result = lookupInInlineCodeSystem(coding, codeSystem);
+    test:assertTrue(result is r4:FHIRError, "Expected a different-system coding not to match by code alone");
+}
+
+@test:Config {
+    groups: ["unit", "validate_code_shape", "failure_scenario"]
+}
+public function testLookupInInlineCodeSystemUnknownCodeConvertsToResultFalse() {
+    r4:CodeSystem codeSystem = {
+        content: "complete",
+        status: "active",
+        url: "http://example.org/fhir/CodeSystem/inline-a",
+        concept: [{code: "known-code", display: "Known"}]
+    };
+    r4:Coding coding = {system: "http://example.org/fhir/CodeSystem/inline-a", code: "unknown-code"};
+
+    r4:CodeSystemConcept|r4:FHIRError result = lookupInInlineCodeSystem(coding, codeSystem);
+    if result is r4:CodeSystemConcept {
+        test:assertFail("Expected no match for an unknown code, got: " + result.toString());
+    }
+
+    // The error must match validationResultToParameters' recognized
+    // not-found contract, converting to a result:false Parameters response
+    // rather than propagating as a raw error.
+    r4:Parameters|r4:FHIRError converted = validationResultToParameters(result);
+    if converted is r4:FHIRError {
+        test:assertFail("Expected a result:false Parameters response, got a FHIRError: " + converted.message());
+    }
+    test:assertEquals((<r4:ParametersParameter>findParam(converted, "result")).valueBoolean, false);
+}
+
