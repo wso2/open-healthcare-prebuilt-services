@@ -379,6 +379,30 @@ public function testLookupInInlineCodeSystemRejectsDifferentSystemCoding() {
 }
 
 @test:Config {
+    groups: ["unit", "validate_code_shape", "successful_scenario"]
+}
+public function testLookupInInlineCodeSystemWithoutRealUrlMatchesByCodeAlone() {
+    // codeSystem.url here stands in for the synthetic urn:uuid: assigned by
+    // codeSystemValidateCodePost when the caller's inline CodeSystem had no
+    // url of its own - a coding's system can never legitimately equal that
+    // synthetic value, so requireSystemMatch=false must skip the comparison
+    // entirely instead of rejecting every such coding.
+    r4:CodeSystem codeSystem = {
+        content: "complete",
+        status: "active",
+        url: "urn:uuid:11111111-1111-1111-1111-111111111111",
+        concept: [{code: "shared-code", display: "From System A"}]
+    };
+    r4:Coding coding = {system: "http://example.org/fhir/CodeSystem/caller-supplied", code: "shared-code"};
+
+    r4:CodeSystemConcept|r4:FHIRError result = lookupInInlineCodeSystem(coding, codeSystem, requireSystemMatch = false);
+    if result is r4:FHIRError {
+        test:assertFail("Expected a matching concept, got: " + result.message());
+    }
+    test:assertEquals(result.display, "From System A");
+}
+
+@test:Config {
     groups: ["unit", "validate_code_shape", "failure_scenario"]
 }
 public function testLookupInInlineCodeSystemUnknownCodeConvertsToResultFalse() {

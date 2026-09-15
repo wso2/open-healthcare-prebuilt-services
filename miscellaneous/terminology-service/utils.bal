@@ -44,7 +44,14 @@ isolated function createNewTempDirectory() returns string {
 isolated function validationResultToParameters(r4:Parameters|r4:FHIRError concept) returns r4:Parameters|r4:FHIRError {
     r4:ParametersParameter[] params = [];
     if concept is r4:FHIRError {
-        if concept.message().matches(re `Can not find any valid concepts for the code:.*`) {
+        // "Can not find any valid concepts for the code:.*" covers this file's
+        // own not-found paths (inline lookup, CodeableConcept with no coding,
+        // a coding with no system). "Concept not found" is what
+        // terminology_source.bal's findConcept raises for a code that's
+        // genuinely absent from an already-resolved (persisted) CodeSystem or
+        // ValueSet - per the FHIR spec, $validate-code must report that as a
+        // normal result:false response, not propagate it as an error.
+        if concept.message().matches(re `Can not find any valid concepts for the code:.*|Concept not found`) {
             params.push({name: "result", valueBoolean: false});
         } else {
             return concept;

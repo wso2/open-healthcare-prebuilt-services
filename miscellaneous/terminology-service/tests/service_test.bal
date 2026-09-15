@@ -401,6 +401,32 @@ public function validateCodeCodeSystem12() returns error? {
 }
 
 @test:Config {
+    groups: ["codesystem", "validate_code_codesystem", "successful_scenario"]
+}
+public function validateCodeCodeSystem13() returns error? {
+    // A code that doesn't exist in an otherwise-resolved CodeSystem must
+    // convert to a result:false Parameters response, not an error.
+    http:Response response = check csClient->get("/$validate-code?url=http://hl7.org/fhir/account-status&code=does-not-exist", ());
+    test:assertEquals(response.statusCode, 200);
+    json actualJson = check response.getJsonPayload();
+    r4:Parameters actual = check actualJson.cloneWithType(r4:Parameters);
+    test:assertEquals((<r4:ParametersParameter>findParam(actual, "result")).valueBoolean, false);
+}
+
+@test:Config {
+    groups: ["codesystem", "validate_code_codesystem", "failure_scenario"]
+}
+public function validateCodeCodeSystem14() returns error? {
+    // A url that doesn't resolve to any known CodeSystem must fail with an
+    // error, not a result:false Parameters response.
+    http:Response response = check csClient->get("/$validate-code?url=http://hl7.org/fhir/does-not-exist&code=inactive", ());
+    test:assertEquals(response.statusCode, 404);
+    json actualJson = check response.getJsonPayload();
+    r4:OperationOutcome actual = check actualJson.cloneWithType(r4:OperationOutcome);
+    test:assertEquals(actual.resourceType, "OperationOutcome");
+}
+
+@test:Config {
     groups: ["codesystem", "subsume_codesystem", "successful_scenario"]
 }
 public function subsumeCodeSystem1() returns error? {

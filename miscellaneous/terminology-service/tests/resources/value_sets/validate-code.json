@@ -6,6 +6,10 @@
             "valueBoolean": true
         },
         {
+            "name": "code",
+            "valueCode": "inactive"
+        },
+        {
             "name": "display",
             "valueString": "Inactive"
         },

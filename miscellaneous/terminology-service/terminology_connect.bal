@@ -813,6 +813,10 @@ public isolated function codeSystemValidateCodePost(r4:FHIRContext ctx, r4:Param
     // inline ValueSet case in valueSetLookUpPost. An inline "codeSystem" param is
     // (by definition) usually not separately persisted and often has no url.
     r4:CodeSystem? mutableInlineCodeSystem = inlineCodeSystem;
+    // Recorded before the synthetic url is assigned below - lookupInInlineCodeSystem
+    // must not require a caller-supplied coding.system to equal this synthetic
+    // urn:uuid: url, since the caller never had a real url to put there.
+    boolean inlineCodeSystemHasRealUrl = mutableInlineCodeSystem is r4:CodeSystem && mutableInlineCodeSystem.url is r4:uri;
     if mutableInlineCodeSystem is r4:CodeSystem && mutableInlineCodeSystem.url is () {
         r4:CodeSystem withUrl = mutableInlineCodeSystem.clone();
         withUrl.url = "urn:uuid:" + uuid:createType1AsString();
@@ -904,7 +908,7 @@ public isolated function codeSystemValidateCodePost(r4:FHIRContext ctx, r4:Param
     }
 
     if result is r4:FHIRError && isInlineCodeSystem {
-        result = lookupInInlineCodeSystem(effectiveCodeValue, <r4:CodeSystem>cs);
+        result = lookupInInlineCodeSystem(effectiveCodeValue, <r4:CodeSystem>cs, requireSystemMatch = inlineCodeSystemHasRealUrl);
     }
 
     return validateCodeResultToParameters(cs, result, display);
@@ -984,20 +988,24 @@ isolated function validateCodeResultToParameters(r4:CodeSystem cs, r4:CodeSystem
 #
 # + codeValue - The `Coding` or `CodeableConcept` to look up
 # + codeSystem - The inline `CodeSystem` (with its `concept` list) to search
+# + requireSystemMatch - Whether a coding's own `system` must equal `codeSystem.url` to be considered. Pass `false` when the caller's inline CodeSystem had no real `url` of its own (so `codeSystem.url` is only a synthetic `urn:uuid:` generated for the null-safe terminology lookup, not something a caller's coding could ever legitimately match).
 # + return - The matching concept if found, or a `FHIRError` if no coding matches an entry in the CodeSystem
-isolated function lookupInInlineCodeSystem(r4:Coding|r4:CodeableConcept codeValue, r4:CodeSystem codeSystem) returns r4:CodeSystemConcept|r4:FHIRError {
+isolated function lookupInInlineCodeSystem(r4:Coding|r4:CodeableConcept codeValue, r4:CodeSystem codeSystem, boolean requireSystemMatch = true) returns r4:CodeSystemConcept|r4:FHIRError {
     r4:code[] codesToCheck = [];
     // Only consider a coding whose own system is unset or matches this
     // CodeSystem's url - otherwise a code that happens to collide with one
-    // from a different system would wrongly validate against it.
+    // from a different system would wrongly validate against it. That check
+    // is skipped when requireSystemMatch is false, i.e. the inline CodeSystem
+    // never had a real url of its own to compare against (codeSystem.url is a
+    // synthetic urn:uuid: generated only for the null-safe terminology lookup).
     if codeValue is r4:Coding {
         r4:Coding coding = codeValue;
-        if coding.code is r4:code && (coding.system is () || coding.system == codeSystem.url) {
+        if coding.code is r4:code && (!requireSystemMatch || coding.system is () || coding.system == codeSystem.url) {
             codesToCheck = [<r4:code>coding.code];
         }
     } else if codeValue is r4:CodeableConcept {
         foreach r4:Coding c in (codeValue.coding ?: []) {
-            if c.code is r4:code && (c.system is () || c.system == codeSystem.url) {
+            if c.code is r4:code && (!requireSystemMatch || c.system is () || c.system == codeSystem.url) {
                 codesToCheck.push(<r4:code>c.code);
             }
         }
