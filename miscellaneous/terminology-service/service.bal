@@ -145,6 +145,36 @@ service /fhir/r4/CodeSystem on new fhirr4:Listener(config = codeSystemApiConfig)
         return response;
     }
 
+    isolated resource function get \$validate\-code(r4:FHIRContext ctx) returns http:Response|r4:FHIRError {
+        log:printDebug("FHIR Terminology request is received. Interaction: CodeSystem Validate Code");
+
+        r4:Parameters parameters = check codeSystemValidateCodeGet(ctx);
+        http:Response response = new;
+        response.statusCode = http:STATUS_OK;
+        response.setPayload(parameters, FHIR_JSON);
+        return response;
+    }
+
+    isolated resource function post \$validate\-code(r4:FHIRContext ctx, r4:Parameters parameters) returns http:Response|r4:FHIRError {
+        log:printDebug("FHIR Terminology request is received. Interaction: CodeSystem Validate Code");
+
+        r4:Parameters result = check codeSystemValidateCodePost(ctx, parameters);
+        http:Response response = new;
+        response.statusCode = http:STATUS_OK;
+        response.setPayload(result, FHIR_JSON);
+        return response;
+    }
+
+    isolated resource function get [string id]/\$validate\-code(r4:FHIRContext ctx) returns http:Response|r4:FHIRError {
+        log:printDebug(string `FHIR Terminology request is received. Interaction: CodeSystem Validate Code with Id: ${id}`);
+
+        r4:Parameters parameters = check codeSystemValidateCodeGet(ctx, id);
+        http:Response response = new;
+        response.statusCode = http:STATUS_OK;
+        response.setPayload(parameters, FHIR_JSON);
+        return response;
+    }
+
     isolated resource function get \$subsumes(r4:FHIRContext ctx) returns http:Response|r4:FHIRError {
         log:printDebug("FHIR Terminology request is received. Interaction: CodeSystem Subsume");
 
@@ -528,6 +558,7 @@ service http:InterceptableService /fhir/r4/metadata on baseListener {
                                 ],
                                 operation: [
                                     {name: "lookup", definition: "http://hl7.org/fhir/OperationDefinition/CodeSystem-lookup"},
+                                    {name: "validate-code", definition: "http://hl7.org/fhir/OperationDefinition/CodeSystem-validate-code"},
                                     {name: "subsumes", definition: "http://hl7.org/fhir/OperationDefinition/CodeSystem-subsumes"}
                                 ]
                             },

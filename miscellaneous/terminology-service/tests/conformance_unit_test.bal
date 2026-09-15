@@ -256,3 +256,176 @@ public function testMultipleParentsEmittedAsSeparatePropertyEntries() {
     test:assertEquals(parentValues, ["29857009", "9972008"]);
 }
 
+@test:Config {
+    groups: ["unit", "validate_code_shape", "successful_scenario"]
+}
+public function testFindConceptInConceptListFindsNestedCode() {
+    r4:CodeSystemConcept[] concepts = [
+        {
+            code: "chapter1",
+            display: "Chapter 1",
+            concept: [
+                {code: "section1a", display: "Section 1a"},
+                {
+                    code: "section1b",
+                    display: "Section 1b",
+                    concept: [
+                        {code: "leaf1b1", display: "Leaf 1b1"}
+                    ]
+                }
+            ]
+        }
+    ];
+
+    r4:CodeSystemConcept? found = findConceptInConceptList(concepts, ["leaf1b1"]);
+    test:assertTrue(found is r4:CodeSystemConcept);
+    test:assertEquals((<r4:CodeSystemConcept>found).display, "Leaf 1b1");
+}
+
+@test:Config {
+    groups: ["unit", "validate_code_shape", "successful_scenario"]
+}
+public function testFindConceptInConceptListReturnsNilWhenNotFound() {
+    r4:CodeSystemConcept[] concepts = [
+        {code: "chapter1", display: "Chapter 1", concept: [{code: "section1a", display: "Section 1a"}]}
+    ];
+
+    test:assertEquals(findConceptInConceptList(concepts, ["does-not-exist"]), ());
+}
+
+@test:Config {
+    groups: ["unit", "validate_code_shape", "successful_scenario"]
+}
+public function testApplyDisplayCheckPassesOnExactMatch() {
+    r4:CodeSystemConcept concept = {code: "code1", display: "Display 1"};
+    r4:Parameters validated = {'parameter: [{name: "result", valueBoolean: true}]};
+
+    r4:Parameters checked = applyDisplayCheck(validated, concept, "Display 1");
+
+    test:assertEquals((<r4:ParametersParameter>findParam(checked, "result")).valueBoolean, true);
+    test:assertEquals(findParam(checked, "message"), ());
+}
+
+@test:Config {
+    groups: ["unit", "validate_code_shape", "successful_scenario"]
+}
+public function testApplyDisplayCheckPassesOnDesignationMatch() {
+    // A mismatch against the primary display is still a match if it equals a
+    // designation (synonym) value - synonyms are valid displays too.
+    r4:CodeSystemConcept concept = {
+        code: "code1",
+        display: "Display 1",
+        designation: [{value: "Synonym For Display 1"}]
+    };
+    r4:Parameters validated = {'parameter: [{name: "result", valueBoolean: true}]};
+
+    r4:Parameters checked = applyDisplayCheck(validated, concept, "Synonym For Display 1");
+
+    test:assertEquals((<r4:ParametersParameter>findParam(checked, "result")).valueBoolean, true);
+    test:assertEquals(findParam(checked, "message"), ());
+}
+
+@test:Config {
+    groups: ["unit", "validate_code_shape", "successful_scenario"]
+}
+public function testApplyDisplayCheckFlipsResultOnMismatch() {
+    r4:CodeSystemConcept concept = {code: "code1", display: "Display 1"};
+    r4:Parameters validated = {'parameter: [{name: "result", valueBoolean: true}]};
+
+    r4:Parameters checked = applyDisplayCheck(validated, concept, "Wrong Display");
+
+    test:assertEquals((<r4:ParametersParameter>findParam(checked, "result")).valueBoolean, false);
+    r4:ParametersParameter? messageParam = findParam(checked, "message");
+    test:assertTrue(messageParam is r4:ParametersParameter);
+    test:assertEquals((<r4:ParametersParameter>messageParam).valueString,
+            "Display \"Wrong Display\" does not match the expected display \"Display 1\"");
+}
+
+@test:Config {
+    groups: ["unit", "validate_code_shape", "successful_scenario"]
+}
+public function testLookupInInlineCodeSystemMatchesSameSystemCoding() {
+    r4:CodeSystem codeSystem = {
+        content: "complete",
+        status: "active",
+        url: "http://example.org/fhir/CodeSystem/inline-a",
+        concept: [{code: "shared-code", display: "From System A"}]
+    };
+    r4:Coding coding = {system: "http://example.org/fhir/CodeSystem/inline-a", code: "shared-code"};
+
+    r4:CodeSystemConcept|r4:FHIRError result = lookupInInlineCodeSystem(coding, codeSystem);
+    if result is r4:FHIRError {
+        test:assertFail("Expected a matching concept, got: " + result.message());
+    }
+    test:assertEquals(result.display, "From System A");
+}
+
+@test:Config {
+    groups: ["unit", "validate_code_shape", "failure_scenario"]
+}
+public function testLookupInInlineCodeSystemRejectsDifferentSystemCoding() {
+    // A coding whose own system differs from the inline CodeSystem's url
+    // must not match just because the code string happens to collide.
+    r4:CodeSystem codeSystem = {
+        content: "complete",
+        status: "active",
+        url: "http://example.org/fhir/CodeSystem/inline-a",
+        concept: [{code: "shared-code", display: "From System A"}]
+    };
+    r4:Coding coding = {system: "http://example.org/fhir/CodeSystem/inline-b", code: "shared-code"};
+
+    r4:CodeSystemConcept|r4:FHIRError result = lookupInInlineCodeSystem(coding, codeSystem);
+    test:assertTrue(result is r4:FHIRError, "Expected a different-system coding not to match by code alone");
+}
+
+@test:Config {
+    groups: ["unit", "validate_code_shape", "successful_scenario"]
+}
+public function testLookupInInlineCodeSystemWithoutRealUrlMatchesByCodeAlone() {
+    // codeSystem.url here stands in for the synthetic urn:uuid: assigned by
+    // codeSystemValidateCodePost when the caller's inline CodeSystem had no
+    // url of its own - a coding's system can never legitimately equal that
+    // synthetic value, so requireSystemMatch=false must skip the comparison
+    // entirely instead of rejecting every such coding.
+    r4:CodeSystem codeSystem = {
+        content: "complete",
+        status: "active",
+        url: "urn:uuid:11111111-1111-1111-1111-111111111111",
+        concept: [{code: "shared-code", display: "From System A"}]
+    };
+    r4:Coding coding = {system: "http://example.org/fhir/CodeSystem/caller-supplied", code: "shared-code"};
+
+    r4:CodeSystemConcept|r4:FHIRError result = lookupInInlineCodeSystem(coding, codeSystem, requireSystemMatch = false);
+    if result is r4:FHIRError {
+        test:assertFail("Expected a matching concept, got: " + result.message());
+    }
+    test:assertEquals(result.display, "From System A");
+}
+
+@test:Config {
+    groups: ["unit", "validate_code_shape", "failure_scenario"]
+}
+public function testLookupInInlineCodeSystemUnknownCodeConvertsToResultFalse() {
+    r4:CodeSystem codeSystem = {
+        content: "complete",
+        status: "active",
+        url: "http://example.org/fhir/CodeSystem/inline-a",
+        concept: [{code: "known-code", display: "Known"}]
+    };
+    r4:Coding coding = {system: "http://example.org/fhir/CodeSystem/inline-a", code: "unknown-code"};
+
+    r4:CodeSystemConcept|r4:FHIRError result = lookupInInlineCodeSystem(coding, codeSystem);
+    if result is r4:CodeSystemConcept {
+        test:assertFail("Expected no match for an unknown code, got: " + result.toString());
+    }
+
+    // The error must match validationResultToParameters' recognized
+    // not-found contract, converting to a result:false Parameters response
+    // rather than propagating as a raw error.
+    r4:Parameters|r4:FHIRError converted = validationResultToParameters(result);
+    if converted is r4:FHIRError {
+        test:assertFail("Expected a result:false Parameters response, got a FHIRError: " + converted.message());
+    }
+    test:assertEquals((<r4:ParametersParameter>findParam(converted, "result")).valueBoolean, false);
+}
+

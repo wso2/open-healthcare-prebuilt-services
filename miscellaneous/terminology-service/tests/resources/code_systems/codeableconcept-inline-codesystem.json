@@ -1,0 +1,34 @@
+{
+  "resourceType": "Parameters",
+  "parameter": [
+    {
+      "name": "codeableConcept",
+      "valueCodeableConcept": {
+        "coding": [
+          {
+            "system": "http://example.org/fhir/CodeSystem/custom-inline",
+            "code": "custom-code",
+            "display": "Custom Display"
+          }
+        ],
+        "text": "Custom inline code"
+      }
+    },
+    {
+      "name": "codeSystem",
+      "resource": {
+        "resourceType": "CodeSystem",
+        "url": "http://example.org/fhir/CodeSystem/custom-inline",
+        "status": "active",
+        "content": "complete",
+        "concept": [
+          {
+            "code": "custom-code",
+            "display": "Custom Display",
+            "definition": "A custom inline concept used only for validate-code testing."
+          }
+        ]
+      }
+    }
+  ]
+}

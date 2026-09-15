@@ -5,7 +5,7 @@ This project implements a FHIR R4 Terminology Service in Ballerina, providing RE
 ## Features
 
 - **ValueSet Operations**: Expand, validate, search, create, and retrieve ValueSets.
-- **CodeSystem Operations**: Lookup, subsume, search, create, and retrieve CodeSystems.
+- **CodeSystem Operations**: Lookup, validate, subsume, search, create, and retrieve CodeSystems.
 - **ConceptMap Operations**: Translate, search, create, and retrieve ConceptMaps.
 - **Closure Table**: Maintain a client-named, incrementally-growing subsumption table via `$closure`.
 - **Batch Validation**: Validate multiple ValueSets in a single request.
@@ -40,9 +40,15 @@ The service exposes the following main endpoints under `/fhir/r4`:
   - For SNOMED, also returns non-is-a clinical attribute relationships (e.g. Finding site, Associated morphology) as `property` entries, resolved from the imported Relationship data.
 
 - `POST /CodeSystem/$lookup` — Lookup with a POST body.
+
+- `GET /CodeSystem/$validate-code` — Validate a code against a CodeSystem.
+- `POST /CodeSystem/$validate-code` — Validate a code with a POST body.
+  - Accepts a `coding`, `codeableConcept`, or `code` (+`url`), validated against either a `url` referencing an already-persisted CodeSystem or an inline `codeSystem` resource in the request body — including one that was never separately uploaded.
+  - A supplied `display` is checked against the matched concept's display and designations (synonyms count as a match); a mismatch returns `result: false` with a `message` explaining why.
 - `GET /CodeSystem/$subsumes` — Test subsumption relationships.
 - `POST /CodeSystem/$subsumes` — Test subsumption with a POST body.
 - `GET /CodeSystem/{id}/$lookup` — Lookup by CodeSystem ID.
+- `GET /CodeSystem/{id}/$validate-code` — Validate a code by CodeSystem ID.
 - `GET /CodeSystem/{id}` — Retrieve a CodeSystem by ID.
 - `GET /CodeSystem` — Search CodeSystems.
 - `POST /CodeSystem` — Create a new CodeSystem. `version` is optional, per the FHIR spec.
