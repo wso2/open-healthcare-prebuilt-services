@@ -14,13 +14,13 @@ artifactId = "persist.sql-native"
 version = "1.6.0"
 
 
-[[dependency]]
-org = "ballerinax"
-name = "java.jdbc"
-version = "1.15.1"
+# [[dependency]]
+# org = "ballerinax"
+# name = "java.jdbc"
+# version = "1.14.1"
 
-[[dependency]]
-org = "ballerinax"
-name = "postgresql"
-version = "1.19.1"
+# [[dependency]]
+# org = "ballerinax"
+# name = "postgresql"
+# version = "1.17.0"
 
