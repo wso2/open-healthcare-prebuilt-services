@@ -2422,10 +2422,12 @@ isolated function getStoreCodeSystemByURL(string system, string? version = ()) r
 
     // url/version is meant to be unique, but a prior load's cleanup can fail and
     // leave a stale duplicate behind (see replacePriorLoads) - ordering by
-    // codeSystemId DESC (the newest insert wins) ensures that case still
-    // resolves to the current load instead of an arbitrary/stale one.
+    // codeSystemId DESC (the newest insert wins) as a tie-breaker ensures that
+    // case still resolves to the current load instead of an arbitrary/stale
+    // one.
     sql:ParameterizedQuery sqlQueryWhereClause = version is ()
-        ? sql:queryConcat(escapeToQuery("url"), ` = ${system} ORDER BY `, escapeToQuery("version"), ` DESC LIMIT 1`)
+        ? sql:queryConcat(escapeToQuery("url"), ` = ${system} ORDER BY `, escapeToQuery("version"), ` DESC, `,
+                escapeToQuery("codeSystemId"), ` DESC LIMIT 1`)
         : sql:queryConcat(escapeToQuery("url"), ` = ${system} AND `, escapeToQuery("version"), ` = ${version}`,
                 ` ORDER BY `, escapeToQuery("codeSystemId"), ` DESC LIMIT 1`);
 

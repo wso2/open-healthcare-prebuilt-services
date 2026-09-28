@@ -20,6 +20,8 @@ import terminology_service.store_h2;
 import ballerina/http;
 import ballerina/log;
 import ballerina/persist;
+import ballerina/sql;
+import ballerina/uuid;
 import ballerinax/health.fhir.r4;
 
 const int ICD10CM_INSERT_BATCH_SIZE = 1000;
@@ -88,9 +90,19 @@ public isolated function importIcd10cmToDb(string dirPath, string? version) retu
     string csUrl = meta.url ?: icd10cm:ICD10CM_SYSTEM_URL;
     string csVersion = meta.version ?: "";
 
+    // Staged under a placeholder url that can never match a real
+    // url/version lookup, so the new row stays invisible to $lookup/
+    // $validate-code/etc. for as long as it's being populated - only the
+    // publish step below (after concepts+closure fully succeed) makes it
+    // resolvable under the real csUrl, and only once it's actually complete.
+    // This avoids a window where a concurrent request could resolve to a
+    // same-url/version row whose concepts aren't loaded yet, without needing
+    // a schema change to track completion.
+    string stagingUrl = "urn:staging:icd10cm-import:" + uuid:createType1AsString();
+
     store_h2:CodeSystemInsert codeSystemInsert = {
         id: meta.id ?: icd10cm:ICD10CM_CODE_SYSTEM_ID,
-        url: csUrl,
+        url: stagingUrl,
         version: csVersion,
         name: meta.name ?: icd10cm:ICD10CM_CODE_SYSTEM_NAME,
         title: meta.title ?: icd10cm:ICD10CM_CODE_SYSTEM_TITLE,
@@ -100,11 +112,11 @@ public isolated function importIcd10cmToDb(string dirPath, string? version) retu
         codeSystem: metadataBytes
     };
 
-    // The new load is inserted (and fully populated below) BEFORE any prior
-    // load of the same url/version is removed at the end of this function -
-    // so a failure partway through this import leaves the previous,
-    // still-usable load untouched instead of deleting it first and only
-    // then discovering the replacement failed.
+    // The new load is inserted (staged, and fully populated below) BEFORE
+    // any prior load of the same url/version is removed at the end of this
+    // function - so a failure partway through this import leaves the
+    // previous, still-usable load untouched instead of deleting it first and
+    // only then discovering the replacement failed.
     int[]|persist:Error codeSystemResult = sClient->/codesystems.post([codeSystemInsert]);
     if codeSystemResult is persist:Error {
         return r4:createFHIRError(
@@ -137,10 +149,29 @@ public isolated function importIcd10cmToDb(string dirPath, string? version) retu
         return closureRowsWritten;
     }
 
-    // The new load is fully committed and usable at this point - only now is
-    // any prior load of the same url/version removed. A failure here leaves
-    // a stale-but-harmless extra row rather than losing data, so it's logged
-    // rather than failing an otherwise-successful import.
+    // Publish: the new load is fully populated now, so switch it from the
+    // staging url to the real one in a single statement - this is the
+    // instant it becomes resolvable by callers, and it's already complete
+    // when it does.
+    sql:ParameterizedQuery publishQuery = sql:queryConcat(
+            `UPDATE `, escapeToQuery("codesystems"), ` SET `, escapeToQuery("url"), ` = ${csUrl}`,
+            ` WHERE `, escapeToQuery("codeSystemId"), ` = ${codeSystemId}`);
+    sql:ExecutionResult|persist:Error publishResult = sClient->executeNativeSQL(publishQuery);
+    if publishResult is persist:Error {
+        error? cleanup = deleteSnomedCodeSystemCascade(codeSystemId);
+        if cleanup is error {
+            log:printError(string `ICD-10-CM cleanup-on-failure failed for codeSystemId=${codeSystemId}: ${cleanup.message()}`);
+        }
+        return r4:createFHIRError(
+                "Error while publishing ICD-10-CM CodeSystem row: " + publishResult.message(),
+                r4:ERROR,
+                r4:INVALID_REQUIRED,
+                cause = publishResult,
+                httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
+    }
+
+    // Only now is any prior load of the same url/version removed - the new
+    // load is both published and complete at this point.
     int|r4:FHIRError replaced = replacePriorLoads(csUrl, csVersion, excludeCodeSystemId = codeSystemId);
     if replaced is r4:FHIRError {
         log:printError(string `ICD-10-CM: failed to remove prior load(s) for ${csUrl}|${csVersion} after successful replacement: ${replaced.message()}`);
