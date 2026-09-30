@@ -145,6 +145,36 @@ service /fhir/r4/CodeSystem on new fhirr4:Listener(config = codeSystemApiConfig)
         return response;
     }
 
+    isolated resource function get \$validate\-code(r4:FHIRContext ctx) returns http:Response|r4:FHIRError {
+        log:printDebug("FHIR Terminology request is received. Interaction: CodeSystem Validate Code");
+
+        r4:Parameters parameters = check codeSystemValidateCodeGet(ctx);
+        http:Response response = new;
+        response.statusCode = http:STATUS_OK;
+        response.setPayload(parameters, FHIR_JSON);
+        return response;
+    }
+
+    isolated resource function post \$validate\-code(r4:FHIRContext ctx, r4:Parameters parameters) returns http:Response|r4:FHIRError {
+        log:printDebug("FHIR Terminology request is received. Interaction: CodeSystem Validate Code");
+
+        r4:Parameters result = check codeSystemValidateCodePost(ctx, parameters);
+        http:Response response = new;
+        response.statusCode = http:STATUS_OK;
+        response.setPayload(result, FHIR_JSON);
+        return response;
+    }
+
+    isolated resource function get [string id]/\$validate\-code(r4:FHIRContext ctx) returns http:Response|r4:FHIRError {
+        log:printDebug(string `FHIR Terminology request is received. Interaction: CodeSystem Validate Code with Id: ${id}`);
+
+        r4:Parameters parameters = check codeSystemValidateCodeGet(ctx, id);
+        http:Response response = new;
+        response.statusCode = http:STATUS_OK;
+        response.setPayload(parameters, FHIR_JSON);
+        return response;
+    }
+
     isolated resource function get \$subsumes(r4:FHIRContext ctx) returns http:Response|r4:FHIRError {
         log:printDebug("FHIR Terminology request is received. Interaction: CodeSystem Subsume");
 
@@ -269,8 +299,65 @@ service /fhir/r4 on new fhirr4:Listener(config = apiConfig) {
         response.setPayload(result, FHIR_JSON);
         return response;
     }
+
+    // TEMPORARY (api-conformance): $find-code, $closure and $versions live here
+    // (as resource functions on this system-level service) rather than as their
+    // own http:InterceptableServices on baseListener - see the comment on
+    // apiConfig.operations in api_configs.bal for why.
+
+    isolated resource function get \$find\-code(r4:FHIRContext ctx) returns http:Response|r4:FHIRError {
+        log:printDebug("FHIR Terminology request is received. Interaction: Find Code");
+
+        r4:Bundle result = check findCodeGet(ctx);
+
+        http:Response response = new;
+        response.statusCode = http:STATUS_OK;
+        response.setPayload(result, FHIR_JSON);
+        return response;
+    }
+
+    isolated resource function post \$find\-code(r4:FHIRContext ctx, r4:Parameters parameters) returns http:Response|r4:FHIRError {
+        log:printDebug("FHIR Terminology request is received. Interaction: Find Code (POST)");
+
+        r4:Bundle result = check findCodePost(parameters);
+
+        http:Response response = new;
+        response.statusCode = http:STATUS_OK;
+        response.setPayload(result, FHIR_JSON);
+        return response;
+    }
+
+    isolated resource function post \$closure(r4:FHIRContext ctx, r4:Parameters parameters) returns http:Response|r4:FHIRError {
+        log:printDebug("FHIR Terminology request is received. Interaction: $closure");
+
+        r4:ConceptMap result = check closurePost(parameters);
+
+        http:Response response = new;
+        response.statusCode = http:STATUS_OK;
+        response.setPayload(result, FHIR_JSON);
+        return response;
+    }
+
+    isolated resource function get \$versions(r4:FHIRContext ctx) returns http:Response {
+        return buildVersionsResponse();
+    }
+
+    isolated resource function post \$versions(r4:FHIRContext ctx, r4:Parameters parameters) returns http:Response {
+        return buildVersionsResponse();
+    }
 }
 
+// TEMPORARY (api-conformance): unlike $find-code/$closure/$versions, $upload can't
+// move onto the fhirr4:Listener-backed /fhir/r4 service above to dodge the http
+// 2.14.13 raw-`$`-in-path bug (see the comment on apiConfig.operations in
+// api_configs.bal) - it takes a raw zip file body, not a FHIR Parameters/Bundle
+// resource, and fhirr4:Listener only accepts application/fhir+json. So it stays
+// here as its own http:InterceptableService on baseListener, still going through
+// Ballerina's broken compiled path matcher. There's no way to work around this
+// from inside the service either: a raw `$` 404s before any of our code (including
+// an interceptor) ever runs, so the path can't be rewritten after the fact -
+// clients must call this endpoint as /fhir/r4/%24upload until the Ballerina
+// distribution is upgraded past the http 2.14.13 regression.
 service http:InterceptableService /fhir/r4/\$upload on baseListener {
 
     public function createInterceptors() returns [FHIRResponseErrorInterceptor] {
@@ -294,57 +381,10 @@ service http:InterceptableService /fhir/r4/\$upload on baseListener {
     }
 }
 
-service http:InterceptableService /fhir/r4/\$find\-code on baseListener {
-
-    public function createInterceptors() returns [FHIRResponseErrorInterceptor] {
-        return [new FHIRResponseErrorInterceptor()];
-    }
-
-    isolated resource function get .(http:RequestContext ctx, http:Request request) returns http:Response|r4:FHIRError {
-        log:printDebug("FHIR Terminology request is received. Interaction: Find Code");
-
-        r4:Bundle result = check findCodeGet(request);
-
-        http:Response response = new;
-        response.statusCode = http:STATUS_OK;
-        response.setPayload(result, FHIR_JSON);
-        return response;
-    }
-
-    isolated resource function post .(http:RequestContext ctx, http:Request request) returns http:Response|r4:FHIRError {
-        log:printDebug("FHIR Terminology request is received. Interaction: Find Code (POST)");
-
-        r4:Bundle result = check findCodePost(request);
-
-        http:Response response = new;
-        response.statusCode = http:STATUS_OK;
-        response.setPayload(result, FHIR_JSON);
-        return response;
-    }
-}
-
 // TEMPORARY (branch: api-conformance): the HL7 validator probes GET [base]/$versions
-// on connect to discover which FHIR versions the server supports. The terminology
-// service did not expose it (returned 404 "Path not found: /$versions"), which the
-// validator logs as "Unable to interpret response from $versions". This endpoint
-// returns the standard Parameters response declaring FHIR R4 (4.0.1) support, and
-// supports both GET and POST so it can be referenced by the standard
-// http://hl7.org/fhir/OperationDefinition/CapabilityStatement-versions definition.
-service http:InterceptableService /fhir/r4/\$versions on baseListener {
-
-    public function createInterceptors() returns [FHIRResponseErrorInterceptor] {
-        return [new FHIRResponseErrorInterceptor()];
-    }
-
-    isolated resource function get .(http:RequestContext ctx, http:Request request) returns http:Response {
-        return buildVersionsResponse();
-    }
-
-    isolated resource function post .(http:RequestContext ctx, http:Request request) returns http:Response {
-        return buildVersionsResponse();
-    }
-}
-
+// on connect to discover which FHIR versions the server supports. This endpoint
+// returns the standard Parameters response declaring FHIR R4 (4.0.1) support.
+// Exposed as \$versions resource functions on the /fhir/r4 service above.
 isolated function buildVersionsResponse() returns http:Response {
     log:printDebug("FHIR Terminology request is received. Interaction: $versions");
 
@@ -363,27 +403,8 @@ isolated function buildVersionsResponse() returns http:Response {
 }
 
 // ConceptMap/$closure (https://hl7.org/fhir/R4/conceptmap-operation-closure.html)
-// is a base-level operation ([base]/$closure, not resource-scoped), same as
-// $upload/$find-code/$versions above - so it lives on baseListener rather than
-// the fhirr4:Listener-based CodeSystem/ValueSet services, and its handler
-// parses the request body itself instead of getting r4:Parameters for free.
-service http:InterceptableService /fhir/r4/\$closure on baseListener {
-
-    public function createInterceptors() returns [FHIRResponseErrorInterceptor] {
-        return [new FHIRResponseErrorInterceptor()];
-    }
-
-    isolated resource function post .(http:RequestContext ctx, http:Request request) returns http:Response|r4:FHIRError {
-        log:printDebug("FHIR Terminology request is received. Interaction: $closure");
-
-        r4:ConceptMap result = check closurePost(request);
-
-        http:Response response = new;
-        response.statusCode = http:STATUS_OK;
-        response.setPayload(result, FHIR_JSON);
-        return response;
-    }
-}
+// is a base-level operation ([base]/$closure, not resource-scoped). Exposed as
+// a \$closure resource function on the /fhir/r4 service above.
 
 service http:InterceptableService /fhir/r4/metadata on baseListener {
 
@@ -403,12 +424,12 @@ service http:InterceptableService /fhir/r4/metadata on baseListener {
             international401:TerminologyCapabilities terminologyCapabilities = {
                 "resourceType": "TerminologyCapabilities",
                 "id": "wso2-ballerina-terminology-service",
-                "url": "http://localhost:9089/fhir/r4/terminology-capabilities",
+                "url": "http://localhost:9090/fhir/r4/terminology-capabilities",
                 "version": "0.1.1",
                 "name": "WSO2BallerinaTerminologyServiceCapabilities",
                 "title": "WSO2 Ballerina FHIR R4 Terminology Service — TerminologyCapabilities",
                 "status": "active",
-                "date": "2025-06-17",
+                "date": "2026-09-23",
                 "publisher": "WSO2 LLC.",
                 "contact": [
                     {
@@ -428,8 +449,8 @@ service http:InterceptableService /fhir/r4/metadata on baseListener {
                     "version": "7.0.1"
                 },
                 "implementation": {
-                    "description": "WSO2 Ballerina FHIR R4 Terminology Service — database-backed (PostgreSQL or H2), running on port 9089",
-                    "url": "http://localhost:9089/fhir/r4"
+                    "description": "WSO2 Ballerina FHIR R4 Terminology Service — database-backed (PostgreSQL or H2), running on port 9090",
+                    "url": "http://localhost:9090/fhir/r4"
                 },
                 "lockedDate": false,
                 "codeSearch": "all",
@@ -451,6 +472,17 @@ service http:InterceptableService /fhir/r4/metadata on baseListener {
                             {
                                 "code": "*",
 
+                                "isDefault": false,
+                                "compositional": false
+                            }
+                        ],
+                        "subsumption": true
+                    },
+                    {
+                        "uri": "http://hl7.org/fhir/sid/icd-10-cm",
+                        "version": [
+                            {
+                                "code": "*",
                                 "isDefault": false,
                                 "compositional": false
                             }
@@ -505,7 +537,7 @@ service http:InterceptableService /fhir/r4/metadata on baseListener {
         } else {
             international401:CapabilityStatement capabilityStatement = {
                 status: "active",
-                date: "2025-06-17",
+                date: "2026-09-23",
                 publisher: "Ballerina FHIR Terminology Service",
                 description: "CapabilityStatement for the Ballerina FHIR Terminology Service API.",
                 kind: "instance",
@@ -528,6 +560,7 @@ service http:InterceptableService /fhir/r4/metadata on baseListener {
                                 ],
                                 operation: [
                                     {name: "lookup", definition: "http://hl7.org/fhir/OperationDefinition/CodeSystem-lookup"},
+                                    {name: "validate-code", definition: "http://hl7.org/fhir/OperationDefinition/CodeSystem-validate-code"},
                                     {name: "subsumes", definition: "http://hl7.org/fhir/OperationDefinition/CodeSystem-subsumes"}
                                 ]
                             },

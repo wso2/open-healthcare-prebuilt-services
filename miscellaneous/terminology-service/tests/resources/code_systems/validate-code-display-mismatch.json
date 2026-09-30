@@ -3,11 +3,19 @@
     "parameter": [
         {
             "name": "result",
-            "valueBoolean": true
+            "valueBoolean": false
+        },
+        {
+            "name": "system",
+            "valueUri": "http://hl7.org/fhir/account-status"
         },
         {
             "name": "code",
             "valueCode": "inactive"
+        },
+        {
+            "name": "version",
+            "valueString": "4.0.1"
         },
         {
             "name": "display",
@@ -16,6 +24,10 @@
         {
             "name": "definition",
             "valueString": "This account is inactive and should not be used to track financial information."
+        },
+        {
+            "name": "message",
+            "valueString": "Display \"Not The Right Display\" does not match the expected display \"Inactive\""
         }
     ]
 }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ICD10CM.tabular>
+  <chapter>
+    <name>4</name>
+    <desc>Endocrine, nutritional and metabolic diseases (E00-E89)</desc>
+    <section id="E08-E13">
+      <desc>Diabetes mellitus (E08-E13)</desc>
+      <diag>
+        <name>E11</name>
+        <desc>Type 2 diabetes mellitus</desc>
+      </diag>
+    </section>
+  </chapter>
+</ICD10CM.tabular>

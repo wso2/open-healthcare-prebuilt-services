@@ -6,16 +6,20 @@
             "valueBoolean": true
         },
         {
+            "name": "system",
+            "valueUri": "http://example.org/fhir/CodeSystem/custom-inline"
+        },
+        {
             "name": "code",
-            "valueCode": "inactive"
+            "valueCode": "custom-code"
         },
         {
             "name": "display",
-            "valueString": "Inactive"
+            "valueString": "Custom Display"
         },
         {
             "name": "definition",
-            "valueString": "This account is inactive and should not be used to track financial information."
+            "valueString": "A custom inline concept used only for validate-code testing."
         }
     ]
 }

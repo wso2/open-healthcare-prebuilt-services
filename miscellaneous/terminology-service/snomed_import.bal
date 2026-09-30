@@ -206,11 +206,17 @@ isolated function loadConceptsAndClosure(snomed:SnomedImportBundle bundle, int c
 #
 # + url - The CodeSystem canonical URL to check for prior loads
 # + 'version - The CodeSystem version to check for prior loads
-# + return - The number of prior loads removed, or a `FHIRError` if lookup or deletion fails
-isolated function replacePriorLoads(string url, string 'version) returns int|r4:FHIRError {
-    sql:ParameterizedQuery q = sql:queryConcat(
-            `SELECT `, escapeToQuery("codeSystemId"), ` FROM `, escapeToQuery("codesystems"),
-            ` WHERE `, escapeToQuery("url"), ` = ${url} AND `, escapeToQuery("version"), ` = ${'version}`);
+# + excludeCodeSystemId - A codeSystemId to never delete even if it matches url/version - used to protect a just-inserted replacement load when this is called after the new load succeeds rather than before it starts
+# + return - The number of prior loads removed, or a `FHIRError` if lookup fails or any deletion fails (in which case every deletable prior load has still been removed - only the ones reported in the error remain)
+isolated function replacePriorLoads(string url, string 'version, int? excludeCodeSystemId = ()) returns int|r4:FHIRError {
+    sql:ParameterizedQuery q = excludeCodeSystemId is int
+        ? sql:queryConcat(
+                `SELECT `, escapeToQuery("codeSystemId"), ` FROM `, escapeToQuery("codesystems"),
+                ` WHERE `, escapeToQuery("url"), ` = ${url} AND `, escapeToQuery("version"), ` = ${'version}`,
+                ` AND `, escapeToQuery("codeSystemId"), ` != ${excludeCodeSystemId}`)
+        : sql:queryConcat(
+                `SELECT `, escapeToQuery("codeSystemId"), ` FROM `, escapeToQuery("codesystems"),
+                ` WHERE `, escapeToQuery("url"), ` = ${url} AND `, escapeToQuery("version"), ` = ${'version}`);
     stream<record {|int codeSystemId;|}, persist:Error?> resultStream = sClient->queryNativeSQL(q);
     int[]|error ids = from var row in resultStream
         select row.codeSystemId;
@@ -223,18 +229,28 @@ isolated function replacePriorLoads(string url, string 'version) returns int|r4:
                 httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
     }
 
+    // Every matching id is attempted even if an earlier one fails, so a single
+    // stuck deletion doesn't strand other stale duplicates that could still be
+    // removed - each surviving duplicate is a row `getStoreCodeSystemByURL` could
+    // later pick over the new load, since it has no other way to break the tie.
+    int deletedCount = 0;
+    string failureDetail = "";
     foreach int id in ids {
         error? del = deleteSnomedCodeSystemCascade(id);
         if del is error {
-            return r4:createFHIRError(
-                    string `Error while deleting existing SNOMED load codeSystemId=${id}: ${del.message()}`,
-                    r4:ERROR,
-                    r4:INVALID_REQUIRED,
-                    cause = del,
-                    httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
+            failureDetail += string ` codeSystemId=${id}: ${del.message()};`;
+        } else {
+            deletedCount += 1;
         }
     }
-    return ids.length();
+    if failureDetail != "" {
+        return r4:createFHIRError(
+                string `Error while deleting ${ids.length() - deletedCount} of ${ids.length()} existing load(s):${failureDetail}`,
+                r4:ERROR,
+                r4:INVALID_REQUIRED,
+                httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
+    }
+    return deletedCount;
 }
 
 # Deletes a CodeSystem and everything under it, in dependency order: closure rows, relationship rows, then any valueset_compose_include_concepts rows pointing at this CodeSystem's concepts (write-only bookkeeping table - $expand/$validate-code/etc. all resolve concepts via the stored ValueSet JSON, not this table, so dropping these rows has no functional effect on existing ValueSets), then concepts, then the CodeSystem itself.
@@ -341,7 +357,7 @@ isolated function flushClosureBatch(ClosureRow[] rows, int codeSystemId) returns
     psql:ExecutionResult|persist:Error result = sClient->executeNativeSQL(query);
     if result is persist:Error {
         return r4:createFHIRError(
-                "Error while inserting SNOMED closure batch: " + result.message(),
+                "Error while inserting closure batch: " + result.message(),
                 r4:ERROR,
                 r4:INVALID_REQUIRED,
                 cause = result,
@@ -453,7 +469,7 @@ isolated function flushConceptBatch(store_h2:ConceptInsert[] batch) returns int[
     int[]|persist:Error result = sClient->/concepts.post(batch);
     if result is persist:Error {
         return r4:createFHIRError(
-                "Error while inserting SNOMED concept batch: " + result.message(),
+                "Error while inserting concept batch: " + result.message(),
                 r4:ERROR,
                 r4:INVALID_REQUIRED,
                 cause = result,

@@ -5,7 +5,7 @@ This project implements a FHIR R4 Terminology Service in Ballerina, providing RE
 ## Features
 
 - **ValueSet Operations**: Expand, validate, search, create, and retrieve ValueSets.
-- **CodeSystem Operations**: Lookup, subsume, search, create, and retrieve CodeSystems.
+- **CodeSystem Operations**: Lookup, validate, subsume, search, create, and retrieve CodeSystems.
 - **ConceptMap Operations**: Translate, search, create, and retrieve ConceptMaps.
 - **Closure Table**: Maintain a client-named, incrementally-growing subsumption table via `$closure`.
 - **Batch Validation**: Validate multiple ValueSets in a single request.
@@ -40,9 +40,15 @@ The service exposes the following main endpoints under `/fhir/r4`:
   - For SNOMED, also returns non-is-a clinical attribute relationships (e.g. Finding site, Associated morphology) as `property` entries, resolved from the imported Relationship data.
 
 - `POST /CodeSystem/$lookup` — Lookup with a POST body.
+
+- `GET /CodeSystem/$validate-code` — Validate a code against a CodeSystem.
+- `POST /CodeSystem/$validate-code` — Validate a code with a POST body.
+  - Accepts a `coding`, `codeableConcept`, or `code` (+`url`), validated against either a `url` referencing an already-persisted CodeSystem or an inline `codeSystem` resource in the request body — including one that was never separately uploaded.
+  - A supplied `display` is checked against the matched concept's display and designations (synonyms count as a match); a mismatch returns `result: false` with a `message` explaining why.
 - `GET /CodeSystem/$subsumes` — Test subsumption relationships.
 - `POST /CodeSystem/$subsumes` — Test subsumption with a POST body.
 - `GET /CodeSystem/{id}/$lookup` — Lookup by CodeSystem ID.
+- `GET /CodeSystem/{id}/$validate-code` — Validate a code by CodeSystem ID.
 - `GET /CodeSystem/{id}` — Retrieve a CodeSystem by ID.
 - `GET /CodeSystem` — Search CodeSystems.
 - `POST /CodeSystem` — Create a new CodeSystem. `version` is optional, per the FHIR spec.
@@ -58,19 +64,20 @@ The service exposes the following main endpoints under `/fhir/r4`:
 ### Other Operations
 
 - `POST /` — Batch validate ValueSets.
-- `POST /$upload` — Upload terminology resources.
-- `POST /$upload` — Upload terminology resources as a zip. See [Uploading Terminology Content](#uploading-terminology-content).
+- `POST /%24upload`\* — Upload terminology resources as a zip. See [Uploading Terminology Content](#uploading-terminology-content).
 - `POST /$closure` — [ConceptMap/$closure](https://hl7.org/fhir/R4/conceptmap-operation-closure.html): maintain a client-named, incrementally-growing subsumption closure table. Each call adds the given `concept`s to the named table (`name` parameter) and returns only the subsumption pairs not yet reported for that name. Pass a previously-returned `version` to resync everything reported since that version.
 - `GET /$find-code` — Find codes.
 - `POST /$find-code` — Find codes with a POST body.
 - `GET /metadata` — Get the FHIR CapabilityStatement.
 
+\* `$upload` must currently be called with the `$` percent-encoded (`%24upload`) - a bug in the pinned Ballerina http module (2.14.13) 404s on a raw `$` in the path for this endpoint. This will go away once the Ballerina distribution is upgraded past that bug.
+
 ## Uploading Terminology Content
 
-`POST /$upload` accepts a zip archive. Two things are required on the request:
+`POST /%24upload` (see footnote above) accepts a zip archive. Two things are required on the request:
 
 - `Content-Type: application/zip`
-- `x-terminology-type` header, set to `FHIR`, `LOINC`, or `SNOMED`
+- `x-terminology-type` header, set to `FHIR`, `LOINC`, `SNOMED`, or `ICD10`
 
 The header selects how the archive is interpreted. A missing or unrecognised value returns `400`.
 
@@ -90,7 +97,15 @@ Expects a SNOMED CT RF2 Snapshot release zip, containing the Concept, Descriptio
 
 - `snomed-version` (query parameter, optional) — RF2 release date as `YYYYMMDD`, recorded as the CodeSystem version.
 
-**The import runs in the background.** The request returns `201 Created` as soon as the archive is extracted, before the concepts are loaded. A full release takes several minutes; check the server logs for progress and for the completion summary.
+### ICD-10-CM
+
+Expects a zip of the ICD-10-CM release files: the tabular XML (`icd10cm-tabular-<year>.xml`, for chapters and sections) and the order file (`icd10cm-order-<year>.txt`, for codes and descriptions). Files may be nested in subdirectories. Imported asynchronously, same as SNOMED CT.
+
+- `icd10cm-version` (query parameter, optional) — version to record on the CodeSystem.
+- CodeSystem url: `http://hl7.org/fhir/sid/icd-10-cm`.
+- Only one ICD-10-CM import may run at a time (independent of the SNOMED CT single-flight guard); a concurrent request returns `409`.
+
+**SNOMED CT and ICD-10-CM imports run in the background.** The request returns `201 Created` as soon as the archive is extracted, before the concepts are loaded. A full release takes several minutes; check the server logs for progress and for the completion summary.
 
 Re-uploading the same url and version replaces the previous load rather than duplicating it. If the import fails partway, the partial load is removed.
 
@@ -116,7 +131,7 @@ The service will start on port `9090` by default.
 
 - `service.bal` — Main service implementation.
 - `types.bal`, `utils.bal`, `data_mapping.bal`, etc. — Supporting modules and utilities.
-- `modules/` — Contains submodules for LOINC, SNOMED, and persistence.
+- `modules/` — Contains submodules for LOINC, SNOMED, ICD-10-CM, and persistence.
 - `tests/` — Test cases and sample resources.
 
 ## Supported DB Types and Configurations

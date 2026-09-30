@@ -27,7 +27,74 @@ final r4:ResourceAPIConfig apiConfig = {
     ],
     defaultProfile: (),
     searchParameters: [],
-    operations: [],
+    // TEMPORARY (api-conformance): $find-code, $closure and $versions are
+    // system-level (base) operations with no owning FHIR resource type, so they
+    // are registered here rather than under ValueSet/CodeSystem/ConceptMap. They
+    // were previously implemented as their own raw http:InterceptableServices on
+    // baseListener with a literal `$`-escaped path segment (e.g. /fhir/r4/\$find\-code),
+    // which relies on ballerina/http's compiled path dispatcher recognizing that
+    // literal segment. That dispatcher regressed in http 2.14.13 (bundled with
+    // Ballerina distribution 2201.12.10): a raw `$` in the request path 404s and
+    // only a percent-encoded `%24` matches. Declaring them as resource functions
+    // here instead routes them through fhirr4:Listener's own reflection-based
+    // dispatch (string-matching req.rawPath at runtime, see
+    // ballerinax/health.fhirr4's http_service_builder.bal), which never goes
+    // through the broken compiled matcher and accepts a raw `$` correctly.
+    operations: [
+        {
+            name: "find-code",
+            active: true,
+            preProcessor: findCodeAndClosurePreProcessor,
+            // registerResourceOperation (ballerinax/health.fhirr4) only registers an
+            // operation when `parameters` is present as an array - even an empty one.
+            // Omitting it silently drops the operation ("Unknown operation").
+            parameters: [],
+            additionalProperties: {
+                meta: {
+                    operationLevels: [
+                        {
+                            "instanceLevel": false,
+                            "typeLevel": false,
+                            "systemLevel": true
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            name: "closure",
+            active: true,
+            preProcessor: findCodeAndClosurePreProcessor,
+            parameters: [],
+            additionalProperties: {
+                meta: {
+                    operationLevels: [
+                        {
+                            "instanceLevel": false,
+                            "typeLevel": false,
+                            "systemLevel": true
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            name: "versions",
+            active: true,
+            parameters: [],
+            additionalProperties: {
+                meta: {
+                    operationLevels: [
+                        {
+                            "instanceLevel": false,
+                            "typeLevel": false,
+                            "systemLevel": true
+                        }
+                    ]
+                }
+            }
+        }
+    ],
     serverConfig: (),
     authzConfig: ()
 };

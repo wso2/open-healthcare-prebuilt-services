@@ -751,6 +751,344 @@ public isolated function codeSystemLookUpPost(r4:FHIRContext ctx, r4:Parameters 
     return codesystemConceptsToParameters(result, cs, parentConcepts, childConcepts, attributeRelationships);
 }
 
+# Handles `CodeSystem/$validate-code` invoked via POST (`Parameters` resource body). Accepts a `coding`, `codeableConcept`, or `code`(+`url`) to validate, against either an inline `codeSystem` resource or a CodeSystem resolved by `url`, converting the result into a standard `result`/`display`/`definition`(/`message`) validation `Parameters` response.
+#
+# + ctx - The `FHIRContext` of the incoming request
+# + parameters - The `$validate-code` request body
+# + return - A `Parameters` resource describing whether the code is valid in the CodeSystem, or a `FHIRError` if the request itself is invalid
+public isolated function codeSystemValidateCodePost(r4:FHIRContext ctx, r4:Parameters parameters) returns r4:Parameters|r4:FHIRError {
+    r4:Coding? codingValue = ();
+    r4:CodeableConcept? codeableConceptValue = ();
+    r4:CodeSystem? inlineCodeSystem = ();
+    r4:uri? url = ();
+    r4:code? code = ();
+    string? 'version = ();
+    string? display = ();
+
+    r4:Parameters|error typedParams = parameters.toJson().cloneWithType(r4:Parameters);
+    if typedParams is error {
+        return r4:createFHIRError("Invalid request payload", r4:ERROR, r4:INVALID_REQUIRED, httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    if typedParams.'parameter is r4:ParametersParameter[] {
+        foreach var item in <r4:ParametersParameter[]>typedParams.'parameter {
+            match item.name {
+                "coding" => {
+                    codingValue = item.valueCoding;
+                }
+                "codeableConcept" => {
+                    codeableConceptValue = item.valueCodeableConcept;
+                }
+                "codeSystem" => {
+                    anydata temp = item.'resource is r4:Resource ? item.'resource : ();
+                    r4:CodeSystem|error cloneWithType = temp.cloneWithType(r4:CodeSystem);
+                    if cloneWithType is r4:CodeSystem {
+                        inlineCodeSystem = cloneWithType;
+                    }
+                }
+                "url" => {
+                    url = item.valueUri ?: item.valueString;
+                }
+                "code" => {
+                    code = item.valueCode ?: item.valueString;
+                }
+                "version" => {
+                    'version = item.valueString;
+                }
+                "display" => {
+                    display = item.valueString;
+                }
+            }
+        }
+    } else {
+        return r4:createFHIRError(
+                "Invalid request payload",
+                r4:ERROR,
+                r4:INVALID_REQUIRED,
+                httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    // terminology:codeSystemLookUp unconditionally casts cs.url to r4:uri with no
+    // null check once a CodeSystem record is supplied - same class of issue as the
+    // inline ValueSet case in valueSetLookUpPost. An inline "codeSystem" param is
+    // (by definition) usually not separately persisted and often has no url.
+    r4:CodeSystem? mutableInlineCodeSystem = inlineCodeSystem;
+    // Recorded before the synthetic url is assigned below - lookupInInlineCodeSystem
+    // must not require a caller-supplied coding.system to equal this synthetic
+    // urn:uuid: url, since the caller never had a real url to put there.
+    boolean inlineCodeSystemHasRealUrl = mutableInlineCodeSystem is r4:CodeSystem && mutableInlineCodeSystem.url is r4:uri;
+    if mutableInlineCodeSystem is r4:CodeSystem && mutableInlineCodeSystem.url is () {
+        r4:CodeSystem withUrl = mutableInlineCodeSystem.clone();
+        withUrl.url = "urn:uuid:" + uuid:createType1AsString();
+        inlineCodeSystem = withUrl;
+    }
+
+    boolean isInlineCodeSystem = inlineCodeSystem is r4:CodeSystem;
+
+    if codingValue is () && codeableConceptValue is () && code is r4:code {
+        codingValue = <r4:Coding>{code: code};
+    }
+
+    if codingValue is () && codeableConceptValue is () {
+        return r4:createFHIRError(
+                "Can not find a valid code to validate",
+                r4:ERROR,
+                r4:INVALID_REQUIRED,
+                diagnostic = "Provide (coding|codeableConcept) or (code), and (codeSystem resource) or (url).",
+                httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    // "url" is the spec-correct way to identify the CodeSystem being checked
+    // against, but a caller that already supplies a Coding (or a CodeableConcept
+    // whose coding entries carry one) has effectively identified it too - fall
+    // back to that system when no "url"/"codeSystem" was given, the same way
+    // $lookup treats a coding's own system as sufficient.
+    r4:uri? effectiveUrl = url;
+    if effectiveUrl is () {
+        if codingValue is r4:Coding && codingValue.system is r4:uri {
+            effectiveUrl = codingValue.system;
+        } else if codeableConceptValue is r4:CodeableConcept {
+            foreach r4:Coding c in (codeableConceptValue.coding ?: []) {
+                if c.system is r4:uri {
+                    effectiveUrl = c.system;
+                    break;
+                }
+            }
+        }
+    }
+
+    r4:CodeSystem? cs = inlineCodeSystem;
+    if cs is () && effectiveUrl is r4:uri {
+        // readCodeSystemByUrl only pins a version when the url carries a
+        // "|version" suffix - append the separately-supplied 'version here so
+        // the resolved cs (used below for the response's system/version
+        // metadata) actually matches the version being validated against,
+        // instead of whatever version resolves by default.
+        string urlToResolve = 'version is string ? effectiveUrl + "|" + 'version : effectiveUrl;
+        r4:CodeSystem|r4:FHIRError csResult = readCodeSystemByUrl(urlToResolve);
+        if csResult is r4:CodeSystem {
+            cs = csResult;
+        } else {
+            return csResult;
+        }
+    }
+
+    if cs is () {
+        return r4:createFHIRError(
+                "Can not find a CodeSystem",
+                r4:ERROR,
+                r4:INVALID_REQUIRED,
+                diagnostic = "Provide either a 'codeSystem' resource or a 'url' parameter",
+                httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    r4:CodeSystemConcept[]|r4:CodeSystemConcept|r4:FHIRError result;
+    r4:Coding|r4:CodeableConcept effectiveCodeValue;
+
+    if codingValue is r4:Coding {
+        effectiveCodeValue = codingValue;
+        result = terminology:codeSystemLookUp(codingValue, cs = cs, version = 'version, terminology = terminology_source);
+    } else {
+        r4:CodeableConcept cc = <r4:CodeableConcept>codeableConceptValue;
+        effectiveCodeValue = cc;
+        result = r4:createFHIRError(
+                "Can not find any valid concepts for the code: CodeableConcept has no coding",
+                r4:ERROR,
+                r4:PROCESSING_NOT_FOUND,
+                httpStatusCode = http:STATUS_NOT_FOUND);
+        foreach r4:Coding c in (cc.coding ?: []) {
+            r4:CodeSystemConcept[]|r4:CodeSystemConcept|r4:FHIRError attempt =
+                    terminology:codeSystemLookUp(c, cs = cs, version = 'version, terminology = terminology_source);
+            if attempt !is r4:FHIRError {
+                result = attempt;
+                break;
+            }
+            result = attempt;
+        }
+    }
+
+    if result is r4:FHIRError && isInlineCodeSystem {
+        result = lookupInInlineCodeSystem(effectiveCodeValue, <r4:CodeSystem>cs, requireSystemMatch = inlineCodeSystemHasRealUrl);
+    }
+
+    r4:CodeSystem responseCs = cs;
+    if isInlineCodeSystem && !inlineCodeSystemHasRealUrl {
+        r4:CodeSystem withoutSyntheticUrl = cs.clone();
+        withoutSyntheticUrl.url = ();
+        responseCs = withoutSyntheticUrl;
+    }
+
+    return validateCodeResultToParameters(responseCs, result, display);
+}
+
+# Handles `CodeSystem/$validate-code` invoked via GET (query-parameter form). Resolves the target CodeSystem by `id` (instance-level call) or the `url` query parameter (type-level call), validates the `code`/`version` pair, and converts the result into a standard `result`/`display`/`definition`(/`message`) validation `Parameters` response.
+#
+# + ctx - The `FHIRContext` of the incoming request, used to read the `url`, `code`, `version`, and `display` query parameters
+# + id - The `CodeSystem` id for an instance-level call, or `()` for a type-level call driven by the `url` parameter
+# + return - A `Parameters` resource describing whether the code is valid in the CodeSystem, or a `FHIRError` if the code or CodeSystem can't be resolved
+public isolated function codeSystemValidateCodeGet(r4:FHIRContext ctx, string? id = ()) returns r4:Parameters|r4:FHIRError {
+    map<r4:RequestSearchParameter[] & readonly> & readonly searchParams = ctx.getRequestSearchParameters();
+
+    string? url = getSingleSearchParamValue(searchParams, "url");
+    string? code = getSingleSearchParamValue(searchParams, "code");
+    string? 'version = getSingleSearchParamValue(searchParams, "version");
+    string? display = getSingleSearchParamValue(searchParams, "display");
+
+    r4:code? codeValue = code;
+    if codeValue !is r4:code {
+        return r4:createFHIRError(
+                "Can not find a CodeSystem, Code value is missing",
+                r4:ERROR,
+                r4:INVALID_REQUIRED,
+                httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    // readCodeSystemById/ByUrl only pin a version when the id/url carries a
+    // "|version" suffix - append the separately-supplied 'version here so the
+    // resolved cs (used below for the response's system/version metadata)
+    // actually matches the version being validated against, instead of
+    // whatever version resolves by default.
+    r4:CodeSystem cs;
+    if id is string {
+        cs = check readCodeSystemById('version is string ? id + "|" + 'version : id);
+    } else if url is string {
+        cs = check readCodeSystemByUrl('version is string ? url + "|" + 'version : url);
+    } else {
+        return r4:createFHIRError(
+                "Can not find a CodeSystem",
+                r4:ERROR,
+                r4:INVALID_REQUIRED,
+                httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    r4:CodeSystemConcept[]|r4:CodeSystemConcept|r4:FHIRError result =
+            terminology:codeSystemLookUp(<r4:code>codeValue, cs = cs, version = 'version, terminology = terminology_source);
+
+    return validateCodeResultToParameters(cs, result, display);
+}
+
+# Shared tail for `codeSystemValidateCodeGet`/`codeSystemValidateCodePost`: converts a successful lookup to a `$lookup`-shaped `Parameters` via `codesystemConceptsToParameters`, collapses that into the standard `result`/`display`/`definition` validate-code shape via `validationResultToParameters`, and finally applies `applyDisplayCheck`. On a failed lookup, converts the `FHIRError` directly via `validationResultToParameters`.
+#
+# Deliberately does not compute parent/child hierarchy or attribute
+# relationships the way `codeSystemLookUpGet`/`Post` do for `$lookup` -
+# `validationResultToParameters` only reads `name`/`system`/`code`/`version`/`display`/`definition`, so that data would just be discarded.
+#
+# + cs - The CodeSystem the lookup was performed against, used for `$lookup`-style metadata
+# + result - The concept(s) found by `terminology:codeSystemLookUp`/`lookupInInlineCodeSystem`, or the `FHIRError` if none matched
+# + display - The caller-supplied `display` to check, or `()` if none was supplied
+# + return - The final validate-code `Parameters` response, or a `FHIRError` if `validationResultToParameters` can't handle `result`
+isolated function validateCodeResultToParameters(r4:CodeSystem cs, r4:CodeSystemConcept[]|r4:CodeSystemConcept|r4:FHIRError result, string? display) returns r4:Parameters|r4:FHIRError {
+    if result is r4:FHIRError {
+        return validationResultToParameters(result);
+    }
+
+    r4:Parameters lookupParameters = codesystemConceptsToParameters(result, cs);
+    r4:Parameters|r4:FHIRError validated = validationResultToParameters(lookupParameters);
+    if validated is r4:FHIRError {
+        return validated;
+    }
+
+    return applyDisplayCheck(validated, result, display);
+}
+
+# Recursively searches a CodeSystem's own inline `concept` list (including nested `concept` entries) for a code, for use when the terminology library can't resolve an inline `codeSystem` param by url (it only reads `cs.url`/`cs.version` and re-resolves from storage, the same limitation `lookupInInlineValueSet` works around for ValueSet).
+#
+# + codeValue - The `Coding` or `CodeableConcept` to look up
+# + codeSystem - The inline `CodeSystem` (with its `concept` list) to search
+# + requireSystemMatch - Whether a coding's own `system` must equal `codeSystem.url` to be considered. Pass `false` when the caller's inline CodeSystem had no real `url` of its own (so `codeSystem.url` is only a synthetic `urn:uuid:` generated for the null-safe terminology lookup, not something a caller's coding could ever legitimately match).
+# + return - The matching concept if found, or a `FHIRError` if no coding matches an entry in the CodeSystem
+isolated function lookupInInlineCodeSystem(r4:Coding|r4:CodeableConcept codeValue, r4:CodeSystem codeSystem, boolean requireSystemMatch = true) returns r4:CodeSystemConcept|r4:FHIRError {
+    r4:code[] codesToCheck = [];
+    if codeValue is r4:Coding {
+        r4:Coding coding = codeValue;
+        if coding.code is r4:code && (coding.system is () || (requireSystemMatch && coding.system == codeSystem.url)) {
+            codesToCheck = [<r4:code>coding.code];
+        }
+    } else if codeValue is r4:CodeableConcept {
+        foreach r4:Coding c in (codeValue.coding ?: []) {
+            if c.code is r4:code && (c.system is () || (requireSystemMatch && c.system == codeSystem.url)) {
+                codesToCheck.push(<r4:code>c.code);
+            }
+        }
+    }
+
+    r4:CodeSystemConcept? found = findConceptInConceptList(codeSystem.concept ?: [], codesToCheck);
+    if found is r4:CodeSystemConcept {
+        return found;
+    }
+
+    // Message must match the "Can not find any valid concepts for the
+    // code:.*" contract validationResultToParameters recognizes, so an
+    // unknown inline code converts to a `result: false` Parameters response
+    // instead of propagating as a raw 404 error.
+    return r4:createFHIRError(
+            "Can not find any valid concepts for the code: no matching concept found in the inline CodeSystem",
+            r4:ERROR,
+            r4:PROCESSING_NOT_FOUND,
+            cause = error("No matching concept found in the inline CodeSystem"),
+            httpStatusCode = http:STATUS_NOT_FOUND);
+}
+
+# Recursively walks a `CodeSystemConcept[]` list (and each concept's nested `concept[]`) for the first entry whose code appears in `codesToCheck`.
+#
+# + concepts - The concept list to search
+# + codesToCheck - The candidate codes to match against
+# + return - The matching concept, or `()` if none was found
+isolated function findConceptInConceptList(r4:CodeSystemConcept[] concepts, r4:code[] codesToCheck) returns r4:CodeSystemConcept? {
+    foreach r4:CodeSystemConcept concept in concepts {
+        foreach r4:code candidate in codesToCheck {
+            if concept.code == candidate {
+                return concept;
+            }
+        }
+        r4:CodeSystemConcept? nested = findConceptInConceptList(concept.concept ?: [], codesToCheck);
+        if nested is r4:CodeSystemConcept {
+            return nested;
+        }
+    }
+    return ();
+}
+
+# Checks a supplied `display` param against the matched concept(s)' display and designations, patching an already-built validate-code `Parameters` response to `result: false` with a `message` part on mismatch. A mismatch against any designation value (not just the primary display) is still treated as a match, since synonyms are valid displays too.
+#
+# + validated - The `result`/`display`/`definition` `Parameters` produced by `validationResultToParameters`
+# + concepts - The raw concept(s) the lookup matched, used to check display/designations
+# + expectedDisplay - The caller-supplied `display` to check, or `()` if none was supplied
+# + return - `validated` unchanged if `expectedDisplay` is `()` or matches; otherwise `validated` with `result` flipped to `false` and a `message` part added
+isolated function applyDisplayCheck(r4:Parameters validated, r4:CodeSystemConcept[]|r4:CodeSystemConcept concepts, string? expectedDisplay) returns r4:Parameters {
+    if expectedDisplay is () {
+        return validated;
+    }
+
+    r4:CodeSystemConcept[] conceptList = concepts is r4:CodeSystemConcept[] ? concepts : [concepts];
+    foreach r4:CodeSystemConcept concept in conceptList {
+        if concept.display == expectedDisplay {
+            return validated;
+        }
+        foreach r4:CodeSystemConceptDesignation designation in (concept.designation ?: []) {
+            if designation.value == expectedDisplay {
+                return validated;
+            }
+        }
+    }
+
+    string? actualDisplay = conceptList.length() > 0 ? conceptList[0].display : ();
+    r4:ParametersParameter[] patchedParams = [];
+    foreach r4:ParametersParameter p in (validated.'parameter ?: []) {
+        if p.name == "result" {
+            patchedParams.push({name: "result", valueBoolean: false});
+        } else {
+            patchedParams.push(p);
+        }
+    }
+    patchedParams.push({
+        name: "message",
+        valueString: string `Display "${expectedDisplay}" does not match the expected display "${actualDisplay ?: ""}"`
+    });
+
+    return {'parameter: patchedParams};
+}
+
 # Checks whether codeValue is a Coding with no system, or a CodeableConcept containing at least one Coding with no system - either shape reaches the same unguarded cast inside the library's valueSetLookUp.
 #
 # + codeValue - The `Coding` or `CodeableConcept` to check
@@ -1503,7 +1841,7 @@ public isolated function addConceptMap(r4:FHIRContext ctx, r4:ConceptMap concept
     }
 }
 
-# Handles bulk upload of terminology content from a zip file, dispatched by the mandatory `${TYPE_HEADER}` header. FHIR content is loaded as raw CodeSystem/ValueSet JSON; LOINC content is converted to FHIR then added as a single `CodeSystem`; SNOMED content is imported asynchronously in the background (this call returns immediately with `()` while the import runs and logs its own completion).
+# Handles bulk upload of terminology content from a zip file, dispatched by the mandatory `${TYPE_HEADER}` header. FHIR content is loaded as raw CodeSystem/ValueSet JSON; LOINC content is converted to FHIR then added as a single `CodeSystem`; SNOMED and ICD-10-CM content are each imported asynchronously in the background (this call returns immediately with `()` while the import runs and logs its own completion).
 #
 # + payload - The incoming zip-file request, with the terminology type indicated by the `${TYPE_HEADER}` header
 # + return - An `r4:FHIRError` if the payload is missing, has an unsupported content type/header, or fails to process, `()` otherwise
@@ -1525,15 +1863,15 @@ public isolated function upload(http:Request payload) returns r4:FHIRError? {
                     string `Missing ${TYPE_HEADER} header in the request`,
                     r4:ERROR,
                     r4:INVALID_REQUIRED,
-                    diagnostic = string `The request should contains ${TYPE_HEADER} header and supported values are: FHIR, LOINC and SNOMED`,
+                    diagnostic = string `The request should contains ${TYPE_HEADER} header and supported values are: FHIR, LOINC, SNOMED and ICD10`,
                     httpStatusCode = http:STATUS_BAD_REQUEST);
         }
-        else if typeHeader != FHIR && typeHeader != LOINC && typeHeader != SNOMED {
+        else if typeHeader != FHIR && typeHeader != LOINC && typeHeader != SNOMED && typeHeader != ICD10 {
             return r4:createFHIRError(
                     string `Invalid ${TYPE_HEADER} header value`,
                     r4:ERROR,
                     r4:INVALID_REQUIRED,
-                    diagnostic = string `The request should contains ${TYPE_HEADER} header and supported values are: FHIR, LOINC and SNOMED`,
+                    diagnostic = string `The request should contains ${TYPE_HEADER} header and supported values are: FHIR, LOINC, SNOMED and ICD10`,
                     httpStatusCode = http:STATUS_BAD_REQUEST);
         }
 
@@ -1579,6 +1917,23 @@ public isolated function upload(http:Request payload) returns r4:FHIRError? {
             return ();
         }
 
+        // ICD-10-CM
+        else if typeHeader == ICD10 {
+            if !tryAcquireIcd10cmImportLock() {
+                _ = start removeDirectory(dirPath);
+                return r4:createFHIRError(
+                        "An ICD-10-CM import is already in progress",
+                        r4:ERROR,
+                        r4:PROCESSING,
+                        diagnostic = "Only one ICD-10-CM import may run at a time. Wait for the current import to finish (check server logs) before retrying.",
+                        httpStatusCode = http:STATUS_CONFLICT);
+            }
+            string? version = payload.getQueryParamValue("icd10cm-version");
+            _ = start runIcd10cmImportAsync(dirPath + ZIP_FILE_EXTRACTION_PATH, version, dirPath);
+            log:printInfo("ICD-10-CM import scheduled in background; check server logs for completion.");
+            return ();
+        }
+
         _ = start removeDirectory(dirPath);
 
         return result;
@@ -1592,14 +1947,26 @@ public isolated function upload(http:Request payload) returns r4:FHIRError? {
     }
 }
 
+# Reads a single-valued operation search parameter out of a `FHIRContext`'s already-decoded request search parameters.
+#
+# + searchParameters - The request's search parameters, as returned by `r4:FHIRContext.getRequestSearchParameters()`
+# + name - The parameter name to look up
+# + return - The parameter's first value, or `()` if it wasn't supplied
+isolated function getSingleSearchParamValue(map<r4:RequestSearchParameter[] & readonly> & readonly searchParameters, string name) returns string? {
+    r4:RequestSearchParameter[]? values = searchParameters[name];
+    return values is r4:RequestSearchParameter[] && values.length() > 0 ? values[0].value : ();
+}
+
 # Handles the custom `$find-code` operation invoked via GET (query-parameter form): searches concepts across (optionally) a given `system` by matching `filter` text against either the `display` or `definition` property, paginated by `_count`/`_offset`.
 #
-# + request - The incoming HTTP request, read for the `property`, `system`, `filter`, `_count`, and `_offset` query parameters
+# + ctx - The `FHIRContext` of the incoming request, read for the `property`, `system`, `filter`, `_count`, and `_offset` query parameters
 # + return - A search-result `Bundle` of matching concepts, or a `FHIRError` if `filter` is missing, `property` is invalid, or the search fails
-public isolated function findCodeGet(http:Request request) returns r4:Bundle|r4:FHIRError {
-    string property = request.getQueryParamValue("property") ?: DISPLAY;
-    string? system = request.getQueryParamValue("system");
-    string? filter = request.getQueryParamValue("filter");
+public isolated function findCodeGet(r4:FHIRContext ctx) returns r4:Bundle|r4:FHIRError {
+    map<r4:RequestSearchParameter[] & readonly> & readonly searchParameters = ctx.getRequestSearchParameters();
+
+    string property = getSingleSearchParamValue(searchParameters, "property") ?: DISPLAY;
+    string? system = getSingleSearchParamValue(searchParameters, "system");
+    string? filter = getSingleSearchParamValue(searchParameters, "filter");
     int count;
     int offset;
 
@@ -1612,8 +1979,8 @@ public isolated function findCodeGet(http:Request request) returns r4:Bundle|r4:
             check error("Invalid property value. Only 'display' or 'definition' are allowed.");
         }
 
-        string? countStr = request.getQueryParamValue("_count");
-        string? offsetStr = request.getQueryParamValue("_offset");
+        string? countStr = getSingleSearchParamValue(searchParameters, "_count");
+        string? offsetStr = getSingleSearchParamValue(searchParameters, "_offset");
 
         count = countStr is string ? check int:fromString(countStr) : terminology:TERMINOLOGY_SEARCH_DEFAULT_COUNT;
         offset = offsetStr is string ? check int:fromString(offsetStr) : 0;
@@ -1637,21 +2004,20 @@ public isolated function findCodeGet(http:Request request) returns r4:Bundle|r4:
 
 # Implements `ConceptMap/$closure` (https://hl7.org/fhir/R4/conceptmap-operation-closure.html): maintains a client-named, incrementally-growing subsumption closure table. Each call adds the given `concept`s to the named table and returns only the subsumption pairs not yet reported for that name - both a new concept's own ancestors (via concept_closure, the same table `$subsumes`/`$lookup` already use), and any case where the new concept turns out to be an ancestor of a concept added in an earlier call. An optional `version` parameter also resyncs everything reported since that version.
 #
-# + request - The incoming HTTP request, whose JSON body is a `Parameters` resource carrying `name`, zero or more `concept` codings, and an optional `version` to resync from
-# + return - A `ConceptMap` encoding the newly discovered (and, on resync, historical) subsumption pairs plus any unmatched concepts, or a `FHIRError` if the payload is invalid or `name` is missing
-public isolated function closurePost(http:Request request) returns r4:ConceptMap|r4:FHIRError {
-    json|http:ClientError jsonPayload = request.getJsonPayload();
-    if jsonPayload is http:ClientError {
-        return r4:createFHIRError("Invalid request payload", r4:ERROR, r4:INVALID_REQUIRED, httpStatusCode = http:STATUS_BAD_REQUEST);
-    }
-    r4:Parameters|error typedParams = jsonPayload.cloneWithType(r4:Parameters);
-    if typedParams is error {
-        return r4:createFHIRError("Invalid request payload", r4:ERROR, r4:INVALID_REQUIRED, httpStatusCode = http:STATUS_BAD_REQUEST);
-    }
-
+# + parameters - The `$closure` request body, a `Parameters` resource carrying `name`, zero or more `concept` codings, and an optional `version` to resync from
+# + return - A `ConceptMap` encoding the newly discovered (and, on resync, historical) subsumption pairs plus any unmatched concepts, or a `FHIRError` if `name` is missing
+public isolated function closurePost(r4:Parameters parameters) returns r4:ConceptMap|r4:FHIRError {
     string? name = ();
     r4:Coding[] concepts = [];
     string? resyncVersion = ();
+
+    // The framework-provided `parameters` isn't reliably typed at runtime for its
+    // nested 'parameter' array (see codeSystemLookUpPost for the same workaround) -
+    // round-trip it through JSON to get a genuinely-typed value before casting.
+    r4:Parameters|error typedParams = parameters.toJson().cloneWithType(r4:Parameters);
+    if typedParams is error {
+        return r4:createFHIRError("Invalid request payload", r4:ERROR, r4:INVALID_REQUIRED, httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
 
     if typedParams.'parameter is r4:ParametersParameter[] {
         foreach var item in <r4:ParametersParameter[]>typedParams.'parameter {
@@ -1817,52 +2183,43 @@ public isolated function closurePost(http:Request request) returns r4:ConceptMap
 
 # Handles the custom `$find-code` operation invoked via POST (`Parameters` resource body): searches concepts across (optionally) a given `system` by matching a `filter` text parameter against either the `display` or `definition` property, paginated by `_count`/`_offset`.
 #
-# + request - The incoming HTTP request, whose JSON body is a `Parameters` resource carrying `property`, `system`, `filter`, `_count`, and `_offset`
-# + return - A search-result `Bundle` of matching concepts, or a `FHIRError` if the payload is invalid, `filter` is missing, or `property` is invalid
-public isolated function findCodePost(http:Request request) returns r4:Bundle|r4:FHIRError {
+# + parameters - The `$find-code` request body, a `Parameters` resource carrying `property`, `system`, `filter`, `_count`, and `_offset`
+# + return - A search-result `Bundle` of matching concepts, or a `FHIRError` if `filter` is missing or `property` is invalid
+public isolated function findCodePost(r4:Parameters parameters) returns r4:Bundle|r4:FHIRError {
     string property = DISPLAY;
     string? system = ();
     string? filter = ();
     int count = terminology:TERMINOLOGY_SEARCH_DEFAULT_COUNT;
     int offset = 0;
 
-    json|http:ClientError jsonPayload = request.getJsonPayload();
-    if jsonPayload is json {
-        r4:Parameters|error parameters = jsonPayload.cloneWithType(r4:Parameters);
-        if parameters is r4:Parameters && parameters.'parameter is r4:ParametersParameter[] {
-            foreach var item in <r4:ParametersParameter[]>parameters.'parameter {
-                match item.name {
-                    "property" => {
-                        property = item.valueString ?: DISPLAY;
-                    }
-                    "system" => {
-                        system = item.valueString ?: ();
-                    }
-                    "filter" => {
-                        filter = item.valueString ?: ();
-                    }
-                    "_count" => {
-                        count = item.valueInteger is int ? <int>item.valueInteger : terminology:TERMINOLOGY_SEARCH_DEFAULT_COUNT;
-                    }
-                    "_offset" => {
-                        offset = item.valueInteger is int ? <int>item.valueInteger : 0;
-                    }
+    // The framework-provided `parameters` isn't reliably typed at runtime for its
+    // nested 'parameter' array (see codeSystemLookUpPost for the same workaround) -
+    // round-trip it through JSON to get a genuinely-typed value before casting.
+    r4:Parameters|error typedParams = parameters.toJson().cloneWithType(r4:Parameters);
+    if typedParams is error {
+        return r4:createFHIRError("Invalid request payload", r4:ERROR, r4:INVALID_REQUIRED, httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    if typedParams.'parameter is r4:ParametersParameter[] {
+        foreach var item in <r4:ParametersParameter[]>typedParams.'parameter {
+            match item.name {
+                "property" => {
+                    property = item.valueString ?: DISPLAY;
+                }
+                "system" => {
+                    system = item.valueUri ?: item.valueString;
+                }
+                "filter" => {
+                    filter = item.valueString ?: ();
+                }
+                "_count" => {
+                    count = item.valueInteger is int ? <int>item.valueInteger : terminology:TERMINOLOGY_SEARCH_DEFAULT_COUNT;
+                }
+                "_offset" => {
+                    offset = item.valueInteger is int ? <int>item.valueInteger : 0;
                 }
             }
-        } else {
-            return r4:createFHIRError(
-                    "Invalid request payload",
-                    r4:ERROR,
-                    r4:INVALID_REQUIRED,
-                    cause = parameters is error ? parameters : (),
-                    httpStatusCode = http:STATUS_BAD_REQUEST);
         }
-    } else {
-        return r4:createFHIRError(
-                "Empty request payload",
-                r4:ERROR,
-                r4:INVALID_REQUIRED,
-                httpStatusCode = http:STATUS_BAD_REQUEST);
     }
 
     if filter is () {

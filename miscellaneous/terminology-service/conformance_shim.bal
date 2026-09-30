@@ -67,3 +67,62 @@ isolated function lenientOperationPreProcessor(r4:FHIROperationDefinition defini
     return operationSearchParams;
 }
 
+# Pre-processor for the custom `$find-code` and `$closure` base (system-level) operations.
+#
+# Bypasses the framework's per-parameter allowlist the same way `lenientOperationPreProcessor`
+# does (needed for `$find-code`'s GET query parameters: `property`/`system`/`filter`/`_count`/`_offset`),
+# but keeps the exact "Empty request payload" / "Invalid request payload" error text the two
+# operations' POST forms already commit to (asserted by existing tests), instead of the generic
+# message the framework's own validation would produce.
+#
+# + definition - The FHIR OperationDefinition for the operation being invoked
+# + resourceType - The resource type the operation is invoked on
+# + requestQueryParams - The raw GET query parameters, or `()` when the request is a POST
+# + payload - The raw POST body, or `()` when the request is a GET or the POST body is empty
+# + return - The resolved search parameters or resource entity to hand to the operation, an `r4:FHIRError` if a POST payload is missing/invalid, or `()`
+isolated function findCodeAndClosurePreProcessor(r4:FHIROperationDefinition definition, string resourceType,
+        map<string[]?>? requestQueryParams, json|xml? payload)
+        returns map<r4:RequestSearchParameter[]>|r4:FHIRResourceEntity|r4:FHIRError? {
+
+    if requestQueryParams is map<string[]?> {
+        // GET invocation: pass every query parameter straight through so the
+        // operation handler can validate the ones it cares about itself.
+        map<r4:RequestSearchParameter[]> operationSearchParams = {};
+        foreach var [name, values] in requestQueryParams.entries() {
+            if values is () {
+                continue;
+            }
+            r4:RequestSearchParameter[] searchParams = [];
+            foreach string value in values {
+                searchParams.push({
+                    name: name,
+                    value: value,
+                    'type: r4:STRING,
+                    typedValue: {modifier: ()}
+                });
+            }
+            operationSearchParams[name] = searchParams;
+        }
+        return operationSearchParams;
+    }
+
+    // POST invocation.
+    if payload is () {
+        return r4:createFHIRError("Empty request payload", r4:ERROR, r4:INVALID_REQUIRED,
+                httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    if payload is xml {
+        return r4:createFHIRError("Invalid request payload", r4:ERROR, r4:INVALID_REQUIRED,
+                httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    r4:Parameters|error typedParams = payload.cloneWithType(r4:Parameters);
+    if typedParams is error {
+        return r4:createFHIRError("Invalid request payload", r4:ERROR, r4:INVALID_REQUIRED,
+                cause = typedParams, httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+
+    return new r4:FHIRResourceEntity(typedParams);
+}
+
