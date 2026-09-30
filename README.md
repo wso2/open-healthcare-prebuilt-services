@@ -33,6 +33,11 @@ These services can be used to integrate with an Epic instance and expose Epic FH
 - [Epic FHIR R4 Medications Service](ehr-connectivity/epic-fhirr4-medications-api-service/)
 - [Epic FHIR R4 Workflow Service](ehr-connectivity/epic-fhirr4-workflow-api-service/)
 
+### Terminology
+
+#### [FHIR Terminology Service](terminology/terminology-service/)
+A FHIR R4 Terminology Service in Ballerina, providing RESTful APIs for managing and querying FHIR ValueSets and CodeSystems. It is designed to be compatible with HL7 FHIR R4 standards and supports key terminology operations such as expansion, validation, lookup, and subsumption. It supports LOINC, SNOMED CT, and ICD-10-CM terminologies. Refer to the [README.md](terminology/terminology-service/README.md) for more details on the terminology service.
+
 ### Miscellaneous
 
 #### [FHIR R4 Server](miscellaneous/fhir-server/)
@@ -54,5 +59,3 @@ Record audit events upon calling FHIR APIs using this service.
 #### [FHIR Path Service](miscellaneous/fhirpath-service/)
 Evaluate FHIR path expressions against a FHIR payload using this service.
 
-#### [FHIR Terminology Service](miscellaneous/terminology-service/)
-This project implements a FHIR R4 Terminology Service in Ballerina, providing RESTful APIs for managing and querying FHIR ValueSets and CodeSystems. It is designed to be compatible with HL7 FHIR R4 standards and supports key terminology operations such as expansion, validation, lookup, and subsumption. Refer to the [README.md](miscellaneous/terminology-service/README.md) for more details on the terminology service.
