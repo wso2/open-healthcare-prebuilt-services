@@ -8,7 +8,7 @@ Before running the suite, make sure you have:
 
 - A working installation of **Ballerina**.
 - **Java** installed and available on your `PATH`.
-- The `miscellaneous/terminology-service` configured with either **H2** or **PostgreSQL**.
+- The `terminology/terminology-service` configured with either **H2** or **PostgreSQL**.
 - The HL7 Terminology Ecosystem test package installed locally.
 
 ---
@@ -35,7 +35,7 @@ The conformance suite requires a running instance of the terminology service.
 The service is located at:
 
 ```text
-miscellaneous/terminology-service
+terminology/terminology-service
 ````
 
 Configure `Config.toml` to use either **H2** or **PostgreSQL**. See the main [README](../README.md#supported-db-types-and-configurations) for database configuration details.
@@ -45,7 +45,7 @@ Configure `Config.toml` to use either **H2** or **PostgreSQL**. See the main [RE
 Start the service:
 
 ```sh
-cd miscellaneous/terminology-service
+cd terminology/terminology-service
 bal run
 ```
 
@@ -108,11 +108,7 @@ done
 Run the validator from the directory containing `validator_cli.jar`:
 
 ```sh
-java -jar validator_cli.jar txTests \
-  -tx=http://localhost:9090/fhir/r4 \
-  -test-version=1.9.3 \
-  -suite=simple-cases \
-  -output=./results
+java -jar validator_cli.jar txTests -tx=http://localhost:9090/fhir/r4 -test-version=1.9.3 -suite=simple-cases -output=./results
 ```
 
 ### Command options
