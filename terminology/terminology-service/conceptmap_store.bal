@@ -172,50 +172,55 @@ isolated function storedConceptMapExists(r4:uri url, string conceptMapVersion) r
     return rows is error ? false : rows.length() > 0;
 }
 
-# Searches stored ConceptMaps by the common search parameters (_id, url, name, status), backing `TerminologySource.searchConceptMap`. Returns every stored ConceptMap when none of the parameters are given.
+# Searches stored ConceptMaps, backing `TerminologySource.searchConceptMap`. Filters are ANDed; see
+# `CONCEPTMAP_SEARCH_COLUMNS`. `publisher` has no column, so it is matched after decoding, and the page
+# is then cut in memory. Returns every stored ConceptMap when no filters are given.
 #
 # + params - The request search parameters, keyed by parameter name
-# + offset - The number of matching rows to skip, or `()` for no offset
-# + count - The maximum number of rows to return, or `()` for no limit
+# + offset - The number of matches to skip, or `()` for no offset
+# + count - The maximum number of matches to return, or `()` for no limit
 # + return - The matching ConceptMaps, or an `r4:FHIRError` if the query fails
 isolated function searchStoredConceptMaps(map<r4:RequestSearchParameter[]> params, int? offset, int? count) returns r4:ConceptMap[]|r4:FHIRError {
-    sql:ParameterizedQuery[] conditions = [];
-
-    r4:RequestSearchParameter[]? idParam = params["_id"];
-    if idParam is r4:RequestSearchParameter[] && idParam.length() > 0 {
-        conditions.push(sql:queryConcat(escapeToQuery("id"), ` = ${idParam[0].value}`));
+    boolean filterInMemory = params.hasKey("publisher");
+    int? sqlCount = filterInMemory ? () : count;
+    sql:ParameterizedQuery query = sql:queryConcat(`SELECT * FROM `, escapeToQuery("conceptmaps"), ` WHERE `,
+            buildSearchClause(params, CONCEPTMAP_SEARCH_COLUMNS, sqlCount is () ? () : (offset ?: 0), sqlCount));
+    r4:ConceptMap[] matches = check queryStoredConceptMaps(query);
+    if !filterInMemory {
+        return matches;
     }
-    r4:RequestSearchParameter[]? urlParam = params["url"];
-    if urlParam is r4:RequestSearchParameter[] && urlParam.length() > 0 {
-        conditions.push(sql:queryConcat(escapeToQuery("url"), ` = ${urlParam[0].value}`));
-    }
-    r4:RequestSearchParameter[]? nameParam = params["name"];
-    if nameParam is r4:RequestSearchParameter[] && nameParam.length() > 0 {
-        conditions.push(sql:queryConcat(escapeToQuery("name"), ` = ${nameParam[0].value}`));
-    }
-    r4:RequestSearchParameter[]? statusParam = params["status"];
-    if statusParam is r4:RequestSearchParameter[] && statusParam.length() > 0 {
-        conditions.push(sql:queryConcat(escapeToQuery("status"), ` = ${statusParam[0].value}`));
-    }
-
-    sql:ParameterizedQuery query = sql:queryConcat(`SELECT * FROM `, escapeToQuery("conceptmaps"));
-    if conditions.length() > 0 {
-        sql:ParameterizedQuery[] whereFragments = [` WHERE `];
-        boolean first = true;
-        foreach var cond in conditions {
-            if !first {
-                whereFragments.push(` AND `);
-            }
-            whereFragments.push(cond);
-            first = false;
+    r4:ConceptMap[] filtered = [];
+    foreach r4:ConceptMap cm in matches {
+        if matchesStringParams(params, "publisher", cm.publisher) {
+            filtered.push(cm);
         }
-        query = sql:queryConcat(query, sql:queryConcat(...whereFragments));
     }
     if count is int {
-        query = sql:queryConcat(query, getLimitClause(count, offset ?: 0));
+        [int, int] [pageStart, pageEnd] = pageBounds(filtered.length(), offset ?: 0, count);
+        return filtered.slice(pageStart, pageEnd);
     }
+    return filtered;
+}
 
-    return queryStoredConceptMaps(query);
+# Returns one page of the ConceptMaps matching the given filters, with the total number of matches.
+#
+# + filters - The filter parameters (ANDed), keyed by parameter name
+# + offset - The number of matches to skip
+# + count - The maximum number of matches to return
+# + return - `[page, total matches]`, or an `r4:FHIRError` if the query fails
+isolated function searchStoredConceptMapPage(map<r4:RequestSearchParameter[]> filters, int offset, int count)
+        returns [r4:ConceptMap[], int]|r4:FHIRError {
+    if filters.hasKey("publisher") {
+        // Filtered in memory, so every match is loaded anyway: the total is free.
+        r4:ConceptMap[] matches = check searchStoredConceptMaps(filters, (), ());
+        [int, int] [pageStart, pageEnd] = pageBounds(matches.length(), offset, count);
+        return [matches.slice(pageStart, pageEnd), matches.length()];
+    }
+    int total = check countSearchMatches("conceptmaps", filters, CONCEPTMAP_SEARCH_COLUMNS);
+    if count == 0 || offset >= total {
+        return [[], total];
+    }
+    return [check searchStoredConceptMaps(filters, offset, count), total];
 }
 
 # Runs a query against the conceptmaps table and decodes each row's stored blob back into a ConceptMap. Shared by all the lookup/search functions above. A row that fails to decode is silently skipped rather than failing the whole call.

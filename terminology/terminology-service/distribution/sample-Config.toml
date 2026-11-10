@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# FHIR Terminology Service Configuration
+# ------------------------------------------------------------
+# Paths are relative to the directory server.sh / server.bat is in.
+
+[ballerina.http]
+# Port the service listens on.
+defaultListenerPort = 9090
+
+[wso2.terminology_service]
+# Database type: "h2" (embedded, default for this distribution) or "postgresql".
+db_type = "h2"
+
+# Page size for ValueSet, CodeSystem and ConceptMap search: the default when a request has no
+# _count, and the largest _count honoured. Select pages with ?page=N (1-based). Max 300.
+# search_page_size = 100
+
+# Load the FHIR R4 and HL7 Terminology CodeSystems bundled with the service into the database on
+# startup (about 500; only the first start against an empty database does real work).
+# load_default_code_systems = true
+
+# H2 (embedded). The release ships an empty, pre-initialized database at
+# ./database/terminology.mv.db. To recreate it, delete that file and run:
+#   java -cp terminology_service.jar org.h2.tools.RunScript \
+#     -url "jdbc:h2:./database/terminology" -user sa -script dbscripts/h2.sql
+[wso2.terminology_service.store_h2]
+url = "jdbc:h2:./database/terminology"
+user = "sa"
+password = ""
+
+# PostgreSQL. Set db_type = "postgresql" above, create the database, then
+# initialize the schema with:  psql -d <database> -f dbscripts/postgresql.sql
+# WARNING: the schema scripts DROP existing tables before creating them.
+#[wso2.terminology_service.store_pg]
+#host = "localhost"
+#port = 5432
+#database = "terminology"
+#user = "postgres"
+#password = ""
+
+[[ballerina.log.destinations]]
+type = "stderr"
+
+[[ballerina.log.destinations]]
+path = "./logs/server.log"
+[ballerina.log.destinations.rotation]
+policy = "TIME_BASED"
+maxAge = 86400

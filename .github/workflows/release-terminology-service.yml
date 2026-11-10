@@ -1,0 +1,151 @@
+name: Terminology Service Release
+
+# Builds, tests and packages the FHIR terminology service as a runnable zip.
+#
+# - Push a tag `terminology-service-v<version>` (matching Ballerina.toml) to publish
+#   a GitHub Release with the zip and its SHA-256 checksum attached.
+# - Run manually (workflow_dispatch) to produce the zip as a workflow artifact only.
+
+on:
+  push:
+    tags:
+      - "terminology-service-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional version override for the zip name (defaults to Ballerina.toml version)"
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      version:
+        description: "Optional version override for the zip name (defaults to Ballerina.toml version)"
+        required: false
+        type: string
+
+env:
+  BALLERINA_VERSION: 2201.12.10
+  WORKING_DIR: terminology/terminology-service
+
+permissions:
+  contents: write
+
+jobs:
+  build-test-package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Ballerina
+        uses: ballerina-platform/setup-ballerina@v1.1.0
+        with:
+          version: ${{ env.BALLERINA_VERSION }}
+
+      - name: Resolve release version
+        id: version
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          TOML_VERSION=$(grep -m 1 '^version =' Ballerina.toml | cut -d '=' -f2 | tr -d ' "')
+          if [[ "${GITHUB_REF}" == refs/tags/terminology-service-v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/terminology-service-v}"
+            if [[ "${VERSION}" != "${TOML_VERSION}" ]]; then
+              echo "::error::Tag version '${VERSION}' does not match Ballerina.toml version '${TOML_VERSION}'."
+              exit 1
+            fi
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${TOML_VERSION}"
+          fi
+          echo "Release version: ${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        working-directory: ${{ env.WORKING_DIR }}
+        run: bal build
+
+      - name: Test
+        working-directory: ${{ env.WORKING_DIR }}
+        run: bal test
+
+      - name: Package release zip
+        id: package
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          OUT_DIR="${GITHUB_WORKSPACE}/release-out"
+          "${WORKING_DIR}/distribution/package.sh" "${VERSION}" "${OUT_DIR}"
+
+          ZIP_NAME="terminology-service-${VERSION}.zip"
+          (cd "${OUT_DIR}" && sha256sum "${ZIP_NAME}" > "${ZIP_NAME}.sha256")
+
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "zip_path=${OUT_DIR}/${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test packaged server
+        run: |
+          STAGE="$(mktemp -d)"
+          unzip -q "${{ steps.package.outputs.zip_path }}" -d "${STAGE}"
+          DIST_DIR="${STAGE}/terminology-service-${{ steps.version.outputs.version }}"
+
+          "${DIST_DIR}/server.sh" > "${STAGE}/server.out" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill ${SERVER_PID} 2>/dev/null || true' EXIT
+
+          # The first start also loads the bundled FHIR CodeSystems into the empty database.
+          for i in $(seq 1 180); do
+            if curl -sf -o /dev/null http://localhost:9090/fhir/r4/metadata; then
+              echo "Server is up after ${i}s"
+              break
+            fi
+            if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
+              echo "::error::Server exited during startup"; cat "${STAGE}/server.out"; exit 1
+            fi
+            sleep 1
+          done
+
+          B=http://localhost:9090/fhir/r4
+          curl -sf -o /dev/null "${B}/metadata" || { echo "::error::Server did not start"; cat "${STAGE}/server.out"; exit 1; }
+
+          SEEDED=$(curl -sf "${B}/CodeSystem?_count=0" | jq '.total')
+          [[ "${SEEDED}" -ge 500 ]] || { echo "::error::Expected the bundled FHIR CodeSystems to be loaded (total=${SEEDED})"; cat "${STAGE}/server.out"; exit 1; }
+
+          UPLOAD_STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "${B}/%24upload" \
+            -H "Content-Type: application/zip" -H "x-terminology-type: FHIR" \
+            --data-binary @"${WORKING_DIR}/tests/resources/zip/test.zip")
+          [[ "${UPLOAD_STATUS}" == "201" ]] || { echo "::error::Upload returned ${UPLOAD_STATUS}"; cat "${STAGE}/server.out"; exit 1; }
+
+          TOTAL=$(curl -sf "${B}/CodeSystem?url=http://terminology.hl7.org/CodeSystem/art" | jq '.total')
+          [[ "${TOTAL}" == "1" ]] || { echo "::error::Uploaded CodeSystem not found (total=${TOTAL})"; cat "${STAGE}/server.out"; exit 1; }
+
+          RESULT=$(curl -sf "${B}/CodeSystem/\$validate-code?url=http://hl7.org/fhir/account-status&code=active" \
+            | jq '.parameter[] | select(.name == "result") | .valueBoolean')
+          [[ "${RESULT}" == "true" ]] || { echo "::error::\$validate-code returned ${RESULT}"; cat "${STAGE}/server.out"; exit 1; }
+
+          echo "Smoke test passed"
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip_name }}
+          path: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.package.outputs.zip_path }}.sha256
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/terminology-service-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Terminology Service v${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.package.outputs.zip_path }}.sha256

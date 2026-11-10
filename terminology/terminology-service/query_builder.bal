@@ -14,6 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 import ballerina/sql;
+import ballerinax/health.fhir.r4;
 import ballerinax/persist.sql as psql;
 
 type SQLSyntax record {|
@@ -148,4 +149,108 @@ isolated function getLimitClause(int count, int offset) returns sql:Parameterize
     } else {
         return `LIMIT ${count} OFFSET ${offset}`;
     }
+}
+
+# Search parameter name -> column, for the `codesystems` table. `description` has no column; see `matchesDescriptionParams`.
+final readonly & map<string> CODESYSTEM_SEARCH_COLUMNS = {
+    "_id": "id",
+    "name": "name",
+    "title": "title",
+    "url": "url",
+    "system": "url",
+    "version": "version",
+    "status": "status",
+    "publisher": "publisher"
+};
+
+# Search parameter name -> column, for the `valuesets` table. `description` has no column; see `matchesDescriptionParams`.
+final readonly & map<string> VALUESET_SEARCH_COLUMNS = {
+    "_id": "id",
+    "name": "name",
+    "title": "title",
+    "url": "url",
+    "version": "version",
+    "status": "status",
+    "publisher": "publisher"
+};
+
+# Search parameter name -> column, for the `conceptmaps` table. `publisher` has no column; see `matchesStringParams`.
+final readonly & map<string> CONCEPTMAP_SEARCH_COLUMNS = {
+    "_id": "id",
+    "id": "id",
+    "name": "name",
+    "title": "title",
+    "url": "url",
+    "version": "version",
+    "status": "status"
+};
+
+# Filter parameters each search supports: the column-backed ones plus those matched in memory.
+final string[] & readonly CODESYSTEM_SEARCH_FILTERS = [...CODESYSTEM_SEARCH_COLUMNS.keys(), "description"].cloneReadOnly();
+final string[] & readonly VALUESET_SEARCH_FILTERS = [...VALUESET_SEARCH_COLUMNS.keys(), "description"].cloneReadOnly();
+final string[] & readonly CONCEPTMAP_SEARCH_FILTERS = [...CONCEPTMAP_SEARCH_COLUMNS.keys(), "publisher"].cloneReadOnly();
+
+# Builds the clause handed to a persist `get` for a CodeSystem/ValueSet search. Persist prepends
+# `WHERE`, so the clause always starts with a predicate, even when there are no filters. Every
+# column-backed parameter (and every repeat of one) is ANDed in, per FHIR search semantics.
+# Parameters without a column (`description`) are skipped here and must be applied by the caller.
+#
+# + params - The search parameters, keyed by parameter name
+# + columns - Search parameter name -> column for the target table
+# + offset - The number of records to skip; applied only when `count` is also given
+# + count - The maximum number of records to return; applied only when `offset` is also given
+# + return - The clause, with a trailing `LIMIT`/`OFFSET` when paginated
+isolated function buildSearchClause(map<r4:RequestSearchParameter[]> params, readonly & map<string> columns,
+        int? offset, int? count) returns sql:ParameterizedQuery {
+    sql:ParameterizedQuery clause = `1 = 1`;
+    foreach var [paramName, paramList] in params.entries() {
+        string? column = columns[paramName];
+        if column is () {
+            continue;
+        }
+        foreach r4:RequestSearchParameter param in paramList {
+            clause = sql:queryConcat(clause, ` AND `, escapeToQuery(column), ` = ${param.value}`);
+        }
+    }
+    if offset is int && count is int {
+        clause = sql:queryConcat(clause, ` `, getLimitClause(count, offset));
+    }
+    return clause;
+}
+
+# Applies the search parameters named `paramName` with FHIR string semantics: case-insensitive, matching
+# the start of the value. Used for parameters that have no column (see the `*_SEARCH_COLUMNS` maps). Every
+# such parameter must match.
+#
+# + params - The search parameters, keyed by parameter name
+# + paramName - The parameter to apply, e.g. `description`
+# + value - The resource's value for it, if any
+# + return - `true` if there are no `paramName` parameters or all of them match
+isolated function matchesStringParams(map<r4:RequestSearchParameter[]> params, string paramName, string? value) returns boolean {
+    r4:RequestSearchParameter[]? stringParams = params[paramName];
+    if stringParams is () {
+        return true;
+    }
+    if value is () {
+        return false;
+    }
+    string normalized = value.toLowerAscii();
+    foreach r4:RequestSearchParameter param in stringParams {
+        if !normalized.startsWith(param.value.toLowerAscii()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+# Returns the `[start, end)` slice bounds of one page of a result list.
+#
+# + length - The length of the full, already-filtered result list
+# + offset - The number of items to skip
+# + count - The maximum number of items to return
+# + return - Bounds safe to pass to `slice` (an empty range if `offset` is past the end)
+isolated function pageBounds(int length, int offset, int count) returns [int, int] {
+    int 'start = offset < 0 ? 0 : (offset > length ? length : offset);
+    int end = count <= 0 ? 'start : ('start + count > length ? length : 'start + count);
+    return ['start, end];
 }

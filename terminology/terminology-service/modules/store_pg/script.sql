@@ -58,8 +58,8 @@ CREATE TABLE "valueset_compose_includes" (
 CREATE TABLE "concepts" (
 	"conceptId"  SERIAL,
 	"code" VARCHAR(191) NOT NULL,
-	"display" VARCHAR(191),
-	"definition" VARCHAR(191),
+	"display" TEXT,
+	"definition" TEXT,
 	"concept" BYTEA NOT NULL,
 	"parentConceptId" INT,
 	"codesystemCodeSystemId" INT NOT NULL,

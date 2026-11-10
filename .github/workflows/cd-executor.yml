@@ -10,12 +10,17 @@ on:
         options:
           - package
           - fhir-server
+          - terminology-service
       working_dir:
         description: "Working directory (required when release_target=package)"
         type: string
         required: false
       fhir_version:
         description: "Optional fhir-server release version override"
+        type: string
+        required: false
+      terminology_version:
+        description: "Optional terminology-service release version override"
         type: string
         required: false
   workflow_call:
@@ -33,13 +38,17 @@ on:
         description: "Optional fhir-server release version override"
         type: string
         required: false
+      terminology_version:
+        description: "Optional terminology-service release version override"
+        type: string
+        required: false
 
 env:
   BALLERINA_VERSION: 2201.12.10
 
 jobs:
   release:
-    if: ${{ inputs.release_target != 'fhir-server' }}
+    if: ${{ inputs.release_target != 'fhir-server' && inputs.release_target != 'terminology-service' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -162,3 +171,10 @@ jobs:
     secrets: inherit
     with:
       version: ${{ inputs.fhir_version }}
+
+  release-terminology-service:
+    if: ${{ inputs.release_target == 'terminology-service' }}
+    uses: ./.github/workflows/release-terminology-service.yml
+    secrets: inherit
+    with:
+      version: ${{ inputs.terminology_version }}

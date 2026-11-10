@@ -109,6 +109,7 @@ final r4:ResourceAPIConfig valueSetApiConfig = {
         "http://hl7.org/fhir/StructureDefinition/ValueSet"
     ],
     defaultProfile: (),
+    paginationConfig: {enabled: true, pageSize: search_page_size},
     searchParameters: [
         {
             name: "_id",
@@ -502,6 +503,7 @@ final r4:ResourceAPIConfig codeSystemApiConfig = {
         "http://hl7.org/fhir/StructureDefinition/CodeSystem"
     ],
     defaultProfile: (),
+    paginationConfig: {enabled: true, pageSize: search_page_size},
     searchParameters: [
         {
             name: "_id",
@@ -897,6 +899,7 @@ final r4:ResourceAPIConfig conceptMapApiConfig = {
         "http://hl7.org/fhir/StructureDefinition/ConceptMap"
     ],
     defaultProfile: (),
+    paginationConfig: {enabled: true, pageSize: search_page_size},
     searchParameters: [
         {
             name: "_id",

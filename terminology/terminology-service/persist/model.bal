@@ -37,6 +37,8 @@ public type Concept record {|
     @sql:Generated
     readonly int conceptId;
     string code;
+    // Unbounded in the schema scripts (H2 VARCHAR, PostgreSQL TEXT): concept displays and definitions
+    // routinely exceed persist's default VARCHAR(191). Keep that when regenerating the scripts.
     string? display;
     string? definition;
     byte[] concept;

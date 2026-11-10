@@ -72,6 +72,30 @@ The service exposes the following main endpoints under `/fhir/r4`:
 
 \* `$upload` must currently be called with the `$` percent-encoded (`%24upload`) - a bug in the pinned Ballerina http module (2.14.13) 404s on a raw `$` in the path for this endpoint. This will go away once the Ballerina distribution is upgraded past that bug.
 
+## Search Pagination
+
+`GET /ValueSet`, `GET /CodeSystem` and `GET /ConceptMap` are paginated with `_count` (page size) and `page` (1-based page number):
+
+```sh
+curl "http://localhost:9090/fhir/r4/CodeSystem?status=active&_count=20&page=2"
+```
+
+Search filters are combined with AND. `Bundle.total` is the number of matches across all pages, and `_count=0` returns only the total. The Bundle carries `self`, `next` and `prev` links, which keep the request's filters; `next` is omitted on the last page. Without `_count`, the page size is `search_page_size` (default 100), which is also the largest `_count` honoured:
+
+```toml
+[wso2.terminology_service]
+search_page_size = 100
+```
+
+## Built-in FHIR CodeSystems
+
+On startup the service loads the CodeSystems bundled with the FHIR terminology library into the database: the FHIR R4 CodeSystems (`http://hl7.org/fhir/...`) and the HL7 Terminology (THO) CodeSystems (`http://terminology.hl7.org/CodeSystem/...`), about 500 in all. CodeSystems already stored with the same url and version are left untouched, so this only does work on the first start against an empty database (about 15 seconds) and adds about a second to later starts. To turn it off:
+
+```toml
+[wso2.terminology_service]
+load_default_code_systems = false
+```
+
 ## Uploading Terminology Content
 
 `POST /%24upload` (see footnote above) accepts a zip archive. Two things are required on the request:
@@ -127,6 +151,19 @@ bal run service.bal
 
 The service will start on port `9090` by default.
 
+## Releases
+
+Each release ships `terminology-service-<version>.zip`, attached to its GitHub Release. The zip contains the jar, `server.sh`/`server.bat`, a ready-to-run `Config.toml`, an empty H2 database with the schema already created, and the H2/PostgreSQL schema scripts. Unzip it and run `./server.sh` (needs Java 21+).
+
+To cut a release:
+
+1. Set `version` in `Ballerina.toml` (and the matching `wso2/terminology_service` entry in `Dependencies.toml`), then merge.
+2. Push a tag `terminology-service-v<version>`, e.g. `terminology-service-v1.0.0`. The tag must match `Ballerina.toml`.
+
+The [release workflow](../../.github/workflows/release-terminology-service.yml) builds the zip, tests it, starts the packaged server for a smoke test, and publishes the release. Running the workflow manually builds the zip as a workflow artifact without publishing a release.
+
+To build the zip locally: `bal build && distribution/package.sh <version>` (output goes to `target/release/`).
+
 ## Project Structure
 
 - `service.bal` — Main service implementation.
@@ -135,6 +172,16 @@ The service will start on port `9090` by default.
 - `tests/` — Test cases and sample resources.
 
 ## Supported DB Types and Configurations
+
+> **Upgrading a database created before 1.0.0:** concept `display` and `definition` used to be limited to 191 characters, so concepts with longer text were dropped on load. Widen the columns, then re-upload any affected CodeSystems:
+>
+> ```sql
+> -- PostgreSQL
+> ALTER TABLE "concepts" ALTER COLUMN "display" TYPE TEXT, ALTER COLUMN "definition" TYPE TEXT;
+> -- H2
+> ALTER TABLE "concepts" ALTER COLUMN "display" SET DATA TYPE VARCHAR;
+> ALTER TABLE "concepts" ALTER COLUMN "definition" SET DATA TYPE VARCHAR;
+> ```
 
 The following DB types are supported. 
 

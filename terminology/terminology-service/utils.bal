@@ -17,7 +17,6 @@ import ballerina/file;
 import ballerina/io;
 import ballerina/jballerina.java;
 import ballerina/lang.runtime;
-import ballerina/regex;
 import ballerina/time;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.parser;
@@ -340,8 +339,7 @@ isolated function readFilesForUpload(string path) returns CodeSystemValueSetJson
     };
 
     foreach var item in readDir {
-        string[] nonEmptyParts = regex:split(item.absPath, "\\\\").filter(s => s != "");
-        string lastPart = nonEmptyParts[nonEmptyParts.length() - 1];
+        string lastPart = check file:basename(item.absPath);
 
         if lastPart.endsWith(".json") && lastPart.startsWith("CodeSystem-") {
             jsonArrays.codeSystems.push(check io:fileReadJson(item.absPath));
@@ -363,8 +361,7 @@ isolated function readFilesAsJsons(string path) returns json[]|error {
     json[] jsonList = [];
 
     foreach var item in readDir {
-        string[] nonEmptyParts = regex:split(item.absPath, "\\\\").filter(s => s != "");
-        string lastPart = nonEmptyParts[nonEmptyParts.length() - 1];
+        string lastPart = check file:basename(item.absPath);
 
         if lastPart.endsWith(".json") {
             jsonList.push(check io:fileReadJson(item.absPath));
@@ -383,11 +380,18 @@ isolated function readFileJsonAndReturnCodeSystem(string path) returns r4:CodeSy
     return check parser:parse(jsonString).ensureType();
 }
 
-# Module initializer that clears out any leftover temporary files directory from a previous run.
+# Module initializer: clears out any leftover temporary files directory from a previous run, validates
+# the search configuration, and loads the bundled FHIR CodeSystems (see `loadDefaultCodeSystems`).
 #
 # + return - An `error` if the cleanup fails, `()` otherwise
 function init() returns error? {
     check removeDirectory(TEMPORARY_FILES_DIRECTORY_NAME);
+    if search_page_size < 1 || search_page_size > 300 {
+        return error(string `search_page_size must be between 1 and 300, got ${search_page_size}`);
+    }
+    if load_default_code_systems {
+        loadDefaultCodeSystems();
+    }
 }
 
 # Builds a `ValueSetExpansion` containing the given concepts, stamped with the current time.

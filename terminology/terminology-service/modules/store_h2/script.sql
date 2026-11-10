@@ -47,8 +47,8 @@ CREATE TABLE "valuesets" (
 CREATE TABLE "concepts" (
 	"conceptId"  SERIAL,
 	"code" VARCHAR(191) NOT NULL,
-	"display" VARCHAR(191),
-	"definition" VARCHAR(191),
+	"display" VARCHAR,
+	"definition" VARCHAR,
 	"concept" BYTEA NOT NULL,
 	"parentConceptId" INT,
 	"codesystemCodeSystemId" INT NOT NULL,
