@@ -186,6 +186,7 @@ The version reported in the TerminologyCapabilities statement (`GET /metadata?mo
 >    - **PostgreSQL**: drop and recreate the database, then run `psql -d <database> -f dbscripts/postgresql.sql`
 > 3. Start the service. The built-in FHIR CodeSystems are loaded automatically.
 > 4. Re-load your own content: CodeSystems first (`POST /CodeSystem` or `$upload`), then the ValueSets and ConceptMaps that use them.
+> 5. Rebuild any `$closure` tables. Recreating the database deletes every named closure table, and the server cannot tell a client this happened: a call with an existing table name silently starts a new, empty table whose versions count from 1 again, and a resync with an earlier `version` returns no pairs. So before the rebuild, each client should keep the concepts it has submitted to each named table. After step 4, it should discard its previous closure results and versions for those tables, then submit the kept concepts again to rebuild them.
 >
 > If the database never had CodeSystems loaded through `POST /CodeSystem` or a FHIR or LOINC `$upload` (for example, it only holds SNOMED CT or ICD-10-CM imports), nothing was lost, and you can upgrade in place instead:
 >
