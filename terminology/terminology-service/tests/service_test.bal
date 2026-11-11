@@ -1148,12 +1148,10 @@ public function testAddValidCodeSystemJson() returns error? {
     // check the response status code is 201 or not
     test:assertEquals(response.statusCode, 201);
 
-    // addCodeSystem returns as soon as the CodeSystem row is inserted; concept
-    // and closure-row persistence happens in separate strands it doesn't wait
-    // on (see extractConceptsFromCodeSystem). Tests that depend on this one
-    // (subsumeCodeSystem8-12, closurePost1, ...) need that data to actually be
-    // queryable, not just "the POST returned" - so poll for one of the
-    // imported concepts (2133-7) before letting dependents proceed.
+    // addCodeSystem now waits for concept and closure-row persistence (see
+    // extractConceptsFromCodeSystem), so this poll should succeed at once. It
+    // is kept as a cheap guard for the tests that depend on this one
+    // (subsumeCodeSystem8-12, closurePost1, ...).
     check waitForConceptSystemJsonImportReady();
 }
 
@@ -2208,4 +2206,161 @@ public function testConceptWithLongDisplayAndDefinitionIsStored() returns error?
         }
     }
     test:assertEquals(display, longDisplay);
+}
+
+@test:Config {
+    groups: ["metadata", "successful_scenario"]
+}
+public function testTerminologyCapabilitiesReportConfiguredVersion() returns error? {
+    http:Response response = check baseClient->get("/metadata?mode=terminology");
+    test:assertEquals(response.statusCode, 200);
+    json capabilities = check response.getJsonPayload();
+    test:assertEquals(check capabilities.'version, "9.9.9-test");
+    string description = check (check capabilities.description).ensureType();
+    test:assertTrue(description.includes("wso2/terminology_service v9.9.9-test"), description);
+}
+
+@test:Config {
+    groups: ["codesystem", "add_codesystem", "failure_scenario"]
+}
+public function testCodeSystemWithUnstorableConceptIsNotKept() returns error? {
+    string url = "http://example.org/fhir/CodeSystem/partial-load-test";
+    // `code` is VARCHAR(191), so this concept cannot be stored.
+    string tooLongCode = string:'join("", ...from int i in 0 ..< 20 select "0123456789");
+    json codeSystem = {
+        resourceType: "CodeSystem",
+        id: "partial-load-test",
+        url: url,
+        'version: "1.0.0",
+        name: "PartialLoadTest",
+        status: "active",
+        content: "complete",
+        concept: [{code: "ok", display: "Stored"}, {code: tooLongCode, display: "Not storable"}]
+    };
+    http:Response failed = check csClient->post("", codeSystem, {"Content-Type": FHIR_JSON});
+    test:assertNotEquals(failed.statusCode, 201, "a CodeSystem whose concepts were not all stored must not be reported as created");
+
+    [int, int] [leftBehind, _] = check searchBundleCounts(csClient, string `?url=${url}`);
+    test:assertEquals(leftBehind, 0, "a partially stored CodeSystem must be removed");
+
+    // With nothing left behind, the same url and version can be loaded again.
+    json fixed = check codeSystem.cloneWithType();
+    map<json> fixedMap = check fixed.ensureType();
+    fixedMap["concept"] = [{code: "ok", display: "Stored"}];
+    http:Response retried = check csClient->post("", fixedMap, {"Content-Type": FHIR_JSON});
+    test:assertEquals(retried.statusCode, 201);
+    [int, int] [stored, _] = check searchBundleCounts(csClient, string `?url=${url}`);
+    test:assertEquals(stored, 1);
+}
+
+@test:Config {
+    groups: ["codesystem", "default_content"]
+}
+public function testLoadCodeSystemsClassifiesFailures() returns error? {
+    string tooLongCode = string:'join("", ...from int i in 0 ..< 20 select "0123456789");
+    json valid = {
+        resourceType: "CodeSystem", url: "http://example.org/fhir/CodeSystem/load-valid", 'version: "1",
+        name: "LoadValid", status: "active", content: "complete", concept: [{code: "a"}]
+    };
+    // No version: refused by the library's checks (4xx).
+    json invalid = {
+        resourceType: "CodeSystem", url: "http://example.org/fhir/CodeSystem/load-invalid",
+        name: "LoadInvalid", status: "active", content: "complete", concept: [{code: "a"}]
+    };
+    // A code longer than the column: a database write failure (5xx).
+    json unstorable = {
+        resourceType: "CodeSystem", url: "http://example.org/fhir/CodeSystem/load-unstorable", 'version: "1",
+        name: "LoadUnstorable", status: "active", content: "complete", concept: [{code: tooLongCode}]
+    };
+
+    CodeSystemLoadSummary first = loadCodeSystems([valid, invalid, unstorable]);
+    test:assertEquals(first.added, 1);
+    test:assertEquals(first.rejected, ["http://example.org/fhir/CodeSystem/load-invalid"]);
+    test:assertEquals(first.failed, ["http://example.org/fhir/CodeSystem/load-unstorable"]);
+
+    // The stored one is skipped; the one that failed to store was rolled back, so it is retried.
+    CodeSystemLoadSummary second = loadCodeSystems([valid, invalid, unstorable]);
+    test:assertEquals(second.present, 1);
+    test:assertEquals(second.added, 0);
+    test:assertEquals(second.failed, ["http://example.org/fhir/CodeSystem/load-unstorable"],
+            "a CodeSystem that failed to store must not be treated as already present");
+}
+
+@test:Config {
+    groups: ["search", "pagination"]
+}
+public function testSearchClauseOrdersByPrimaryKeyBeforePaging() returns error? {
+    map<r4:RequestSearchParameter[]> noFilters = {};
+    string paged = string:'join("?", ...buildSearchClause(noFilters, CODESYSTEM_SEARCH_COLUMNS, 20, 10, "codeSystemId").strings);
+    int? orderAt = paged.indexOf("ORDER BY \"codeSystemId\"");
+    int? limitAt = paged.indexOf("LIMIT");
+    test:assertTrue(orderAt is int && limitAt is int && orderAt < limitAt, string `ORDER BY must precede LIMIT: ${paged}`);
+
+    string count = string:'join("?", ...buildSearchClause(noFilters, CODESYSTEM_SEARCH_COLUMNS, (), (), ()).strings);
+    test:assertFalse(count.includes("ORDER BY"), string `count queries must stay unordered: ${count}`);
+}
+
+# Walks every page of a search, one request per page, and returns the resource ids in page order.
+#
+# + 'client - The resource-type client to search with
+# + filter - Extra query parameters, e.g. `description=x&`, or `""`
+# + total - The number of matches
+# + return - The ids across all pages, or an error if a request fails
+function idsAcrossPages(http:Client 'client, string filter, int total) returns string[]|error {
+    string[] ids = [];
+    foreach int page in 1 ... total {
+        [string[], map<string>] [pageIds, _] = check searchPage('client, string `?${filter}_count=1&page=${page}`);
+        ids.push(...pageIds);
+    }
+    return ids;
+}
+
+@test:Config {
+    groups: ["search", "pagination", "successful_scenario"]
+}
+public function testPagesFollowTheUnpagedOrder() returns error? {
+    // SQL-paginated path.
+    [string[], map<string>] [allValueSets, _] = check searchPage(vsClient, "?_count=100");
+    test:assertEquals(check idsAcrossPages(vsClient, "", allValueSets.length()), allValueSets);
+
+    // In-memory path (`description` has no column): pages are slices of one ordered fetch.
+    foreach int i in 1 ... 3 {
+        json codeSystem = {
+            resourceType: "CodeSystem", id: string `ordering-test-${i}`, url: string `http://example.org/fhir/CodeSystem/ordering-test-${i}`,
+            'version: "1", name: string `OrderingTest${i}`, status: "active", content: "complete",
+            description: "Ordering test CodeSystem", concept: [{code: "a"}]
+        };
+        http:Response created = check csClient->post("", codeSystem, {"Content-Type": FHIR_JSON});
+        test:assertEquals(created.statusCode, 201);
+    }
+    [string[], map<string>] [allMatches, _] = check searchPage(csClient, "?description=ordering%20test&_count=100");
+    test:assertEquals(allMatches.length(), 3);
+    test:assertEquals(check idsAcrossPages(csClient, "description=ordering%20test&", 3), allMatches);
+}
+
+@test:Config {
+    groups: ["search", "pagination", "failure_scenario"]
+}
+public function testHugePageIsRejectedNotFatal() returns error? {
+    int maxPage = int:MAX_VALUE / 10;
+
+    // page × _count past the 64-bit range: rejected as a bad request (it used to overflow and stop the service).
+    http:Response tooFar = check csClient->get(string `?page=${int:MAX_VALUE}&_count=10`);
+    test:assertEquals(tooFar.statusCode, 400);
+    http:Response justPast = check csClient->get(string `?page=${maxPage + 1}&_count=10`);
+    test:assertEquals(justPast.statusCode, 400);
+
+    // The largest representable page is accepted: an empty page with no next link.
+    [string[], map<string>] [ids, links] = check searchPage(csClient, string `?page=${maxPage}&_count=10`);
+    test:assertEquals(ids.length(), 0);
+    test:assertFalse(links.hasKey("next"));
+
+    // _count=0 involves no multiplication, so any page is fine.
+    [int, int] [total, entries] = check searchBundleCounts(csClient, string `?page=${int:MAX_VALUE}&_count=0`);
+    test:assertTrue(total > 0);
+    test:assertEquals(entries, 0);
+
+    // The service is still up.
+    http:Response after = check csClient->get("?_count=1");
+    test:assertEquals(after.statusCode, 200);
 }

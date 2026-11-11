@@ -22,8 +22,22 @@ import ballerinax/health.fhir.r4.terminology;
 # library into the database at startup. Ones already stored (same url and version) are left as they are.
 configurable boolean load_default_code_systems = true;
 
+# Outcome of loading a set of CodeSystems.
+type CodeSystemLoadSummary record {|
+    # Number of CodeSystems stored
+    int added = 0;
+    # Number already stored with the same url and version
+    int present = 0;
+    # Urls of entries that are invalid (unparseable, or refused by validation with a 4xx); never retried
+    string[] rejected = [];
+    # Urls of entries that could not be stored (5xx). The partial load is removed, so they are retried
+    # on the next startup.
+    string[] failed = [];
+|};
+
 # Stores every bundled FHIR CodeSystem that is not yet in the database. Idempotent, so it runs on every
-# startup and only does work the first time (or after a new library version adds CodeSystems).
+# startup and only does work the first time (or after a new library version adds CodeSystems, or after
+# an earlier start failed to store some).
 function loadDefaultCodeSystems() {
     json[] codeSystems = [];
     foreach string bundled in [terminology:DEFAULT_FHIR_CODE_SYSTEMS, terminology:EXTERNAL_FHIR_CODE_SYSTEMS] {
@@ -36,36 +50,53 @@ function loadDefaultCodeSystems() {
     }
 
     decimal started = time:monotonicNow();
-    int added = 0;
-    int present = 0;
-    string[] rejected = [];
+    CodeSystemLoadSummary summary = loadCodeSystems(codeSystems);
+    decimal seconds = time:monotonicNow() - started;
+
+    log:printInfo(string `Default FHIR CodeSystems: ${summary.added} loaded, ${summary.present} already present, ${
+        summary.rejected.length()} rejected as invalid, ${summary.failed.length()} failed to store (${seconds.round(1)}s)`);
+    if summary.rejected.length() > 0 {
+        log:printWarn(string `Bundled CodeSystems rejected as invalid: ${string:'join(", ", ...summary.rejected)}`);
+    }
+    if summary.failed.length() > 0 {
+        log:printError(string `Bundled CodeSystems that could not be stored, to be retried on the next startup: ${
+            string:'join(", ", ...summary.failed)}`);
+    }
+}
+
+# Stores each CodeSystem that is not yet in the database, classifying the ones that are not stored.
+#
+# + codeSystems - The CodeSystems to load, as FHIR JSON
+# + return - What was stored, skipped, rejected and failed
+function loadCodeSystems(json[] codeSystems) returns CodeSystemLoadSummary {
+    CodeSystemLoadSummary summary = {};
     foreach json item in codeSystems {
         // Check for an existing copy from the raw JSON first: converting all of them to records on every
         // startup, only to find they are already stored, would dominate startup time.
         json|error rawUrl = item.url;
         json|error rawVersion = item.'version;
         if rawUrl is string && rawVersion is string && terminology_source.isCodeSystemExist(rawUrl, rawVersion) {
-            present += 1;
+            summary.present += 1;
             continue;
         }
         r4:CodeSystem|error codeSystem = item.cloneWithType();
         if codeSystem is error {
-            rejected.push(rawUrl is string ? rawUrl : string `(unparseable: ${codeSystem.message()})`);
+            summary.rejected.push(rawUrl is string ? rawUrl : string `(unparseable: ${codeSystem.message()})`);
             continue;
         }
-        string? url = codeSystem.url;
+        string url = codeSystem.url ?: "(no url)";
         r4:FHIRError? result = terminology:addCodeSystem(codeSystem, terminology = terminology_source);
-        if result is r4:FHIRError {
-            rejected.push(url ?: "(no url)");
-            log:printDebug(string `Bundled CodeSystem ${url ?: "(no url)"} not loaded: ${result.message()}`);
+        if result is () {
+            summary.added += 1;
+        } else if result.detail().httpStatusCode < 500 {
+            // The library's own checks (missing url/version, validation, duplicate) report 4xx.
+            summary.rejected.push(url);
+            log:printDebug(string `Bundled CodeSystem ${url} rejected: ${result.message()}`);
         } else {
-            added += 1;
+            // The service's database writes report 5xx; addCodeSystem has already removed the partial load.
+            summary.failed.push(url);
+            log:printError(string `Bundled CodeSystem ${url} could not be stored: ${result.message()}`);
         }
     }
-
-    decimal seconds = time:monotonicNow() - started;
-    log:printInfo(string `Default FHIR CodeSystems: ${added} loaded, ${present} already present, ${rejected.length()} rejected (${seconds.round(1)}s)`);
-    if rejected.length() > 0 {
-        log:printWarn(string `Bundled CodeSystems rejected by validation: ${string:'join(", ", ...rejected)}`);
-    }
+    return summary;
 }

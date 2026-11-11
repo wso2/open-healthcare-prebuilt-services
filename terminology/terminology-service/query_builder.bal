@@ -190,18 +190,21 @@ final string[] & readonly CODESYSTEM_SEARCH_FILTERS = [...CODESYSTEM_SEARCH_COLU
 final string[] & readonly VALUESET_SEARCH_FILTERS = [...VALUESET_SEARCH_COLUMNS.keys(), "description"].cloneReadOnly();
 final string[] & readonly CONCEPTMAP_SEARCH_FILTERS = [...CONCEPTMAP_SEARCH_COLUMNS.keys(), "publisher"].cloneReadOnly();
 
-# Builds the clause handed to a persist `get` for a CodeSystem/ValueSet search. Persist prepends
-# `WHERE`, so the clause always starts with a predicate, even when there are no filters. Every
+# Builds the clause that follows `WHERE` in a CodeSystem/ValueSet/ConceptMap search (persist prepends
+# `WHERE` itself), so it always starts with a predicate, even when there are no filters. Every
 # column-backed parameter (and every repeat of one) is ANDed in, per FHIR search semantics.
-# Parameters without a column (`description`) are skipped here and must be applied by the caller.
+# Parameters without a column (`description`, `publisher`) are skipped here and must be applied by the caller.
 #
 # + params - The search parameters, keyed by parameter name
 # + columns - Search parameter name -> column for the target table
 # + offset - The number of records to skip; applied only when `count` is also given
 # + count - The maximum number of records to return; applied only when `offset` is also given
-# + return - The clause, with a trailing `LIMIT`/`OFFSET` when paginated
+# + orderByColumn - The table's primary-key column, for queries that return resources: without a
+# deterministic order, separate page requests (in SQL or sliced in memory) can repeat or skip rows.
+# `()` for queries whose row order does not matter, such as counts.
+# + return - The clause, with `ORDER BY` and, when paginated, a trailing `LIMIT`/`OFFSET`
 isolated function buildSearchClause(map<r4:RequestSearchParameter[]> params, readonly & map<string> columns,
-        int? offset, int? count) returns sql:ParameterizedQuery {
+        int? offset, int? count, string? orderByColumn) returns sql:ParameterizedQuery {
     sql:ParameterizedQuery clause = `1 = 1`;
     foreach var [paramName, paramList] in params.entries() {
         string? column = columns[paramName];
@@ -211,6 +214,9 @@ isolated function buildSearchClause(map<r4:RequestSearchParameter[]> params, rea
         foreach r4:RequestSearchParameter param in paramList {
             clause = sql:queryConcat(clause, ` AND `, escapeToQuery(column), ` = ${param.value}`);
         }
+    }
+    if orderByColumn is string {
+        clause = sql:queryConcat(clause, ` ORDER BY `, escapeToQuery(orderByColumn));
     }
     if offset is int && count is int {
         clause = sql:queryConcat(clause, ` `, getLimitClause(count, offset));

@@ -131,7 +131,7 @@ Expects a zip of the ICD-10-CM release files: the tabular XML (`icd10cm-tabular-
 
 **SNOMED CT and ICD-10-CM imports run in the background.** The request returns `201 Created` as soon as the archive is extracted, before the concepts are loaded. A full release takes several minutes; check the server logs for progress and for the completion summary.
 
-Re-uploading the same url and version replaces the previous load rather than duplicating it. If the import fails partway, the partial load is removed.
+For SNOMED CT and ICD-10-CM, re-uploading the same url and version replaces the previous load rather than duplicating it, and if the import fails partway, the partial load is removed. FHIR and LOINC uploads do not replace a CodeSystem that is already stored with the same url and version.
 
 Concept hierarchy is stored in the `concept_closure` table as a transitive is-a closure, which supports `$subsumes` and the `is-a` / `descendent-of` filters on `$expand`.
 
@@ -164,6 +164,8 @@ The [release workflow](../../.github/workflows/release-terminology-service.yml) 
 
 To build the zip locally: `bal build && distribution/package.sh <version>` (output goes to `target/release/`).
 
+The version reported in the TerminologyCapabilities statement (`GET /metadata?mode=terminology`) comes from the `service_version` config value. The packaging step sets it to the release version in the shipped `Config.toml`, so it never needs editing by hand; builds run any other way report `dev`.
+
 ## Project Structure
 
 - `service.bal` — Main service implementation.
@@ -173,12 +175,26 @@ To build the zip locally: `bal build && distribution/package.sh <version>` (outp
 
 ## Supported DB Types and Configurations
 
-> **Upgrading a database created before 1.0.0:** concept `display` and `definition` used to be limited to 191 characters, so concepts with longer text were dropped on load. Widen the columns, then re-upload any affected CodeSystems:
+> **Upgrading a database created before 1.0.0:** concept `display` and `definition` used to be limited to 191 characters, and concepts with longer text were silently dropped when a CodeSystem was loaded through `POST /CodeSystem` or a FHIR or LOINC `$upload`. Those CodeSystems, and any stored ValueSets that include them, are incomplete. They cannot be repaired in place: re-posting or re-uploading the same url and version is rejected or ignored, and stored ValueSets link to a CodeSystem's internal row ids, so deleting and re-adding it by hand would break them. (SNOMED CT and ICD-10-CM imports and the built-in CodeSystems are not affected; they never keep a partial load.)
+>
+> The supported upgrade is to recreate the database from the 1.0.0 schema and reload your content:
+>
+> 1. Stop the service and back up the database.
+> 2. Recreate the schema (this deletes all stored content):
+>    - **H2** (from the release directory): delete `database/terminology.mv.db`, then run
+>      `java -cp terminology_service.jar org.h2.tools.RunScript -url "jdbc:h2:./database/terminology" -user sa -script dbscripts/h2.sql`
+>    - **PostgreSQL**: drop and recreate the database, then run `psql -d <database> -f dbscripts/postgresql.sql`
+> 3. Start the service. The built-in FHIR CodeSystems are loaded automatically.
+> 4. Re-load your own content: CodeSystems first (`POST /CodeSystem` or `$upload`), then the ValueSets and ConceptMaps that use them.
+>
+> If the database never had CodeSystems loaded through `POST /CodeSystem` or a FHIR or LOINC `$upload` (for example, it only holds SNOMED CT or ICD-10-CM imports), nothing was lost, and you can upgrade in place instead:
 >
 > ```sql
 > -- PostgreSQL
+> DROP INDEX IF EXISTS "idx_concepts_display";
 > ALTER TABLE "concepts" ALTER COLUMN "display" TYPE TEXT, ALTER COLUMN "definition" TYPE TEXT;
 > -- H2
+> DROP INDEX IF EXISTS "idx_concepts_display";
 > ALTER TABLE "concepts" ALTER COLUMN "display" SET DATA TYPE VARCHAR;
 > ALTER TABLE "concepts" ALTER COLUMN "definition" SET DATA TYPE VARCHAR;
 > ```

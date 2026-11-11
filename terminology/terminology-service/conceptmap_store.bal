@@ -184,7 +184,8 @@ isolated function searchStoredConceptMaps(map<r4:RequestSearchParameter[]> param
     boolean filterInMemory = params.hasKey("publisher");
     int? sqlCount = filterInMemory ? () : count;
     sql:ParameterizedQuery query = sql:queryConcat(`SELECT * FROM `, escapeToQuery("conceptmaps"), ` WHERE `,
-            buildSearchClause(params, CONCEPTMAP_SEARCH_COLUMNS, sqlCount is () ? () : (offset ?: 0), sqlCount));
+            buildSearchClause(params, CONCEPTMAP_SEARCH_COLUMNS, sqlCount is () ? () : (offset ?: 0), sqlCount,
+                    "conceptMapId"));
     r4:ConceptMap[] matches = check queryStoredConceptMaps(query);
     if !filterInMemory {
         return matches;

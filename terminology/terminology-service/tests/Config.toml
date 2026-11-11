@@ -4,3 +4,4 @@ defaultListenerPort = 9089
 [wso2.terminology_service]
 # The suite seeds its own data and asserts on search totals.
 load_default_code_systems = false
+service_version = "9.9.9-test"

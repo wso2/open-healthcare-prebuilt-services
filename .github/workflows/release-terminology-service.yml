@@ -31,7 +31,39 @@ permissions:
   contents: write
 
 jobs:
+  postgresql-schema:
+    # The unit tests run on H2; this checks the PostgreSQL schema script on a real PostgreSQL.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: terminology
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Apply schema and run schema tests
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: terminology
+        run: |
+          psql -v ON_ERROR_STOP=1 -f "${WORKING_DIR}/modules/store_pg/script.sql"
+          psql -v ON_ERROR_STOP=1 -f "${WORKING_DIR}/tests/postgresql/schema_test.sql"
+
   build-test-package:
+    needs: postgresql-schema
     runs-on: ubuntu-latest
 
     steps:
@@ -113,6 +145,9 @@ jobs:
 
           B=http://localhost:9090/fhir/r4
           curl -sf -o /dev/null "${B}/metadata" || { echo "::error::Server did not start"; cat "${STAGE}/server.out"; exit 1; }
+
+          REPORTED=$(curl -sf "${B}/metadata?mode=terminology" | jq -r '.version')
+          [[ "${REPORTED}" == "${{ steps.version.outputs.version }}" ]] || { echo "::error::TerminologyCapabilities reports version '${REPORTED}'"; exit 1; }
 
           SEEDED=$(curl -sf "${B}/CodeSystem?_count=0" | jq '.total')
           [[ "${SEEDED}" -ge 500 ]] || { echo "::error::Expected the bundled FHIR CodeSystems to be loaded (total=${SEEDED})"; cat "${STAGE}/server.out"; exit 1; }

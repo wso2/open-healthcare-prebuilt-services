@@ -17,7 +17,16 @@ mkdir -p "${STAGE}/dbscripts" "${STAGE}/database" "${STAGE}/logs"
 
 cp "${JAR}" "${STAGE}/"
 cp "${SERVICE_DIR}/distribution/server.sh" "${SERVICE_DIR}/distribution/server.bat" "${STAGE}/"
-cp "${SERVICE_DIR}/distribution/sample-Config.toml" "${STAGE}/Config.toml"
+# Stamp the release version into the shipped config; the service reports it in TerminologyCapabilities.
+awk -v version="${VERSION}" '
+  { print }
+  $0 == "[wso2.terminology_service]" {
+    print "# Release version, set by the build. Reported in the TerminologyCapabilities statement."
+    print "service_version = \"" version "\""
+  }
+' "${SERVICE_DIR}/distribution/sample-Config.toml" > "${STAGE}/Config.toml"
+grep -q "^service_version = \"${VERSION}\"$" "${STAGE}/Config.toml" \
+  || { echo "Error: could not set service_version in Config.toml"; exit 1; }
 cp "${SERVICE_DIR}/distribution/README.md" "${STAGE}/README.md"
 cp "${SERVICE_DIR}/modules/store_h2/script.sql" "${STAGE}/dbscripts/h2.sql"
 cp "${SERVICE_DIR}/modules/store_pg/script.sql" "${STAGE}/dbscripts/postgresql.sql"

@@ -124,8 +124,22 @@ public isolated class TerminologySource {
                     cause = error("Error while adding CodeSystem"),
                     httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
         }
-        // extract the concepts from the codesystem and add them to the database
-        extractConceptsFromCodeSystem(codeSystem, response[0]);
+        // Extract the concepts from the codesystem and add them to the database. If any write fails,
+        // remove the partial load: a CodeSystem row without all its concepts would otherwise look
+        // complete to every url/version existence check (e.g. the startup loader would never retry it).
+        error? extracted = extractConceptsFromCodeSystem(codeSystem, response[0]);
+        if extracted is error {
+            error? cleanup = deleteSnomedCodeSystemCascade(response[0]);
+            if cleanup is error {
+                log:printError(string `Could not remove partially stored CodeSystem ${codeSystem.url ?: ""}`, 'error = cleanup);
+            }
+            return r4:createFHIRError(
+                    "Error while adding CodeSystem concepts, " + extracted.message(),
+                    r4:ERROR,
+                    r4:PROCESSING,
+                    cause = extracted,
+                    httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
+        }
     }
 
     # Persists a `ValueSet` resource and its concepts to the database.
@@ -315,7 +329,7 @@ public isolated class TerminologySource {
         // `description` has no column, so when it's present, paginate after filtering rather than in SQL.
         boolean filterInMemory = params.hasKey("description");
         sql:ParameterizedQuery whereClause = buildSearchClause(params, CODESYSTEM_SEARCH_COLUMNS,
-                filterInMemory ? () : offset, filterInMemory ? () : count);
+                filterInMemory ? () : offset, filterInMemory ? () : count, "codeSystemId");
 
         stream<store_h2:CodeSystem, persist:Error?> codeSystemStream = sClient->/codesystems(store_h2:CodeSystem, whereClause);
         store_h2:CodeSystem[]|error dbCodeSystems = streamToStoreCodeSystem(codeSystemStream);
@@ -359,7 +373,7 @@ public isolated class TerminologySource {
         // `description` has no column, so when it's present, paginate after filtering rather than in SQL.
         boolean filterInMemory = params.hasKey("description");
         sql:ParameterizedQuery whereClause = buildSearchClause(params, VALUESET_SEARCH_COLUMNS,
-                filterInMemory ? () : offset, filterInMemory ? () : count);
+                filterInMemory ? () : offset, filterInMemory ? () : count, "valueSetId");
         stream<store_h2:ValueSet, persist:Error?> valueSetStream = sClient->/valuesets(store_h2:ValueSet, whereClause);
 
         store_h2:ValueSet[]|error dbValueSets = streamToStoreValueSet(valueSetStream);
@@ -2971,20 +2985,29 @@ isolated function getConceptNode(string code, int codeSystemId) returns ConceptN
             httpStatusCode = http:STATUS_NOT_FOUND);
 }
 
-# Kicks off asynchronous extraction and persistence of a CodeSystem's top-level concepts.
+# Persists a CodeSystem's concepts, one worker per top-level concept, and waits for all of them.
 #
 # + codeSystem - CodeSystem whose concepts are to be extracted
 # + codeSystemId - Internal id of the already-persisted CodeSystem
-isolated function extractConceptsFromCodeSystem(r4:CodeSystem codeSystem, int codeSystemId) {
-    if codeSystem.concept !is () {
-        r4:CodeSystemConcept[]? concepts = codeSystem.concept;
-        // Flow will not go inside this if condition since the code system is already validated for concepts in a previous point
-        if concepts !is () {
-            foreach var concept in concepts {
-                _ = start extractConceptsFromCodeSystemRecursive(concept.clone(), codeSystemId);
-            }
+# + return - The first concept or closure write failure, if any; `()` once every concept is stored
+isolated function extractConceptsFromCodeSystem(r4:CodeSystem codeSystem, int codeSystemId) returns error? {
+    r4:CodeSystemConcept[]? concepts = codeSystem.concept;
+    if concepts is () {
+        return;
+    }
+    future<error?>[] pending = [];
+    foreach var concept in concepts {
+        future<error?> conceptWrite = start extractConceptsFromCodeSystemRecursive(concept.clone(), codeSystemId);
+        pending.push(conceptWrite);
+    }
+    error? firstFailure = ();
+    foreach future<error?> conceptWrite in pending {
+        error? result = wait conceptWrite;
+        if result is error && firstFailure is () {
+            firstFailure = result;
         }
     }
+    return firstFailure;
 }
 
 # Saves a CodeSystem concept and its descendants, and writes the corresponding `concept_closure` rows so is-a / descendent-of / child-of queries can hit an indexed lookup.
@@ -2993,11 +3016,12 @@ isolated function extractConceptsFromCodeSystem(r4:CodeSystem codeSystem, int co
 # + codeSystemId - Internal id of the CodeSystem the concept belongs to
 # + parentId - Internal id of the parent concept, or `()` for a top-level concept
 # + ancestorPath - Internal ids of the ancestors on the current recursion path, nearest ancestor last
-isolated function extractConceptsFromCodeSystemRecursive(r4:CodeSystemConcept var_concept, int codeSystemId, int? parentId = (), int[] ancestorPath = []) {
+# + return - The first concept or closure write failure in this subtree, if any
+isolated function extractConceptsFromCodeSystemRecursive(r4:CodeSystemConcept var_concept, int codeSystemId, int? parentId = (), int[] ancestorPath = []) returns error? {
     int|error result = saveCodeSystemConcept(var_concept, codeSystemId, parentId);
     if result is error {
         log:printError("Error while saving concept: " + result.message());
-        return;
+        return error(string `concept ${var_concept.code} not saved: ${result.message()}`, result);
     }
     int conceptDbId = result;
 
@@ -3017,6 +3041,7 @@ isolated function extractConceptsFromCodeSystemRecursive(r4:CodeSystemConcept va
     int|r4:FHIRError flushed = flushClosureBatch(closureRows, codeSystemId);
     if flushed is r4:FHIRError {
         log:printError("Error writing closure rows for concept " + var_concept.code + ": " + flushed.message());
+        return error(string `closure rows for concept ${var_concept.code} not saved: ${flushed.message()}`, flushed);
     }
 
     if var_concept.concept !is () {
@@ -3030,7 +3055,7 @@ isolated function extractConceptsFromCodeSystemRecursive(r4:CodeSystemConcept va
             // holding a DB connection, exhausting the pool and starving
             // concurrent $lookup/$expand requests.
             foreach var subConcept in concepts {
-                extractConceptsFromCodeSystemRecursive(subConcept.clone(), codeSystemId, conceptDbId, childPath.clone());
+                check extractConceptsFromCodeSystemRecursive(subConcept.clone(), codeSystemId, conceptDbId, childPath.clone());
             }
         }
     }
@@ -3211,7 +3236,7 @@ isolated function saveNestedValueSetsInValueSetComposeInclude(r4:canonical[] val
 isolated function countSearchMatches(string tableName, map<r4:RequestSearchParameter[]> filters,
         readonly & map<string> columns) returns int|r4:FHIRError {
     sql:ParameterizedQuery query = sql:queryConcat(`SELECT COUNT(*) AS `, escapeToQuery("total"), ` FROM `,
-            escapeToQuery(tableName), ` WHERE `, buildSearchClause(filters, columns, (), ()));
+            escapeToQuery(tableName), ` WHERE `, buildSearchClause(filters, columns, (), (), ()));
     stream<record {|int total;|}, persist:Error?> resultStream = sClient->queryNativeSQL(query);
     record {|int total;|}[]|error rows = from record {|int total;|} row in resultStream
         select row;
