@@ -21,6 +21,7 @@ import ballerina/lang.runtime;
 import ballerina/persist;
 import ballerina/sql;
 import ballerina/test;
+import ballerina/url;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.international401;
 import ballerinax/health.fhir.r4.terminology;
@@ -2341,10 +2342,10 @@ public function testPagesFollowTheUnpagedOrder() returns error? {
 @test:Config {
     groups: ["search", "pagination", "failure_scenario"]
 }
-public function testHugePageIsRejectedNotFatal() returns error? {
+public function testOutOfRangePageIsRejected() returns error? {
     int maxPage = int:MAX_VALUE / 10;
 
-    // page × _count past the 64-bit range: rejected as a bad request (it used to overflow and stop the service).
+    // page × _count past the int range is a bad request.
     http:Response tooFar = check csClient->get(string `?page=${int:MAX_VALUE}&_count=10`);
     test:assertEquals(tooFar.statusCode, 400);
     http:Response justPast = check csClient->get(string `?page=${maxPage + 1}&_count=10`);
@@ -2360,7 +2361,24 @@ public function testHugePageIsRejectedNotFatal() returns error? {
     test:assertTrue(total > 0);
     test:assertEquals(entries, 0);
 
-    // The service is still up.
+    // Later requests are unaffected.
     http:Response after = check csClient->get("?_count=1");
     test:assertEquals(after.statusCode, 200);
+}
+
+@test:Config {
+    groups: ["find_code", "failure_scenario"]
+}
+public function testFindCodeFilterCannotAlterQuery() returns error? {
+    // Filters containing quotes are matched as plain text.
+    foreach string filter in ["zzqqxx'", "zzqqxx.*' OR 'a'='a' OR 'b' REGEXP '", "zzqqxx' OR '1'='1"] {
+        http:Response response = check baseClient->get("/$find-code?filter=" + check url:encode(filter, "UTF-8"));
+        test:assertEquals(response.statusCode, 200, string `filter ${filter}`);
+        json bundle = check response.getJsonPayload();
+        test:assertEquals(check bundle.total, 0, string `filter ${filter} must not match anything`);
+    }
+    // Ordinary filters still work.
+    http:Response response = check baseClient->get("/$find-code?filter=active");
+    json bundle = check response.getJsonPayload();
+    test:assertTrue((check (check bundle.total).ensureType(int)) > 0);
 }

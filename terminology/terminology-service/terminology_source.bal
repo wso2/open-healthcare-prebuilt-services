@@ -996,8 +996,10 @@ public isolated class TerminologySource {
         // part of this function's contract (and "c." never matched any alias
         // it actually generates, silently breaking system-filtered searches
         // with a 500).
+        // Bind the filter as a query parameter rather than building it into the SQL text.
+        string pattern = ".*" + filter + ".*";
         sql:ParameterizedQuery whereClause = sql:queryConcat(
-                escapeToQuery(property), getRegexOperator(), stringToParameterizedQuery("'.*" + filter + ".*'"),
+                escapeToQuery(property), getRegexOperator(), `${pattern}`,
                     system is () ? `` : sql:queryConcat(
                         ` AND `, escapeToQuery("codesystemCodeSystemId"),
                         ` IN (SELECT `, escapeToQuery("codeSystemId"), ` FROM `, escapeToQuery("codesystems"),
