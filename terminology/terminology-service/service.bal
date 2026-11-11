@@ -425,7 +425,7 @@ service http:InterceptableService /fhir/r4/metadata on baseListener {
                 "resourceType": "TerminologyCapabilities",
                 "id": "wso2-ballerina-terminology-service",
                 "url": "http://localhost:9090/fhir/r4/terminology-capabilities",
-                "version": "0.1.1",
+                "version": service_version,
                 "name": "WSO2BallerinaTerminologyServiceCapabilities",
                 "title": "WSO2 Ballerina FHIR R4 Terminology Service — TerminologyCapabilities",
                 "status": "active",
@@ -442,7 +442,7 @@ service http:InterceptableService /fhir/r4/metadata on baseListener {
                         ]
                     }
                 ],
-                "description": "TerminologyCapabilities for the WSO2 Ballerina FHIR R4 Terminology Service (wso2/terminology_service v0.1.1), powered by the ballerinax/health.fhir.r4.terminology v7.0.1 library. The service persists CodeSystem, ValueSet, and ConceptMap resources in a relational database (PostgreSQL or H2). CodeSystem concepts are extracted into a separate table at ingest with a parentConceptId hierarchy, enabling efficient $lookup and DB-native $subsumes traversal. $closure is implemented, backed by the same closure table $subsumes uses, with its own client-named-table state tracked separately from the ConceptMap resource CRUD. $translate is implemented via the library's matching logic, backed by ConceptMap resource CRUD (create/read/search) against the same database.",
+                "description": "TerminologyCapabilities for the WSO2 Ballerina FHIR R4 Terminology Service (wso2/terminology_service v" + service_version + "), powered by the ballerinax/health.fhir.r4.terminology v7.0.1 library. The service persists CodeSystem, ValueSet, and ConceptMap resources in a relational database (PostgreSQL or H2). CodeSystem concepts are extracted into a separate table at ingest with a parentConceptId hierarchy, enabling efficient $lookup and DB-native $subsumes traversal. $closure is implemented, backed by the same closure table $subsumes uses, with its own client-named-table state tracked separately from the ConceptMap resource CRUD. $translate is implemented via the library's matching logic, backed by ConceptMap resource CRUD (create/read/search) against the same database.",
                 "kind": "instance",
                 "software": {
                     "name": "ballerinax/health.fhir.r4.terminology",

@@ -124,8 +124,22 @@ public isolated class TerminologySource {
                     cause = error("Error while adding CodeSystem"),
                     httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
         }
-        // extract the concepts from the codesystem and add them to the database
-        extractConceptsFromCodeSystem(codeSystem, response[0]);
+        // Extract the concepts from the codesystem and add them to the database. If any write fails,
+        // remove the partial load: a CodeSystem row without all its concepts would otherwise look
+        // complete to every url/version existence check (e.g. the startup loader would never retry it).
+        error? extracted = extractConceptsFromCodeSystem(codeSystem, response[0]);
+        if extracted is error {
+            error? cleanup = deleteSnomedCodeSystemCascade(response[0]);
+            if cleanup is error {
+                log:printError(string `Could not remove partially stored CodeSystem ${codeSystem.url ?: ""}`, 'error = cleanup);
+            }
+            return r4:createFHIRError(
+                    "Error while adding CodeSystem concepts, " + extracted.message(),
+                    r4:ERROR,
+                    r4:PROCESSING,
+                    cause = extracted,
+                    httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
+        }
     }
 
     # Persists a `ValueSet` resource and its concepts to the database.
@@ -312,28 +326,10 @@ public isolated class TerminologySource {
     # + count - The maximum number of records to return, applied only when `offset` is also given
     # + return - The matching `r4:CodeSystem`s, or an `r4:FHIRError` if the query or result parsing fails
     public isolated function searchCodeSystem(map<r4:RequestSearchParameter[]> params, int? offset, int? count) returns r4:CodeSystem[]|r4:FHIRError {
-        sql:ParameterizedQuery whereClause = ``;
-        boolean isFirst = true;
-
-        foreach var [paramName, paramList] in params.entries() {
-            if terminology:CODESYSTEMS_SEARCH_PARAMS.hasKey(paramName) {
-                foreach var param in paramList {
-                    sql:ParameterizedQuery fragment = sql:queryConcat(escapeToQuery(paramName == "system" ? "url" : paramName), ` = ${param.value}`);
-                    if fragment.strings.length() > 0 {
-                        if isFirst {
-                            whereClause = fragment;
-                            isFirst = false;
-                        } else {
-                            whereClause = sql:queryConcat(whereClause, ` AND `, fragment);
-                        }
-                    }
-                }
-            }
-        }
-
-        if offset is int && count is int {
-            whereClause = sql:queryConcat(whereClause, ` `, getLimitClause(count, offset));
-        }
+        // `description` has no column, so when it's present, paginate after filtering rather than in SQL.
+        boolean filterInMemory = params.hasKey("description");
+        sql:ParameterizedQuery whereClause = buildSearchClause(params, CODESYSTEM_SEARCH_COLUMNS,
+                filterInMemory ? () : offset, filterInMemory ? () : count, "codeSystemId");
 
         stream<store_h2:CodeSystem, persist:Error?> codeSystemStream = sClient->/codesystems(store_h2:CodeSystem, whereClause);
         store_h2:CodeSystem[]|error dbCodeSystems = streamToStoreCodeSystem(codeSystemStream);
@@ -355,42 +351,30 @@ public isolated class TerminologySource {
                 // Skip this CodeSystem if parsing fails
                 continue;
             }
-            codeSystemArray.push(parsedCodeSystem);
+            if matchesStringParams(params, "description", parsedCodeSystem.description) {
+                codeSystemArray.push(parsedCodeSystem);
+            }
         }
 
+        if filterInMemory && offset is int && count is int {
+            [int, int] [pageStart, pageEnd] = pageBounds(codeSystemArray.length(), offset, count);
+            return codeSystemArray.slice(pageStart, pageEnd);
+        }
         return codeSystemArray;
     }
 
-    # Searches stored `ValueSet`s matching the given FHIR search parameters, with optional pagination. Returns every stored `ValueSet` when no search parameters are given.
+    # Searches stored `ValueSet`s matching the given FHIR search parameters (ANDed together), with optional pagination. Returns every stored `ValueSet` when no search parameters are given.
     #
     # + params - The search parameters to filter by, keyed by recognized parameter name
     # + offset - The number of matching records to skip, applied only when `count` is also given
     # + count - The maximum number of records to return, applied only when `offset` is also given
     # + return - The matching `r4:ValueSet`s, or an `r4:FHIRError` if the query or result parsing fails
     public isolated function searchValueSet(map<r4:RequestSearchParameter[]> params, int? offset, int? count) returns r4:ValueSet[]|r4:FHIRError {
-
-        stream<store_h2:ValueSet, persist:Error?> valueSetStream;
-
-        if params.length() == 0 {
-            valueSetStream = sClient->/valuesets(store_h2:ValueSet);
-        } else {
-            sql:ParameterizedQuery whereClause = ``;
-            foreach var [paramName, paramList] in params.entries() {
-                if terminology:CODESYSTEMS_SEARCH_PARAMS.hasKey(paramName) {
-                    foreach var param in paramList {
-                        sql:ParameterizedQuery fragment = sql:queryConcat(escapeToQuery(paramName == "system" ? "url" : paramName), ` = ${param.value}`);
-                        if fragment.strings.length() > 0 {
-                            whereClause = sql:queryConcat(fragment);
-                        }
-                    }
-                }
-            }
-
-            if offset is int && count is int {
-                whereClause = sql:queryConcat(whereClause, ` `, getLimitClause(count, offset));
-            }
-            valueSetStream = sClient->/valuesets(store_h2:ValueSet, whereClause);
-        }
+        // `description` has no column, so when it's present, paginate after filtering rather than in SQL.
+        boolean filterInMemory = params.hasKey("description");
+        sql:ParameterizedQuery whereClause = buildSearchClause(params, VALUESET_SEARCH_COLUMNS,
+                filterInMemory ? () : offset, filterInMemory ? () : count, "valueSetId");
+        stream<store_h2:ValueSet, persist:Error?> valueSetStream = sClient->/valuesets(store_h2:ValueSet, whereClause);
 
         store_h2:ValueSet[]|error dbValueSets = streamToStoreValueSet(valueSetStream);
 
@@ -411,10 +395,58 @@ public isolated class TerminologySource {
                 // Skip this ValueSet if parsing fails
                 continue;
             }
-            valueSetArray.push(parsedValueSet);
+            if matchesStringParams(params, "description", parsedValueSet.description) {
+                valueSetArray.push(parsedValueSet);
+            }
         }
 
+        if filterInMemory && offset is int && count is int {
+            [int, int] [pageStart, pageEnd] = pageBounds(valueSetArray.length(), offset, count);
+            return valueSetArray.slice(pageStart, pageEnd);
+        }
         return valueSetArray;
+    }
+
+    # Returns one page of the `CodeSystem`s matching the given filters, with the total number of matches.
+    #
+    # + filters - The filter parameters (ANDed), keyed by parameter name
+    # + offset - The number of matches to skip
+    # + count - The maximum number of matches to return
+    # + return - `[page, total matches]`, or an `r4:FHIRError` if the query fails
+    public isolated function searchCodeSystemPage(map<r4:RequestSearchParameter[]> filters, int offset, int count)
+            returns [r4:CodeSystem[], int]|r4:FHIRError {
+        if filters.hasKey("description") {
+            // Filtered in memory, so every match is loaded anyway: the total is free.
+            r4:CodeSystem[] matches = check self.searchCodeSystem(filters, (), ());
+            [int, int] [pageStart, pageEnd] = pageBounds(matches.length(), offset, count);
+            return [matches.slice(pageStart, pageEnd), matches.length()];
+        }
+        int total = check countSearchMatches("codesystems", filters, CODESYSTEM_SEARCH_COLUMNS);
+        if count == 0 || offset >= total {
+            return [[], total];
+        }
+        return [check self.searchCodeSystem(filters, offset, count), total];
+    }
+
+    # Returns one page of the `ValueSet`s matching the given filters, with the total number of matches.
+    #
+    # + filters - The filter parameters (ANDed), keyed by parameter name
+    # + offset - The number of matches to skip
+    # + count - The maximum number of matches to return
+    # + return - `[page, total matches]`, or an `r4:FHIRError` if the query fails
+    public isolated function searchValueSetPage(map<r4:RequestSearchParameter[]> filters, int offset, int count)
+            returns [r4:ValueSet[], int]|r4:FHIRError {
+        if filters.hasKey("description") {
+            // Filtered in memory, so every match is loaded anyway: the total is free.
+            r4:ValueSet[] matches = check self.searchValueSet(filters, (), ());
+            [int, int] [pageStart, pageEnd] = pageBounds(matches.length(), offset, count);
+            return [matches.slice(pageStart, pageEnd), matches.length()];
+        }
+        int total = check countSearchMatches("valuesets", filters, VALUESET_SEARCH_COLUMNS);
+        if count == 0 || offset >= total {
+            return [[], total];
+        }
+        return [check self.searchValueSet(filters, offset, count), total];
     }
 
     # Implements FHIR `$expand`, resolving a stored `ValueSet`'s `compose.include` rules into its member concepts. Handles explicit concept lists, whole-system includes, nested ValueSet includes (recursively expanded), and intensional filters (`concept is-a`/`descendent-of` via the closure table or, absent one, a parent-link walk; `=` and `regex` property filters), ANDing multiple filters on the same include and unioning across includes. Applies an optional text filter and paginates the combined result.
@@ -2953,20 +2985,29 @@ isolated function getConceptNode(string code, int codeSystemId) returns ConceptN
             httpStatusCode = http:STATUS_NOT_FOUND);
 }
 
-# Kicks off asynchronous extraction and persistence of a CodeSystem's top-level concepts.
+# Persists a CodeSystem's concepts, one worker per top-level concept, and waits for all of them.
 #
 # + codeSystem - CodeSystem whose concepts are to be extracted
 # + codeSystemId - Internal id of the already-persisted CodeSystem
-isolated function extractConceptsFromCodeSystem(r4:CodeSystem codeSystem, int codeSystemId) {
-    if codeSystem.concept !is () {
-        r4:CodeSystemConcept[]? concepts = codeSystem.concept;
-        // Flow will not go inside this if condition since the code system is already validated for concepts in a previous point
-        if concepts !is () {
-            foreach var concept in concepts {
-                _ = start extractConceptsFromCodeSystemRecursive(concept.clone(), codeSystemId);
-            }
+# + return - The first concept or closure write failure, if any; `()` once every concept is stored
+isolated function extractConceptsFromCodeSystem(r4:CodeSystem codeSystem, int codeSystemId) returns error? {
+    r4:CodeSystemConcept[]? concepts = codeSystem.concept;
+    if concepts is () {
+        return;
+    }
+    future<error?>[] pending = [];
+    foreach var concept in concepts {
+        future<error?> conceptWrite = start extractConceptsFromCodeSystemRecursive(concept.clone(), codeSystemId);
+        pending.push(conceptWrite);
+    }
+    error? firstFailure = ();
+    foreach future<error?> conceptWrite in pending {
+        error? result = wait conceptWrite;
+        if result is error && firstFailure is () {
+            firstFailure = result;
         }
     }
+    return firstFailure;
 }
 
 # Saves a CodeSystem concept and its descendants, and writes the corresponding `concept_closure` rows so is-a / descendent-of / child-of queries can hit an indexed lookup.
@@ -2975,11 +3016,12 @@ isolated function extractConceptsFromCodeSystem(r4:CodeSystem codeSystem, int co
 # + codeSystemId - Internal id of the CodeSystem the concept belongs to
 # + parentId - Internal id of the parent concept, or `()` for a top-level concept
 # + ancestorPath - Internal ids of the ancestors on the current recursion path, nearest ancestor last
-isolated function extractConceptsFromCodeSystemRecursive(r4:CodeSystemConcept var_concept, int codeSystemId, int? parentId = (), int[] ancestorPath = []) {
+# + return - The first concept or closure write failure in this subtree, if any
+isolated function extractConceptsFromCodeSystemRecursive(r4:CodeSystemConcept var_concept, int codeSystemId, int? parentId = (), int[] ancestorPath = []) returns error? {
     int|error result = saveCodeSystemConcept(var_concept, codeSystemId, parentId);
     if result is error {
         log:printError("Error while saving concept: " + result.message());
-        return;
+        return error(string `concept ${var_concept.code} not saved: ${result.message()}`, result);
     }
     int conceptDbId = result;
 
@@ -2999,6 +3041,7 @@ isolated function extractConceptsFromCodeSystemRecursive(r4:CodeSystemConcept va
     int|r4:FHIRError flushed = flushClosureBatch(closureRows, codeSystemId);
     if flushed is r4:FHIRError {
         log:printError("Error writing closure rows for concept " + var_concept.code + ": " + flushed.message());
+        return error(string `closure rows for concept ${var_concept.code} not saved: ${flushed.message()}`, flushed);
     }
 
     if var_concept.concept !is () {
@@ -3012,7 +3055,7 @@ isolated function extractConceptsFromCodeSystemRecursive(r4:CodeSystemConcept va
             // holding a DB connection, exhausting the pool and starving
             // concurrent $lookup/$expand requests.
             foreach var subConcept in concepts {
-                extractConceptsFromCodeSystemRecursive(subConcept.clone(), codeSystemId, conceptDbId, childPath.clone());
+                check extractConceptsFromCodeSystemRecursive(subConcept.clone(), codeSystemId, conceptDbId, childPath.clone());
             }
         }
     }
@@ -3184,3 +3227,23 @@ isolated function saveNestedValueSetsInValueSetComposeInclude(r4:canonical[] val
     }
 }
 
+# Counts the rows of a resource table matching a search's column-backed filters.
+#
+# + tableName - The table, e.g. `codesystems`
+# + filters - The filter parameters (ANDed), keyed by parameter name
+# + columns - Search parameter name -> column for the table
+# + return - The number of matching rows, or an `r4:FHIRError` if the query fails
+isolated function countSearchMatches(string tableName, map<r4:RequestSearchParameter[]> filters,
+        readonly & map<string> columns) returns int|r4:FHIRError {
+    sql:ParameterizedQuery query = sql:queryConcat(`SELECT COUNT(*) AS `, escapeToQuery("total"), ` FROM `,
+            escapeToQuery(tableName), ` WHERE `, buildSearchClause(filters, columns, (), (), ()));
+    stream<record {|int total;|}, persist:Error?> resultStream = sClient->queryNativeSQL(query);
+    record {|int total;|}[]|error rows = from record {|int total;|} row in resultStream
+        select row;
+    if rows is error || rows.length() == 0 {
+        string message = rows is error ? rows.message() : "no result";
+        return r4:createFHIRError(string `Error while counting ${tableName} search matches: ${message}`, r4:ERROR,
+                r4:PROCESSING, httpStatusCode = http:STATUS_INTERNAL_SERVER_ERROR);
+    }
+    return rows[0].total;
+}

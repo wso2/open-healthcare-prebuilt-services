@@ -72,6 +72,30 @@ The service exposes the following main endpoints under `/fhir/r4`:
 
 \* `$upload` must currently be called with the `$` percent-encoded (`%24upload`) - a bug in the pinned Ballerina http module (2.14.13) 404s on a raw `$` in the path for this endpoint. This will go away once the Ballerina distribution is upgraded past that bug.
 
+## Search Pagination
+
+`GET /ValueSet`, `GET /CodeSystem` and `GET /ConceptMap` are paginated with `_count` (page size) and `page` (1-based page number):
+
+```sh
+curl "http://localhost:9090/fhir/r4/CodeSystem?status=active&_count=20&page=2"
+```
+
+Search filters are combined with AND. `Bundle.total` is the number of matches across all pages, and `_count=0` returns only the total. The Bundle carries `self`, `next` and `prev` links, which keep the request's filters; `next` is omitted on the last page. Without `_count`, the page size is `search_page_size` (default 100), which is also the largest `_count` honoured:
+
+```toml
+[wso2.terminology_service]
+search_page_size = 100
+```
+
+## Built-in FHIR CodeSystems
+
+On startup the service loads the CodeSystems bundled with the FHIR terminology library into the database: the FHIR R4 CodeSystems (`http://hl7.org/fhir/...`) and the HL7 Terminology (THO) CodeSystems (`http://terminology.hl7.org/CodeSystem/...`), about 500 in all. CodeSystems already stored with the same url and version are left untouched, so this only does work on the first start against an empty database (about 15 seconds) and adds about a second to later starts. To turn it off:
+
+```toml
+[wso2.terminology_service]
+load_default_code_systems = false
+```
+
 ## Uploading Terminology Content
 
 `POST /%24upload` (see footnote above) accepts a zip archive. Two things are required on the request:
@@ -107,7 +131,7 @@ Expects a zip of the ICD-10-CM release files: the tabular XML (`icd10cm-tabular-
 
 **SNOMED CT and ICD-10-CM imports run in the background.** The request returns `201 Created` as soon as the archive is extracted, before the concepts are loaded. A full release takes several minutes; check the server logs for progress and for the completion summary.
 
-Re-uploading the same url and version replaces the previous load rather than duplicating it. If the import fails partway, the partial load is removed.
+For SNOMED CT and ICD-10-CM, re-uploading the same url and version replaces the previous load rather than duplicating it, and if the import fails partway, the partial load is removed. FHIR and LOINC uploads do not replace a CodeSystem that is already stored with the same url and version.
 
 Concept hierarchy is stored in the `concept_closure` table as a transitive is-a closure, which supports `$subsumes` and the `is-a` / `descendent-of` filters on `$expand`.
 
@@ -127,6 +151,21 @@ bal run service.bal
 
 The service will start on port `9090` by default.
 
+## Releases
+
+Each release ships `terminology-service-<version>.zip`, attached to its GitHub Release. The zip contains the jar, `server.sh`/`server.bat`, a ready-to-run `Config.toml`, an empty H2 database with the schema already created, and the H2/PostgreSQL schema scripts. Unzip it and run `./server.sh` (needs Java 21+).
+
+To cut a release:
+
+1. Set `version` in `Ballerina.toml` (and the matching `wso2/terminology_service` entry in `Dependencies.toml`), then merge.
+2. Push a tag `terminology-service-v<version>`, e.g. `terminology-service-v1.0.0`. The tag must match `Ballerina.toml`.
+
+The [release workflow](../../.github/workflows/release-terminology-service.yml) builds the zip, tests it, starts the packaged server for a smoke test, and publishes the release. Running the workflow manually builds the zip as a workflow artifact without publishing a release.
+
+To build the zip locally: `bal build && distribution/package.sh <version>` (output goes to `target/release/`).
+
+The version reported in the TerminologyCapabilities statement (`GET /metadata?mode=terminology`) comes from the `service_version` config value. The packaging step sets it to the release version in the shipped `Config.toml`, so it never needs editing by hand; builds run any other way report `dev`.
+
 ## Project Structure
 
 - `service.bal` — Main service implementation.
@@ -135,6 +174,31 @@ The service will start on port `9090` by default.
 - `tests/` — Test cases and sample resources.
 
 ## Supported DB Types and Configurations
+
+> **Upgrading a database created before 1.0.0:** concept `display` and `definition` used to be limited to 191 characters, and concepts with longer text were silently dropped when a CodeSystem was loaded through `POST /CodeSystem` or a FHIR or LOINC `$upload`. Those CodeSystems, and any stored ValueSets that include them, are incomplete. They cannot be repaired in place: re-posting or re-uploading the same url and version is rejected or ignored, and stored ValueSets link to a CodeSystem's internal row ids, so deleting and re-adding it by hand would break them. (SNOMED CT and ICD-10-CM imports and the built-in CodeSystems are not affected; they never keep a partial load.)
+>
+> The supported upgrade is to recreate the database from the 1.0.0 schema and reload your content:
+>
+> 1. Stop the service and back up the database.
+> 2. Recreate the schema (this deletes all stored content):
+>    - **H2** (from the release directory): delete `database/terminology.mv.db`, then run
+>      `java -cp terminology_service.jar org.h2.tools.RunScript -url "jdbc:h2:./database/terminology" -user sa -script dbscripts/h2.sql`
+>    - **PostgreSQL**: drop and recreate the database, then run `psql -d <database> -f dbscripts/postgresql.sql`
+> 3. Start the service. The built-in FHIR CodeSystems are loaded automatically.
+> 4. Re-load your own content: CodeSystems first (`POST /CodeSystem` or `$upload`), then the ValueSets and ConceptMaps that use them.
+> 5. Rebuild any `$closure` tables. Recreating the database deletes every named closure table, and the server cannot tell a client this happened: a call with an existing table name silently starts a new, empty table whose versions count from 1 again, and a resync with an earlier `version` returns no pairs. So before the rebuild, each client should keep the concepts it has submitted to each named table. After step 4, it should discard its previous closure results and versions for those tables, then submit the kept concepts again to rebuild them.
+>
+> If the database never had CodeSystems loaded through `POST /CodeSystem` or a FHIR or LOINC `$upload` (for example, it only holds SNOMED CT or ICD-10-CM imports), nothing was lost, and you can upgrade in place instead:
+>
+> ```sql
+> -- PostgreSQL
+> DROP INDEX IF EXISTS "idx_concepts_display";
+> ALTER TABLE "concepts" ALTER COLUMN "display" TYPE TEXT, ALTER COLUMN "definition" TYPE TEXT;
+> -- H2
+> DROP INDEX IF EXISTS "idx_concepts_display";
+> ALTER TABLE "concepts" ALTER COLUMN "display" SET DATA TYPE VARCHAR;
+> ALTER TABLE "concepts" ALTER COLUMN "definition" SET DATA TYPE VARCHAR;
+> ```
 
 The following DB types are supported. 
 

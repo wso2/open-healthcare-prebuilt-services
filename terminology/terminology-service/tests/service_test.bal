@@ -16,6 +16,7 @@
 import terminology_service.store_h2;
 
 import ballerina/http;
+import ballerina/io;
 import ballerina/lang.runtime;
 import ballerina/persist;
 import ballerina/sql;
@@ -95,6 +96,7 @@ public function searchCodeSystem1() returns error? {
     expected.entry = [entry];
     expected.total = 1;
     expected.meta.lastUpdated = actual.meta.lastUpdated;
+    expected.link = check singlePageSelfLink(actual, "/fhir/r4/CodeSystem?");
 
     test:assertEquals(actual.toJson(), expected.toJson());
 }
@@ -118,6 +120,7 @@ public function searchCodeSystem2() returns error? {
     expected.entry = [entry];
     expected.total = 1;
     expected.meta.lastUpdated = actual.meta.lastUpdated;
+    expected.link = check singlePageSelfLink(actual, "/fhir/r4/CodeSystem?");
 
     test:assertEquals(actual.toJson(), expected.toJson());
 }
@@ -132,6 +135,7 @@ public function searchCodeSystem3() returns error? {
 
     r4:Bundle expected = check returnCodeSystemData("empty-bundle").cloneWithType(r4:Bundle);
     expected.meta.lastUpdated = actual.meta.lastUpdated;
+    expected.link = check singlePageSelfLink(actual, "/fhir/r4/CodeSystem?");
 
     test:assertEquals(actual.toJson(), expected.toJson());
 }
@@ -688,6 +692,7 @@ public function searchValueSet1() returns error? {
 
     r4:Bundle expected = check returnValueSetData("account-status-bundle").cloneWithType(r4:Bundle);
     expected.meta.lastUpdated = actual.meta.lastUpdated;
+    expected.link = check singlePageSelfLink(actual, "/fhir/r4/ValueSet?");
     test:assertEquals(response.getJsonPayload(), expected.toJson());
 }
 
@@ -1143,12 +1148,10 @@ public function testAddValidCodeSystemJson() returns error? {
     // check the response status code is 201 or not
     test:assertEquals(response.statusCode, 201);
 
-    // addCodeSystem returns as soon as the CodeSystem row is inserted; concept
-    // and closure-row persistence happens in separate strands it doesn't wait
-    // on (see extractConceptsFromCodeSystem). Tests that depend on this one
-    // (subsumeCodeSystem8-12, closurePost1, ...) need that data to actually be
-    // queryable, not just "the POST returned" - so poll for one of the
-    // imported concepts (2133-7) before letting dependents proceed.
+    // addCodeSystem now waits for concept and closure-row persistence (see
+    // extractConceptsFromCodeSystem), so this poll should succeed at once. It
+    // is kept as a cheap guard for the tests that depend on this one
+    // (subsumeCodeSystem8-12, closurePost1, ...).
     check waitForConceptSystemJsonImportReady();
 }
 
@@ -1363,6 +1366,22 @@ public function testUpload1() returns error? {
 
     http:Response response = check baseClient->post("/%24upload?target-path=hl7.terminology.r4/package", req);
     test:assertEquals(response.statusCode, 201);
+
+    // The package's CodeSystems must actually be persisted, not just accepted.
+    http:Response searchResponse = check csClient->get("?url=http://terminology.hl7.org/CodeSystem/art");
+    test:assertEquals(searchResponse.statusCode, 200);
+    json bundle = check searchResponse.getJsonPayload();
+    test:assertEquals(bundle.total, 1);
+}
+
+@test:Config {
+    groups: ["codesystem", "search", "successful_scenario"]
+}
+public function testSearchCodeSystemWithoutFilters() returns error? {
+    http:Response response = check csClient->get("");
+    test:assertEquals(response.statusCode, 200);
+    json bundle = check response.getJsonPayload();
+    test:assertTrue((check bundle.total) is int);
 }
 
 @test:Config {
@@ -1938,3 +1957,410 @@ public function displayFilterMatchesAcrossLineTerminators() {
 }
 
 
+
+# Runs a search and returns the `total` and number of entries of the resulting Bundle.
+#
+# + 'client - The resource-type client to search with
+# + query - The search query string, starting with `?`
+# + return - `[total, number of entries]`, or an error if the request or payload parsing fails
+function searchBundleCounts(http:Client 'client, string query) returns [int, int]|error {
+    http:Response response = check 'client->get(query);
+    test:assertEquals(response.statusCode, 200, string `unexpected status ${response.statusCode} for ${query}`);
+    json bundle = check response.getJsonPayload();
+    json|error entryField = bundle.entry;
+    json[] entries = entryField is json[] ? entryField : [];
+    int total = check (check bundle.total).ensureType();
+    return [total, entries.length()];
+}
+
+@test:Config {
+    groups: ["valueset", "search", "successful_scenario"]
+}
+public function testSearchValueSetCombinesParamsWithAnd() returns error? {
+    // A non-matching param must narrow the result, whichever order the params come in.
+    [int, int] [total1, _] = check searchBundleCounts(vsClient, "?url=http://hl7.org/fhir/ValueSet/account-status&status=retired");
+    test:assertEquals(total1, 0);
+    [int, int] [total2, _] = check searchBundleCounts(vsClient, "?status=retired&url=http://hl7.org/fhir/ValueSet/account-status");
+    test:assertEquals(total2, 0);
+    [int, int] [total4, _] = check searchBundleCounts(vsClient, "?url=http://example.org/no-such-valueset&status=draft");
+    test:assertEquals(total4, 0);
+
+    [int, int] [total3, _] = check searchBundleCounts(vsClient, "?url=http://hl7.org/fhir/ValueSet/account-status&status=draft&name=AccountStatus");
+    test:assertEquals(total3, 1);
+}
+
+@test:Config {
+    groups: ["valueset", "search", "successful_scenario"]
+}
+public function testSearchValueSetById() returns error? {
+    [int, int] [total, _] = check searchBundleCounts(vsClient, "?_id=account-status");
+    test:assertEquals(total, 1);
+}
+
+@test:Config {
+    groups: ["valueset", "search", "successful_scenario"]
+}
+public function testSearchValueSetByDescription() returns error? {
+    // FHIR string search: case-insensitive, matches the start of the value.
+    [int, int] [total, _] = check searchBundleCounts(vsClient, "?description=indicates%20whether%20the%20account");
+    test:assertEquals(total, 1);
+}
+
+@test:Config {
+    groups: ["valueset", "search", "successful_scenario"]
+}
+public function testSearchValueSetPaginatesWithoutFilters() returns error? {
+    [int, int] [_, entries] = check searchBundleCounts(vsClient, "?_count=1");
+    test:assertEquals(entries, 1);
+}
+
+@test:Config {
+    groups: ["codesystem", "search", "successful_scenario"]
+}
+public function testSearchCodeSystemById() returns error? {
+    [int, int] [total, _] = check searchBundleCounts(csClient, "?_id=account-status");
+    test:assertEquals(total, 1);
+}
+
+# Runs a search and returns the ids of the returned resources and the Bundle's links by relation.
+#
+# + 'client - The resource-type client to search with
+# + query - The search query string, starting with `?`
+# + return - `[resource ids, relation -> url]`, or an error if the request or payload parsing fails
+function searchPage(http:Client 'client, string query) returns [string[], map<string>]|error {
+    http:Response response = check 'client->get(query);
+    test:assertEquals(response.statusCode, 200, string `unexpected status ${response.statusCode} for ${query}`);
+    json bundle = check response.getJsonPayload();
+    json|error entryField = bundle.entry;
+    json[] entries = entryField is json[] ? entryField : [];
+    string[] ids = [];
+    foreach json entry in entries {
+        string id = check (check entry.'resource.id).ensureType();
+        ids.push(id);
+    }
+    map<string> links = {};
+    json|error linkField = bundle.link;
+    if linkField is json[] {
+        foreach json link in linkField {
+            links[check (check link.relation).ensureType()] = check (check link.url).ensureType();
+        }
+    }
+    return [ids, links];
+}
+
+@test:Config {
+    groups: ["valueset", "search", "pagination", "successful_scenario"]
+}
+public function testSearchValueSetPages() returns error? {
+    [string[], map<string>] [page1, links1] = check searchPage(vsClient, "?_count=1&page=1");
+    [string[], map<string>] [page2, links2] = check searchPage(vsClient, "?_count=1&page=2");
+    test:assertEquals(page1.length(), 1);
+    test:assertEquals(page2.length(), 1);
+    test:assertNotEquals(page1[0], page2[0], "page 2 must not repeat page 1");
+
+    test:assertTrue(links1.hasKey("next"), "page 1 of several must link to the next page");
+    test:assertFalse(links1.hasKey("prev"), "page 1 must not link to a previous page");
+    test:assertTrue(links2.get("next").includes("page=3"));
+    test:assertTrue(links2.get("prev").includes("page=1"));
+}
+
+@test:Config {
+    groups: ["valueset", "search", "pagination", "successful_scenario"]
+}
+public function testSearchValueSetPagesCoverAllResults() returns error? {
+    [string[], map<string>] [all, _] = check searchPage(vsClient, "?_count=100");
+    string[] paged = [];
+    int page = 1;
+    while page <= all.length() + 1 {
+        [string[], map<string>] [ids, links] = check searchPage(vsClient, string `?_count=2&page=${page}`);
+        paged.push(...ids);
+        if !links.hasKey("next") {
+            break;
+        }
+        page += 1;
+    }
+    test:assertEquals(paged.sort(), all.sort(), "walking the pages must return every result exactly once");
+}
+
+@test:Config {
+    groups: ["codesystem", "search", "pagination", "successful_scenario"]
+}
+public function testSearchCodeSystemPageBeyondEnd() returns error? {
+    [string[], map<string>] [ids, links] = check searchPage(csClient, "?_count=5&page=1000");
+    test:assertEquals(ids.length(), 0);
+    test:assertFalse(links.hasKey("next"));
+}
+
+@test:Config {
+    groups: ["valueset", "search", "pagination", "failure_scenario"]
+}
+public function testSearchValueSetInvalidPage() returns error? {
+    http:Response response = check vsClient->get("?page=0");
+    test:assertEquals(response.statusCode, 400);
+}
+
+# Asserts that a search result that fits on one page links only to itself, as page 1 at the default
+# page size, and returns its links for comparing the rest of the Bundle.
+#
+# + actual - The search result Bundle
+# + pathPrefix - The expected start of the self link, e.g. `/fhir/r4/CodeSystem?`
+# + return - The Bundle's links, or an error if they are not as expected
+function singlePageSelfLink(r4:Bundle actual, string pathPrefix) returns r4:BundleLink[]|error {
+    r4:BundleLink[]? links = actual.link;
+    if links is () {
+        return error("a search result must have a self link");
+    }
+    test:assertEquals(links.length(), 1, "a single-page result must only have a self link");
+    r4:BundleLink selfLink = links[0];
+    string url = selfLink.url;
+    test:assertEquals(selfLink.relation, "self");
+    test:assertTrue(url.startsWith(pathPrefix), url);
+    test:assertTrue(url.endsWith("page=1&_count=100"), url);
+    return links;
+}
+
+@test:Config {
+    groups: ["valueset", "search", "pagination", "successful_scenario"]
+}
+public function testSearchTotalCountsAllMatches() returns error? {
+    [int, int] [allTotal, allEntries] = check searchBundleCounts(vsClient, "?_count=100");
+    test:assertEquals(allTotal, allEntries, "with everything on one page, total must equal the entries");
+    test:assertTrue(allTotal > 1, "needs more than one ValueSet to page through");
+
+    // total is the number of matches across all pages, not the size of the page.
+    [int, int] [page1Total, page1Entries] = check searchBundleCounts(vsClient, "?_count=1&page=1");
+    [int, int] [page2Total, _] = check searchBundleCounts(vsClient, "?_count=1&page=2");
+    test:assertEquals(page1Entries, 1);
+    test:assertEquals(page1Total, allTotal);
+    test:assertEquals(page2Total, allTotal);
+
+    // _count=0 returns only the total.
+    [int, int] [countOnlyTotal, countOnlyEntries] = check searchBundleCounts(vsClient, "?_count=0");
+    test:assertEquals(countOnlyEntries, 0);
+    test:assertEquals(countOnlyTotal, allTotal);
+
+    // The last page has no next link; total says how many pages there are.
+    [string[], map<string>] [_, lastLinks] = check searchPage(vsClient, string `?_count=1&page=${allTotal}`);
+    test:assertFalse(lastLinks.hasKey("next"), "the last page must not link to a next page");
+}
+
+@test:Config {
+    groups: ["codesystem", "search", "pagination", "successful_scenario"]
+}
+public function testSearchTotalWithInMemoryFilter() returns error? {
+    // `description` is matched after loading, so the total and paging take a different path.
+    [int, int] [total, entries] = check searchBundleCounts(csClient, "?description=indicates%20whether&_count=0");
+    test:assertEquals(entries, 0);
+    test:assertEquals(total, 1);
+}
+
+@test:Config {
+    groups: ["conceptmap", "search", "successful_scenario"]
+}
+public function testSearchConceptMap() returns error? {
+    http:Client cmClient = check new ("http://localhost:9089/fhir/r4/ConceptMap");
+    json conceptMap = check io:fileReadJson("tests/resources/concept_maps/conceptmap-snomed-to-loinc-demo.json");
+    http:Response created = check cmClient->post("", conceptMap, {"Content-Type": FHIR_JSON});
+    test:assertEquals(created.statusCode, 201);
+
+    string url = "http://example.org/fhir/ConceptMap/demo-snomed-to-loinc-vitals";
+    [int, int] [byId, _] = check searchBundleCounts(cmClient, "?_id=demo-snomed-to-loinc-vitals");
+    test:assertEquals(byId, 1);
+    [int, int] [anded, _] = check searchBundleCounts(cmClient, string `?url=${url}&status=retired`);
+    test:assertEquals(anded, 0, "filters must be ANDed");
+    [int, int] [byVersion, _] = check searchBundleCounts(cmClient, string `?url=${url}&version=1.0.0`);
+    test:assertEquals(byVersion, 1);
+    [int, int] [byPublisher, publisherEntries] = check searchBundleCounts(cmClient, "?publisher=wso2");
+    test:assertEquals(byPublisher, 1);
+    test:assertEquals(publisherEntries, 1);
+}
+
+@test:Config {
+    groups: ["codesystem", "add_codesystem", "successful_scenario"]
+}
+public function testConceptWithLongDisplayAndDefinitionIsStored() returns error? {
+    // Concept displays and definitions are often longer than persist's default VARCHAR(191).
+    string longDisplay = string:'join("", ...from int i in 0 ..< 30 select "long display ");
+    string longDefinition = string:'join("", ...from int i in 0 ..< 80 select "long definition ");
+    json codeSystem = {
+        resourceType: "CodeSystem",
+        id: "long-text-test",
+        url: "http://example.org/fhir/CodeSystem/long-text-test",
+        'version: "1.0.0",
+        name: "LongTextTest",
+        status: "active",
+        content: "complete",
+        concept: [{code: "long", display: longDisplay, definition: longDefinition}]
+    };
+    http:Response created = check csClient->post("", codeSystem, {"Content-Type": FHIR_JSON});
+    test:assertEquals(created.statusCode, 201);
+
+    http:Response response = check csClient->get("/$lookup?system=http://example.org/fhir/CodeSystem/long-text-test&code=long");
+    test:assertEquals(response.statusCode, 200, "a concept with a long definition must be stored");
+    json lookup = check response.getJsonPayload();
+    json[] params = check (check lookup.'parameter).ensureType();
+    string? display = ();
+    foreach json p in params {
+        if (check p.name) == "display" {
+            display = check (check p.valueString).ensureType();
+        }
+    }
+    test:assertEquals(display, longDisplay);
+}
+
+@test:Config {
+    groups: ["metadata", "successful_scenario"]
+}
+public function testTerminologyCapabilitiesReportConfiguredVersion() returns error? {
+    http:Response response = check baseClient->get("/metadata?mode=terminology");
+    test:assertEquals(response.statusCode, 200);
+    json capabilities = check response.getJsonPayload();
+    test:assertEquals(check capabilities.'version, "9.9.9-test");
+    string description = check (check capabilities.description).ensureType();
+    test:assertTrue(description.includes("wso2/terminology_service v9.9.9-test"), description);
+}
+
+@test:Config {
+    groups: ["codesystem", "add_codesystem", "failure_scenario"]
+}
+public function testCodeSystemWithUnstorableConceptIsNotKept() returns error? {
+    string url = "http://example.org/fhir/CodeSystem/partial-load-test";
+    // `code` is VARCHAR(191), so this concept cannot be stored.
+    string tooLongCode = string:'join("", ...from int i in 0 ..< 20 select "0123456789");
+    json codeSystem = {
+        resourceType: "CodeSystem",
+        id: "partial-load-test",
+        url: url,
+        'version: "1.0.0",
+        name: "PartialLoadTest",
+        status: "active",
+        content: "complete",
+        concept: [{code: "ok", display: "Stored"}, {code: tooLongCode, display: "Not storable"}]
+    };
+    http:Response failed = check csClient->post("", codeSystem, {"Content-Type": FHIR_JSON});
+    test:assertNotEquals(failed.statusCode, 201, "a CodeSystem whose concepts were not all stored must not be reported as created");
+
+    [int, int] [leftBehind, _] = check searchBundleCounts(csClient, string `?url=${url}`);
+    test:assertEquals(leftBehind, 0, "a partially stored CodeSystem must be removed");
+
+    // With nothing left behind, the same url and version can be loaded again.
+    json fixed = check codeSystem.cloneWithType();
+    map<json> fixedMap = check fixed.ensureType();
+    fixedMap["concept"] = [{code: "ok", display: "Stored"}];
+    http:Response retried = check csClient->post("", fixedMap, {"Content-Type": FHIR_JSON});
+    test:assertEquals(retried.statusCode, 201);
+    [int, int] [stored, _] = check searchBundleCounts(csClient, string `?url=${url}`);
+    test:assertEquals(stored, 1);
+}
+
+@test:Config {
+    groups: ["codesystem", "default_content"]
+}
+public function testLoadCodeSystemsClassifiesFailures() returns error? {
+    string tooLongCode = string:'join("", ...from int i in 0 ..< 20 select "0123456789");
+    json valid = {
+        resourceType: "CodeSystem", url: "http://example.org/fhir/CodeSystem/load-valid", 'version: "1",
+        name: "LoadValid", status: "active", content: "complete", concept: [{code: "a"}]
+    };
+    // No version: refused by the library's checks (4xx).
+    json invalid = {
+        resourceType: "CodeSystem", url: "http://example.org/fhir/CodeSystem/load-invalid",
+        name: "LoadInvalid", status: "active", content: "complete", concept: [{code: "a"}]
+    };
+    // A code longer than the column: a database write failure (5xx).
+    json unstorable = {
+        resourceType: "CodeSystem", url: "http://example.org/fhir/CodeSystem/load-unstorable", 'version: "1",
+        name: "LoadUnstorable", status: "active", content: "complete", concept: [{code: tooLongCode}]
+    };
+
+    CodeSystemLoadSummary first = loadCodeSystems([valid, invalid, unstorable]);
+    test:assertEquals(first.added, 1);
+    test:assertEquals(first.rejected, ["http://example.org/fhir/CodeSystem/load-invalid"]);
+    test:assertEquals(first.failed, ["http://example.org/fhir/CodeSystem/load-unstorable"]);
+
+    // The stored one is skipped; the one that failed to store was rolled back, so it is retried.
+    CodeSystemLoadSummary second = loadCodeSystems([valid, invalid, unstorable]);
+    test:assertEquals(second.present, 1);
+    test:assertEquals(second.added, 0);
+    test:assertEquals(second.failed, ["http://example.org/fhir/CodeSystem/load-unstorable"],
+            "a CodeSystem that failed to store must not be treated as already present");
+}
+
+@test:Config {
+    groups: ["search", "pagination"]
+}
+public function testSearchClauseOrdersByPrimaryKeyBeforePaging() returns error? {
+    map<r4:RequestSearchParameter[]> noFilters = {};
+    string paged = string:'join("?", ...buildSearchClause(noFilters, CODESYSTEM_SEARCH_COLUMNS, 20, 10, "codeSystemId").strings);
+    int? orderAt = paged.indexOf("ORDER BY \"codeSystemId\"");
+    int? limitAt = paged.indexOf("LIMIT");
+    test:assertTrue(orderAt is int && limitAt is int && orderAt < limitAt, string `ORDER BY must precede LIMIT: ${paged}`);
+
+    string count = string:'join("?", ...buildSearchClause(noFilters, CODESYSTEM_SEARCH_COLUMNS, (), (), ()).strings);
+    test:assertFalse(count.includes("ORDER BY"), string `count queries must stay unordered: ${count}`);
+}
+
+# Walks every page of a search, one request per page, and returns the resource ids in page order.
+#
+# + 'client - The resource-type client to search with
+# + filter - Extra query parameters, e.g. `description=x&`, or `""`
+# + total - The number of matches
+# + return - The ids across all pages, or an error if a request fails
+function idsAcrossPages(http:Client 'client, string filter, int total) returns string[]|error {
+    string[] ids = [];
+    foreach int page in 1 ... total {
+        [string[], map<string>] [pageIds, _] = check searchPage('client, string `?${filter}_count=1&page=${page}`);
+        ids.push(...pageIds);
+    }
+    return ids;
+}
+
+@test:Config {
+    groups: ["search", "pagination", "successful_scenario"]
+}
+public function testPagesFollowTheUnpagedOrder() returns error? {
+    // SQL-paginated path.
+    [string[], map<string>] [allValueSets, _] = check searchPage(vsClient, "?_count=100");
+    test:assertEquals(check idsAcrossPages(vsClient, "", allValueSets.length()), allValueSets);
+
+    // In-memory path (`description` has no column): pages are slices of one ordered fetch.
+    foreach int i in 1 ... 3 {
+        json codeSystem = {
+            resourceType: "CodeSystem", id: string `ordering-test-${i}`, url: string `http://example.org/fhir/CodeSystem/ordering-test-${i}`,
+            'version: "1", name: string `OrderingTest${i}`, status: "active", content: "complete",
+            description: "Ordering test CodeSystem", concept: [{code: "a"}]
+        };
+        http:Response created = check csClient->post("", codeSystem, {"Content-Type": FHIR_JSON});
+        test:assertEquals(created.statusCode, 201);
+    }
+    [string[], map<string>] [allMatches, _] = check searchPage(csClient, "?description=ordering%20test&_count=100");
+    test:assertEquals(allMatches.length(), 3);
+    test:assertEquals(check idsAcrossPages(csClient, "description=ordering%20test&", 3), allMatches);
+}
+
+@test:Config {
+    groups: ["search", "pagination", "failure_scenario"]
+}
+public function testHugePageIsRejectedNotFatal() returns error? {
+    int maxPage = int:MAX_VALUE / 10;
+
+    // page × _count past the 64-bit range: rejected as a bad request (it used to overflow and stop the service).
+    http:Response tooFar = check csClient->get(string `?page=${int:MAX_VALUE}&_count=10`);
+    test:assertEquals(tooFar.statusCode, 400);
+    http:Response justPast = check csClient->get(string `?page=${maxPage + 1}&_count=10`);
+    test:assertEquals(justPast.statusCode, 400);
+
+    // The largest representable page is accepted: an empty page with no next link.
+    [string[], map<string>] [ids, links] = check searchPage(csClient, string `?page=${maxPage}&_count=10`);
+    test:assertEquals(ids.length(), 0);
+    test:assertFalse(links.hasKey("next"));
+
+    // _count=0 involves no multiplication, so any page is fine.
+    [int, int] [total, entries] = check searchBundleCounts(csClient, string `?page=${int:MAX_VALUE}&_count=0`);
+    test:assertTrue(total > 0);
+    test:assertEquals(entries, 0);
+
+    // The service is still up.
+    http:Response after = check csClient->get("?_count=1");
+    test:assertEquals(after.statusCode, 200);
+}

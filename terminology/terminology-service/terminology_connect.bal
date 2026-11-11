@@ -22,6 +22,7 @@ import ballerina/lang.runtime;
 import ballerina/log;
 import ballerina/regex;
 import ballerina/time;
+import ballerina/url;
 import ballerina/uuid;
 import ballerinax/health.fhir.r4;
 import ballerinax/health.fhir.r4.terminology;
@@ -156,96 +157,165 @@ public isolated function readConceptMapById(string id) returns r4:ConceptMap|r4:
     return results[0];
 }
 
-# Handles the `ValueSet` search interaction, resolving the request's search parameters through the FHIR context and returning matches as a searchset `Bundle`.
+# Resolves the page a search returns from the listener's `page`/`_count` pagination context.
+#
+# + ctx - The `FHIRContext` of the incoming search request
+# + return - `[offset, count]`, or a `FHIRError` (400) if `page` or `_count` is out of range
+isolated function searchWindow(r4:FHIRContext ctx) returns [int, int]|r4:FHIRError {
+    r4:PaginationContext? pagination = ctx.getPaginationContext();
+    if pagination is () || !pagination.paginationEnabled {
+        return [0, search_page_size];
+    }
+    if pagination.page < 1 {
+        return r4:createFHIRError(string `Invalid page number: ${pagination.page}`, r4:ERROR, r4:INVALID_VALUE,
+                diagnostic = "page must be 1 or greater", httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+    if pagination.pageSize < 0 {
+        return r4:createFHIRError(string `Invalid _count: ${pagination.pageSize}`, r4:ERROR, r4:INVALID_VALUE,
+                diagnostic = "_count must be 0 or greater", httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+    // Integer arithmetic panics on overflow, and an unhandled panic stops the whole service, so bound
+    // `page` before multiplying. With page * pageSize <= int:MAX_VALUE, the offset below and the link
+    // arithmetic in `paginationLinks` (which only runs after this) cannot overflow either.
+    if pagination.pageSize > 0 && pagination.page > int:MAX_VALUE / pagination.pageSize {
+        return r4:createFHIRError(string `Invalid page number: ${pagination.page}`, r4:ERROR, r4:INVALID_VALUE,
+                diagnostic = string `page × _count must not exceed ${int:MAX_VALUE}`,
+                httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+    return [(pagination.page - 1) * pagination.pageSize, pagination.pageSize];
+}
+
+# Returns a search's filter parameters, without the paging ones, rejecting any filter the resource type
+# does not support.
+#
+# + params - The request's search parameters
+# + supported - The filter parameter names supported for the resource type
+# + return - The filter parameters, or a `FHIRError` (400) naming an unsupported one
+isolated function searchFilters(map<r4:RequestSearchParameter[]> params, string[] supported)
+        returns map<r4:RequestSearchParameter[]>|r4:FHIRError {
+    map<r4:RequestSearchParameter[]> filters = {};
+    foreach var [name, paramList] in params.entries() {
+        if name == "_count" || name == "_offset" || name == "page" {
+            continue;
+        }
+        if supported.indexOf(name) is () {
+            return r4:createFHIRError(string `Invalid search parameter: ${name}`, r4:ERROR, r4:PROCESSING_NOT_SUPPORTED,
+                    diagnostic = string `Allowed search parameters: ${supported.toString()}`,
+                    httpStatusCode = http:STATUS_BAD_REQUEST);
+        }
+        filters[name] = paramList;
+    }
+    return filters;
+}
+
+# Builds the Bundle `self`/`next`/`prev` links for a paginated search. The search resources return an
+# `http:Response`, so the FHIR listener does not add these itself (it only does for an `r4:Bundle`).
+# The URLs carry the request's filters plus `page` and `_count`, the same shape the listener uses.
+#
+# + ctx - The `FHIRContext` of the incoming search request
+# + resourcePath - The search path, e.g. `/fhir/r4/ValueSet`
+# + filters - The request's filter parameters
+# + total - The total number of matches across all pages
+# + return - The links, or `()` if the request is not paginated
+isolated function paginationLinks(r4:FHIRContext ctx, string resourcePath, map<r4:RequestSearchParameter[]> filters,
+        int total) returns r4:BundleLink[]? {
+    r4:PaginationContext? pagination = ctx.getPaginationContext();
+    if pagination is () || !pagination.paginationEnabled {
+        return ();
+    }
+    string[] parts = [];
+    foreach var [name, paramList] in filters.entries() {
+        foreach r4:RequestSearchParameter param in paramList {
+            string? modifier = param.typedValue.modifier;
+            string key = modifier is string ? string `${name}:${modifier}` : name;
+            string|error encoded = url:encode(param.value, "UTF-8");
+            parts.push(string `${key}=${encoded is string ? encoded : param.value}`);
+        }
+    }
+    string prefix = parts.length() > 0 ? string `${resourcePath}?${string:'join("&", ...parts)}&` : string `${resourcePath}?`;
+    int page = pagination.page;
+    int pageSize = pagination.pageSize;
+
+    r4:BundleLink[] links = [{relation: "self", url: string `${prefix}page=${page}&_count=${pageSize}`}];
+    if pageSize > 0 && page * pageSize < total {
+        links.push({relation: "next", url: string `${prefix}page=${page + 1}&_count=${pageSize}`});
+    }
+    if page > 1 {
+        links.push({relation: "prev", url: string `${prefix}page=${page - 1}&_count=${pageSize}`});
+    }
+    return links;
+}
+
+# Wraps one page of search results as a searchset `Bundle`.
+#
+# + ctx - The `FHIRContext` of the incoming search request
+# + resourcePath - The search path, e.g. `/fhir/r4/ValueSet`
+# + filters - The request's filter parameters
+# + resources - The resources on this page
+# + total - The total number of matches across all pages
+# + return - The searchset `Bundle`
+isolated function searchsetBundle(r4:FHIRContext ctx, string resourcePath, map<r4:RequestSearchParameter[]> filters,
+        json[] resources, int total) returns r4:Bundle {
+    r4:BundleEntry[] entries = resources.'map(r => <r4:BundleEntry>{'resource: r, search: {mode: r4:MATCH}});
+    return {
+        'type: r4:BUNDLE_TYPE_SEARCHSET,
+        meta: {
+            lastUpdated: time:utcToString(time:utcNow())
+        },
+        total: total,
+        entry: entries,
+        link: paginationLinks(ctx, resourcePath, filters, total)
+    };
+}
+
+# Returns the request's search parameters as a mutable map.
+#
+# + ctx - The `FHIRContext` of the incoming search request
+# + return - The search parameters, or a `FHIRError` (400) if they cannot be read
+isolated function requestSearchParameters(r4:FHIRContext ctx) returns map<r4:RequestSearchParameter[]>|r4:FHIRError {
+    map<r4:RequestSearchParameter[]>|error params = getSearchParametersFromFHIRContext(ctx);
+    if params is error {
+        log:printError("Failed to get search parameters from FHIR context", 'error = params);
+        return r4:createFHIRError("Invalid search parameters", r4:ERROR, r4:INVALID_REQUIRED, cause = params,
+                httpStatusCode = http:STATUS_BAD_REQUEST);
+    }
+    return params;
+}
+
+# Handles the `ValueSet` search interaction: filters (ANDed), paginates with `page`/`_count`, and returns
+# a searchset `Bundle` whose `total` is the number of matches across all pages.
 #
 # + ctx - The `FHIRContext` of the incoming search request
 # + return - A searchset `Bundle` of matching `ValueSet` resources, or a `FHIRError` if the search parameters are invalid or the search fails
 public isolated function searchValueSet(r4:FHIRContext ctx) returns r4:Bundle|r4:FHIRError {
-
-    map<r4:RequestSearchParameter[]>|error params = getSearchParametersFromFHIRContext(ctx);
-
-    if params is error {
-        log:printError("Failed to get search parameters from FHIR context", 'error = params);
-        return r4:createFHIRError(
-                "Invalid search parameters",
-                r4:ERROR,
-                r4:INVALID_REQUIRED,
-                cause = params,
-                httpStatusCode = http:STATUS_BAD_REQUEST);
-    }
-
-    r4:ValueSet[] valueSets = check terminology:searchValueSets(params, terminology = terminology_source);
-
-    r4:BundleEntry[] entries = valueSets.'map(v => <r4:BundleEntry>{'resource: v, search: {mode: r4:MATCH}});
-
-    return {
-        'type: r4:BUNDLE_TYPE_SEARCHSET,
-        meta: {
-            lastUpdated: time:utcToString(time:utcNow())
-        },
-        total: entries.length(),
-        entry: entries
-    };
+    [int, int] [offset, count] = check searchWindow(ctx);
+    map<r4:RequestSearchParameter[]> filters = check searchFilters(check requestSearchParameters(ctx), VALUESET_SEARCH_FILTERS);
+    [r4:ValueSet[], int] [valueSets, total] = check terminology_source.searchValueSetPage(filters, offset, count);
+    return searchsetBundle(ctx, "/fhir/r4/ValueSet", filters, valueSets.'map(v => v.toJson()), total);
 }
 
-# Handles the `CodeSystem` search interaction, resolving the request's search parameters through the FHIR context and returning matches as a searchset `Bundle`.
+# Handles the `CodeSystem` search interaction: filters (ANDed), paginates with `page`/`_count`, and returns
+# a searchset `Bundle` whose `total` is the number of matches across all pages.
 #
 # + ctx - The `FHIRContext` of the incoming search request
 # + return - A searchset `Bundle` of matching `CodeSystem` resources, or a `FHIRError` if the search parameters are invalid or the search fails
 public isolated function searchCodeSystem(r4:FHIRContext ctx) returns r4:Bundle|r4:FHIRError {
-    map<r4:RequestSearchParameter[] & readonly> & readonly params = ctx.getRequestSearchParameters();
-    map<r4:RequestSearchParameter[]>|error clonedParams = params.cloneWithType();
-
-    if clonedParams is error {
-        return r4:createFHIRError(
-                "Invalid search parameters blah",
-                r4:ERROR,
-                r4:INVALID_REQUIRED,
-                httpStatusCode = http:STATUS_BAD_REQUEST);
-    }
-
-    r4:CodeSystem[] codeSystems = check terminology:searchCodeSystems(clonedParams, terminology = terminology_source);
-
-    r4:BundleEntry[] entries = codeSystems.'map(c => <r4:BundleEntry>{'resource: c.toJson(), search: {mode: r4:MATCH}});
-
-    return {
-        'type: r4:BUNDLE_TYPE_SEARCHSET,
-        meta: {
-            lastUpdated: time:utcToString(time:utcNow())
-        },
-        total: entries.length(),
-        entry: entries
-    };
+    [int, int] [offset, count] = check searchWindow(ctx);
+    map<r4:RequestSearchParameter[]> filters = check searchFilters(check requestSearchParameters(ctx), CODESYSTEM_SEARCH_FILTERS);
+    [r4:CodeSystem[], int] [codeSystems, total] = check terminology_source.searchCodeSystemPage(filters, offset, count);
+    return searchsetBundle(ctx, "/fhir/r4/CodeSystem", filters, codeSystems.'map(c => c.toJson()), total);
 }
 
-# Handles the `ConceptMap` search interaction, resolving the request's search parameters through the FHIR context and returning matches as a searchset `Bundle`.
+# Handles the `ConceptMap` search interaction: filters (ANDed), paginates with `page`/`_count`, and returns
+# a searchset `Bundle` whose `total` is the number of matches across all pages.
 #
 # + ctx - The `FHIRContext` of the incoming search request
 # + return - A searchset `Bundle` of matching `ConceptMap` resources, or a `FHIRError` if the search parameters are invalid or the search fails
 public isolated function searchConceptMap(r4:FHIRContext ctx) returns r4:Bundle|r4:FHIRError {
-    map<r4:RequestSearchParameter[] & readonly> & readonly params = ctx.getRequestSearchParameters();
-    map<r4:RequestSearchParameter[]>|error clonedParams = params.cloneWithType();
-
-    if clonedParams is error {
-        return r4:createFHIRError(
-                "Invalid search parameters",
-                r4:ERROR,
-                r4:INVALID_REQUIRED,
-                httpStatusCode = http:STATUS_BAD_REQUEST);
-    }
-
-    r4:ConceptMap[] conceptMaps = check terminology:searchConceptMaps(clonedParams, terminology = terminology_source);
-
-    r4:BundleEntry[] entries = conceptMaps.'map(c => <r4:BundleEntry>{'resource: c.toJson(), search: {mode: r4:MATCH}});
-
-    return {
-        'type: r4:BUNDLE_TYPE_SEARCHSET,
-        meta: {
-            lastUpdated: time:utcToString(time:utcNow())
-        },
-        total: entries.length(),
-        entry: entries
-    };
+    [int, int] [offset, count] = check searchWindow(ctx);
+    map<r4:RequestSearchParameter[]> filters = check searchFilters(check requestSearchParameters(ctx), CONCEPTMAP_SEARCH_FILTERS);
+    [r4:ConceptMap[], int] [conceptMaps, total] = check searchStoredConceptMapPage(filters, offset, count);
+    return searchsetBundle(ctx, "/fhir/r4/ConceptMap", filters, conceptMaps.'map(c => c.toJson()), total);
 }
 
 # TEMPORARY SHIM (branch: api-conformance). Filters an expansion request's search parameters down to the set natively supported by the terminology library (url, valueSetVersion, filter, _offset, _count), mapping the common aliases count -> _count and offset -> _offset. The terminology library returns a hard error ("Invalid search parameter: ...") for anything else, but the HL7 tx-ecosystem test suite sends many additional parameters (excludeNested, activeOnly, includeDesignations, displayLanguage, property, ...). Dropping the unsupported ones here lets expansion return a 2xx result instead of a 500, so the suite can run end-to-end; tests that depend on the dropped parameters still fail on output comparison rather than failing the HTTP call. Remove this shim once the parameters are natively supported.

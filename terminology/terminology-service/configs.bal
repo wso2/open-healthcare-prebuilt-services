@@ -46,3 +46,12 @@ enum TerminologyType {
 
 // Configurable Parameters
 configurable string db_type = "postgresql";
+
+# Service version reported in the TerminologyCapabilities statement. Release builds set it from the
+# Ballerina.toml version (see distribution/package.sh); other builds report "dev".
+configurable string service_version = "dev";
+
+# Page size for ValueSet, CodeSystem and ConceptMap search: used when a request has no `_count`, and
+# the largest `_count` honoured (larger values are reduced to it). Pages are selected with `page`
+# (1-based). Must not exceed 300, the terminology library's maximum.
+configurable int search_page_size = 100;

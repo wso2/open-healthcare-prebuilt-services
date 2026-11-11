@@ -58,8 +58,8 @@ CREATE TABLE "valueset_compose_includes" (
 CREATE TABLE "concepts" (
 	"conceptId"  SERIAL,
 	"code" VARCHAR(191) NOT NULL,
-	"display" VARCHAR(191),
-	"definition" VARCHAR(191),
+	"display" TEXT,
+	"definition" TEXT,
 	"concept" BYTEA NOT NULL,
 	"parentConceptId" INT,
 	"codesystemCodeSystemId" INT NOT NULL,
@@ -168,7 +168,9 @@ CREATE INDEX "idx_concepts_codesystem_id" ON "concepts"("codesystemCodeSystemId"
 CREATE INDEX "idx_concepts_code" ON "concepts"("code");
 CREATE INDEX "idx_concepts_codesystem_code" ON "concepts"("codesystemCodeSystemId", "code");
 CREATE INDEX "idx_concepts_parent" ON "concepts"("parentConceptId");
-CREATE INDEX "idx_concepts_display" ON "concepts"("display");
+-- No index on "display": display search is a case-insensitive substring match
+-- (UPPER("display") LIKE '%...%'), which a B-tree on "display" cannot serve, and on
+-- PostgreSQL such an index would reject displays over ~2.7 KB (B-tree row limit).
 
 -- ValueSet/$expand: compose include traversal
 CREATE INDEX "idx_vci_valueset_id" ON "valueset_compose_includes"("valuesetValueSetId");

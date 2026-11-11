@@ -46,8 +46,8 @@ CREATE TABLE "valuesets" (
 CREATE TABLE "concepts" (
 	"conceptId" INT AUTO_INCREMENT,
 	"code" VARCHAR(191) NOT NULL,
-	"display" VARCHAR(191),
-	"definition" VARCHAR(191),
+	"display" VARCHAR,
+	"definition" VARCHAR,
 	"concept" LONGBLOB NOT NULL,
 	"parentConceptId" INT,
 	"codesystemCodeSystemId" INT NOT NULL,
