@@ -105,6 +105,15 @@ load_default_code_systems = false
 
 The header selects how the archive is interpreted. A missing or unrecognised value returns `400`.
 
+```sh
+export TX=http://localhost:9090/fhir/r4
+curl -X POST "$TX/%24upload?loinc-version=2.80" \
+  -H "Content-Type: application/zip" -H "x-terminology-type: LOINC" \
+  --data-binary @Loinc_2.80.zip
+```
+
+The recordings below were made against the 1.0.0 release, using small sample files from the test suite; real releases take longer to load.
+
 ### FHIR
 
 Expects a zip of FHIR `CodeSystem-*.json` and `ValueSet-*.json` files. Loaded synchronously.
@@ -115,11 +124,15 @@ Expects a LOINC release zip. Converted to a FHIR CodeSystem and loaded synchrono
 
 - `loinc-version` (query parameter, optional) — version to record on the CodeSystem.
 
+![Uploading LOINC, then looking up and validating a LOINC code](docs/images/loinc.gif)
+
 ### SNOMED CT
 
 Expects a SNOMED CT RF2 Snapshot release zip, containing the Concept, Description, Relationship and (optionally) Text Definition files.
 
 - `snomed-version` (query parameter, optional) — RF2 release date as `YYYYMMDD`, recorded as the CodeSystem version.
+
+![Uploading SNOMED CT, waiting for the background import, then looking up a concept and testing subsumption](docs/images/snomed.gif)
 
 ### ICD-10-CM
 
@@ -128,6 +141,9 @@ Expects a zip of the ICD-10-CM release files: the tabular XML (`icd10cm-tabular-
 - `icd10cm-version` (query parameter, optional) — version to record on the CodeSystem.
 - CodeSystem url: `http://hl7.org/fhir/sid/icd-10-cm`.
 - Only one ICD-10-CM import may run at a time (independent of the SNOMED CT single-flight guard); a concurrent request returns `409`.
+- Codes use the dotted FHIR form, e.g. `E11.9`.
+
+![Uploading ICD-10-CM, waiting for the background import, then looking up a code and testing subsumption](docs/images/icd10.gif)
 
 **SNOMED CT and ICD-10-CM imports run in the background.** The request returns `201 Created` as soon as the archive is extracted, before the concepts are loaded. A full release takes several minutes; check the server logs for progress and for the completion summary.
 
@@ -143,11 +159,42 @@ Concept hierarchy is stored in the `concept_closure` table as a transitive is-a 
 
 ## Running the Service
 
-Ensure you have [Ballerina](https://ballerina.io/downloads/) installed. Then run:
+The quickest way is the release zip (see [Releases](#releases)), which needs only Java 21+:
 
-```sh
-bal run service.bal
-```
+![Starting the terminology service from the release zip](docs/images/start.gif)
+
+To run from source instead, you need [Ballerina](https://ballerina.io/downloads/) Swan Lake 2201.12.10 and a database. The service does not create its schema, and `db_type` defaults to `postgresql`. To use PostgreSQL:
+
+1. Create the database and apply the schema. The script drops existing tables first.
+
+   ```sh
+   createdb terminology
+   psql -d terminology -f modules/store_pg/script.sql
+   ```
+
+2. Create `Config.toml` in this directory. The file is gitignored. Use [distribution/sample-Config.toml](distribution/sample-Config.toml) for the other settings.
+
+   ```toml
+   [wso2.terminology_service]
+   db_type = "postgresql"
+
+   [wso2.terminology_service.store_pg]
+   host = "localhost"
+   port = 5432
+   database = "terminology"
+   user = "postgres"
+   password = ""
+   ```
+
+   `user` and `password` must be a PostgreSQL role and its password on that server. The role needs to connect to the `terminology` database and read and write the tables created in step 1. Using the role that ran the schema script covers this.
+
+   For H2, set `db_type = "h2"` and `[wso2.terminology_service.store_h2]` `url` / `user` / `password`, and create the schema from `modules/store_h2/script.sql` (see [Supported DB Types and Configurations](#supported-db-types-and-configurations)). The script drops existing tables, so back up any data you want to keep before running it.
+
+3. Run the service from this directory:
+
+   ```sh
+   bal run
+   ```
 
 The service will start on port `9090` by default.
 

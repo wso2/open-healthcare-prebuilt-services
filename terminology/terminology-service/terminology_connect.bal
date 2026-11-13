@@ -174,9 +174,8 @@ isolated function searchWindow(r4:FHIRContext ctx) returns [int, int]|r4:FHIRErr
         return r4:createFHIRError(string `Invalid _count: ${pagination.pageSize}`, r4:ERROR, r4:INVALID_VALUE,
                 diagnostic = "_count must be 0 or greater", httpStatusCode = http:STATUS_BAD_REQUEST);
     }
-    // Integer arithmetic panics on overflow, and an unhandled panic stops the whole service, so bound
-    // `page` before multiplying. With page * pageSize <= int:MAX_VALUE, the offset below and the link
-    // arithmetic in `paginationLinks` (which only runs after this) cannot overflow either.
+    // Keep page * pageSize within the int range, so the offset below and the link arithmetic in
+    // `paginationLinks` (which only runs after this) stay in range too.
     if pagination.pageSize > 0 && pagination.page > int:MAX_VALUE / pagination.pageSize {
         return r4:createFHIRError(string `Invalid page number: ${pagination.page}`, r4:ERROR, r4:INVALID_VALUE,
                 diagnostic = string `page × _count must not exceed ${int:MAX_VALUE}`,
