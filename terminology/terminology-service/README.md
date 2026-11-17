@@ -154,7 +154,7 @@ Concept hierarchy is stored in the `concept_closure` table as a transitive is-a 
 ## Usage
 
 1. **Start the Service**: Run the Ballerina service (see below).
-2. **Interact with the API**: Use tools like Postman or curl to send FHIR-compliant requests to the endpoints.
+2. **Interact with the API**: Import the [Postman collection](#postman-collection), or use curl to send any FHIR-compliant requests to the endpoints.
 3. **Test Data**: Sample ValueSets, CodeSystems, and test payloads are available in the `tests/resources` directory.
 
 ## Running the Service
@@ -197,6 +197,18 @@ To run from source instead, you need [Ballerina](https://ballerina.io/downloads/
    ```
 
 The service will start on port `9090` by default.
+
+## Postman Collection
+
+[`collections/Terminology Service.postman_collection.json`](collections/Terminology%20Service.postman_collection.json) has example requests for the endpoints above.
+
+1. In Postman, choose **Import** and select the collection file.
+2. The collection's `baseUrl` variable defaults to `http://localhost:9090/fhir/r4`. Change it if the service runs elsewhere.
+3. Run the folders in order:
+   - **00 Try It Without Uploads** — works straight away on a fresh server, using the ~500 [built-in FHIR CodeSystems](#built-in-fhir-codesystems) loaded at startup: `$lookup`, `$validate-code`, `$subsumes`, `$expand`, ValueSet `$validate-code` and `$closure`. Only CodeSystems are preloaded, not ValueSets.
+   - **01 Load Terminology** — `$upload` requests for FHIR, LOINC, SNOMED CT and ICD-10-CM. No release files are bundled: select your own zip in each request's **Body** tab. SNOMED CT and ICD-10-CM finish loading in the background, so wait for the completion message in the server logs.
+   - **02 Create Example Resources** — creates the example ValueSets, CodeSystem and ConceptMaps that the later requests use.
+   - **03–06** — CodeSystem, ValueSet, ConceptMap (`$translate`, `$closure`) and system-level operations (`$find-code`, batch validation, `metadata`). Most of these use SNOMED CT, LOINC or ICD-10-CM codes, so they need the matching upload from folder 01.
 
 ## Releases
 

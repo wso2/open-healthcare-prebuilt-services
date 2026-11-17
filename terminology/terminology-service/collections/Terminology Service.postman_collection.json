@@ -1,650 +1,328 @@
 {
 	"info": {
-		"_postman_id": "a2cc1065-2c7e-4c24-86cf-568c85d47f18",
-		"name": "Terminology Service (Ballerina)",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"_exporter_id": "41953006"
+		"_postman_id": "ff7042dd-0fde-4499-a361-4370f355ec5d",
+		"name": "FHIR Terminology Service",
+		"description": "Example requests for the Ballerina FHIR R4 Terminology Service.\n\n1. Start the service (default `http://localhost:9090`). If it runs elsewhere, change the `baseUrl` collection variable.\n2. **00 Try It Without Uploads** works straight away against the ~500 built-in CodeSystems loaded at startup.\n3. For SNOMED CT, LOINC and ICD-10-CM, run **01 Load Terminology** for the content you have (SNOMED CT and ICD-10-CM load in the background - wait for the completion log).\n4. Run **02 Create Example Resources** once.\n5. Try any request in folders 03-06.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
 		{
-			"name": "Code System",
+			"name": "00 Try It Without Uploads",
+			"description": "Works on a fresh server with nothing uploaded. On startup the service loads about 500 built-in CodeSystems (FHIR R4 `http://hl7.org/fhir/...` and HL7 Terminology `http://terminology.hl7.org/CodeSystem/...`), and these requests use them.\n\nOnly CodeSystems are preloaded, not ValueSets, so the ValueSet examples pass an inline ValueSet in the request body.",
 			"item": [
 				{
-					"name": "Get By ID",
+					"name": "Lookup AdministrativeGender",
 					"request": {
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "http://localhost:9089/fhir/r4/CodeSystem/account-status",
-							"protocol": "http",
+							"raw": "{{baseUrl}}/CodeSystem/$lookup?system=http://hl7.org/fhir/administrative-gender&code=female",
 							"host": [
-								"localhost"
+								"{{baseUrl}}"
 							],
-							"port": "9089",
 							"path": [
-								"fhir",
-								"r4",
 								"CodeSystem",
-								"account-status"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "$lookup",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/CodeSystem/%24lookup?system=http://hl7.org/fhir/account-status&code=active",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"CodeSystem",
-								"%24lookup"
+								"$lookup"
 							],
 							"query": [
 								{
 									"key": "system",
-									"value": "http://hl7.org/fhir/account-status"
+									"value": "http://hl7.org/fhir/administrative-gender"
 								},
 								{
 									"key": "code",
-									"value": "active"
-								},
-								{
-									"key": "version",
-									"value": "2.8",
-									"disabled": true
+									"value": "female"
 								}
 							]
-						}
+						},
+						"description": ""
 					},
 					"response": []
 				},
 				{
-					"name": "$lookup (ID)",
+					"name": "Validate AdministrativeGender code with display",
 					"request": {
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "http://localhost:9089/fhir/r4/CodeSystem/loinc/%24lookup?code=1963-8",
-							"protocol": "http",
+							"raw": "{{baseUrl}}/CodeSystem/$validate-code?url=http://hl7.org/fhir/administrative-gender&code=female&display=Female",
 							"host": [
-								"localhost"
+								"{{baseUrl}}"
 							],
-							"port": "9089",
 							"path": [
-								"fhir",
-								"r4",
 								"CodeSystem",
-								"loinc",
-								"%24lookup"
-							],
-							"query": [
-								{
-									"key": "code",
-									"value": "1963-8"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "$lookup",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\r\n    \"resourceType\": \"Parameters\",\r\n    \"parameter\": [\r\n        {\r\n            \"name\": \"coding\",\r\n            \"valueCoding\": {\r\n                \"system\": \"urn:oid:2.16.840.1.113883.6.238\",\r\n                \"code\": \"2184-0\"\r\n            }\r\n        }\r\n    ]\r\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/CodeSystem/%24lookup",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"CodeSystem",
-								"%24lookup"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "$subsumes",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/CodeSystem/%24subsumes?codeA=2133-7&codeB=2186-5&system=urn:oid:2.16.840.1.113883.6.238",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"CodeSystem",
-								"%24subsumes"
-							],
-							"query": [
-								{
-									"key": "codeA",
-									"value": "2133-7"
-								},
-								{
-									"key": "codeB",
-									"value": "2186-5"
-								},
-								{
-									"key": "system",
-									"value": "urn:oid:2.16.840.1.113883.6.238"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "$subsumes",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\r\n  \"resourceType\": \"Parameters\",\r\n  \"parameter\": [\r\n    {\r\n      \"name\": \"system\",\r\n      \"valueUri\": \"http://hl7.org/fhir/action-condition-kind\"\r\n    },\r\n    {\r\n      \"name\": \"version\",\r\n      \"valueString\": \"4.0.1\"\r\n    },\r\n    {\r\n      \"name\": \"codingA\",\r\n      \"valueCoding\": {\r\n        \"system\": \"http://hl7.org/fhir/action-condition-kind\",\r\n        \"code\": \"applicability\"\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"codingB\",\r\n      \"valueCoding\": {\r\n        \"system\": \"http://hl7.org/fhir/action-condition-kind\",\r\n        \"code\": \"start\"\r\n      }\r\n    }\r\n  ]\r\n}\r\n",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/CodeSystem/%24subsumes",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"CodeSystem",
-								"%24subsumes"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Add/Upload JSON",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\r\n    \"resourceType\": \"CodeSystem\",\r\n    \"id\": \"abstract-types\",\r\n    \"meta\": {\r\n        \"lastUpdated\": \"2019-11-01T09:29:23.356+11:00\"\r\n    },\r\n    \"extension\": [\r\n        {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/valueset-special-status\",\r\n            \"valueString\": \"This Code System is normative - it is generated based on the information defined in this specification. The definition will remain fixed  across versions, but the actual contents will change from version to version\"\r\n        },\r\n        {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status\",\r\n            \"valueCode\": \"normative\"\r\n        },\r\n        {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-normative-version\",\r\n            \"valueCode\": \"4.0.0\"\r\n        },\r\n        {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-fmm\",\r\n            \"valueInteger\": 5\r\n        },\r\n        {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-wg\",\r\n            \"valueCode\": \"fhir\"\r\n        }\r\n    ],\r\n    \"url\": \"http://hl7.org/fhir/abstract-types\",\r\n    \"version\": \"4.0.1\",\r\n    \"name\": \"AbstractType\",\r\n    \"title\": \"AbstractType\",\r\n    \"status\": \"active\",\r\n    \"experimental\": false,\r\n    \"date\": \"2019-11-01T09:29:23+11:00\",\r\n    \"publisher\": \"HL7 (FHIR Project)\",\r\n    \"contact\": [\r\n        {\r\n            \"telecom\": [\r\n                {\r\n                    \"system\": \"url\",\r\n                    \"value\": \"http://hl7.org/fhir\"\r\n                },\r\n                {\r\n                    \"system\": \"email\",\r\n                    \"value\": \"fhir@lists.hl7.org\"\r\n                }\r\n            ]\r\n        }\r\n    ],\r\n    \"description\": \"A list of the base types defined by this version of the FHIR specification - types that are defined, but for which only specializations actually are created.\",\r\n    \"caseSensitive\": true,\r\n    \"content\": \"complete\",\r\n    \"concept\": [\r\n        {\r\n            \"code\": \"Type\",\r\n            \"display\": \"Type\",\r\n            \"definition\": \"A place holder that means any kind of data type\"\r\n        },\r\n        {\r\n            \"code\": \"Any\",\r\n            \"display\": \"Any\",\r\n            \"definition\": \"A place holder that means any kind of resource\"\r\n        }\r\n    ]\r\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/CodeSystem",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"CodeSystem"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Add/Upload XML",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<CodeSystem xmlns=\"http://hl7.org/fhir\">\r\n  <id value=\"adverse-event-severity\"/>\r\n  <meta>\r\n    <lastUpdated value=\"2020-04-09T21:10:28.568+00:00\"/>\r\n  </meta>\r\n  <url value=\"http://terminology.hl7.org/CodeSystem/adverse-event-severity\"/>\r\n  <identifier>\r\n    <system value=\"urn:ietf:rfc:3986\"/>\r\n    <value value=\"urn:oid:2.16.840.1.113883.4.642.1.1256\"/>\r\n  </identifier>\r\n  <version value=\"1.0.0\"/>\r\n  <name value=\"AdverseEventSeverity\"/>\r\n  <title value=\"AdverseEventSeverity\"/>\r\n  <status value=\"draft\"/>\r\n  <experimental value=\"false\"/>\r\n  <date value=\"2020-04-09T21:10:28+00:00\"/>\r\n  <publisher value=\"Health Level Seven International\"/>\r\n  \r\n  <contact>\r\n    <telecom>\r\n      <system value=\"url\"/>\r\n      <value value=\"http://hl7.org\"/>\r\n    </telecom>\r\n    <telecom>\r\n      <system value=\"email\"/>\r\n      <value value=\"hq@HL7.org\"/>\r\n    </telecom>\r\n  </contact>\r\n  <description value=\"The severity of the adverse event itself, in direct relation to the subject.\"/>  <copyright value=\"This material derives from the HL7 Terminology (THO). THO is copyright ©1989+ Health Level Seven International and is made available under the CC0 designation. For more licensing information see: https://terminology.hl7.org/license.html\"/>\r\n  <caseSensitive value=\"true\"/>\r\n  <valueSet value=\"http://terminology.hl7.org/ValueSet/adverse-event-severity\"/>\r\n  <content value=\"complete\"/>\r\n  <concept>\r\n    <code value=\"mild\"/>\r\n    <display value=\"Mild\"/>\r\n  </concept>\r\n  <concept>\r\n    <code value=\"moderate\"/>\r\n    <display value=\"Moderate\"/>\r\n  </concept>\r\n  <concept>\r\n    <code value=\"severe\"/>\r\n    <display value=\"Severe\"/>\r\n  </concept>\r\n</CodeSystem>",
-							"options": {
-								"raw": {
-									"language": "xml"
-								}
-							}
-						},
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/CodeSystem",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"CodeSystem"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Add/Upload ZIP",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "file",
-							"file": {
-								"src": "/C:/Users/Isuranga Sandun/Documents/Codes/LOINCtoFHIR/loinc-codesystem.zip"
-							}
-						},
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/CodeSystem",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"CodeSystem"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Add/Upload JSON (Large File)",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "file",
-							"file": {
-								"src": "/C:/Users/Isuranga Sandun/Documents/Codes/LOINCtoFHIR/loinc-codesystem/loinc-codesystem.json"
-							}
-						},
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/CodeSystem",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"CodeSystem"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Search",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/CodeSystem?url=http://hl7.org/fhir/abstract-types",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"CodeSystem"
+								"$validate-code"
 							],
 							"query": [
 								{
 									"key": "url",
-									"value": "http://hl7.org/fhir/abstract-types"
-								},
-								{
-									"key": "version",
-									"value": "4.0.1",
-									"disabled": true
-								}
-							]
-						}
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Value Set",
-			"item": [
-				{
-					"name": "Get By ID",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/ValueSet/example-valueset-include-valueset",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"ValueSet",
-								"example-valueset-include-valueset"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Search",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/ValueSet?url=http://example.org/fhir/ValueSet/example-include-valueset",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"ValueSet"
-							],
-							"query": [
-								{
-									"key": "url",
-									"value": "http://example.org/fhir/ValueSet/example-include-valueset"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "$expand",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/ValueSet/%24expand?filter=active",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"ValueSet",
-								"%24expand"
-							],
-							"query": [
-								{
-									"key": "url",
-									"value": "http://example.org/fhir/ValueSet/example-include-valueset",
-									"disabled": true
-								},
-								{
-									"key": "filter",
-									"value": "active"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "$expand (ID)",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/ValueSet/account-status/%24expand?filter=account",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"ValueSet",
-								"account-status",
-								"%24expand"
-							],
-							"query": [
-								{
-									"key": "filter",
-									"value": "account"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "$expand",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\r\n  \"resourceType\": \"Parameters\",\r\n  \"meta\": {\r\n    \"profile\": [\"http://hl7.org/fhir/StructureDefinition/Parameters\"]\r\n  },\r\n  \"parameter\": [\r\n    {\r\n      \"name\": \"coding\",\r\n      \"valueCoding\": {\r\n        \"system\": \"http://hl7.org/fhir/account-status\",\r\n        \"code\": \"inactive\",\r\n        \"display\": \"Inactive\"\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"valueSet\",\r\n      \"resource\": {\r\n        \"resourceType\": \"ValueSet\",\r\n        \"id\": \"account-status\",\r\n        \"meta\": {\r\n          \"lastUpdated\": \"2019-11-01T09:29:23.356+11:00\",\r\n          \"profile\": [\r\n            \"http://hl7.org/fhir/StructureDefinition/shareablevalueset\"\r\n          ]\r\n        },\r\n        \"text\": {\r\n          \"status\": \"generated\",\r\n          \"div\": \"<div xmlns=\\\"http://www.w3.org/1999/xhtml\\\"><h2>AccountStatus</h2><div><p>Indicates whether the account is available to be used.</p>\\n</div><p>This value set includes codes from the following code systems:</p><ul><li>Include all codes defined in <a href=\\\"codesystem-account-status.html\\\"><code>http://hl7.org/fhir/account-status</code></a></li></ul></div>\"\r\n        },\r\n        \"extension\": [\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-wg\",\r\n            \"valueCode\": \"pa\"\r\n          },\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status\",\r\n            \"valueCode\": \"trial-use\"\r\n          },\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-fmm\",\r\n            \"valueInteger\": 2\r\n          }\r\n        ],\r\n        \"url\": \"http://hl7.org/fhir/ValueSet/account-status\",\r\n        \"identifier\": [\r\n          {\r\n            \"system\": \"urn:ietf:rfc:3986\",\r\n            \"value\": \"urn:oid:2.16.840.1.113883.4.642.3.726\"\r\n          }\r\n        ],\r\n        \"version\": \"4.0.1\",\r\n        \"name\": \"AccountStatus\",\r\n        \"title\": \"AccountStatus\",\r\n        \"status\": \"draft\",\r\n        \"experimental\": false,\r\n        \"date\": \"2019-11-01T09:29:23+11:00\",\r\n        \"publisher\": \"HL7 (FHIR Project)\",\r\n        \"contact\": [\r\n          {\r\n            \"telecom\": [\r\n              {\r\n                \"system\": \"url\",\r\n                \"value\": \"http://hl7.org/fhir\"\r\n              },\r\n              {\r\n                \"system\": \"email\",\r\n                \"value\": \"fhir@lists.hl7.org\"\r\n              }\r\n            ]\r\n          }\r\n        ],\r\n        \"description\": \"Indicates whether the account is available to be used.\",\r\n        \"immutable\": true,\r\n        \"compose\": {\r\n          \"include\": [\r\n            {\r\n              \"system\": \"http://hl7.org/fhir/account-status\"\r\n            }\r\n          ]\r\n        }\r\n      }\r\n    }\r\n  ]\r\n}\r\n",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/ValueSet/%24expand?filter=account",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"ValueSet",
-								"%24expand"
-							],
-							"query": [
-								{
-									"key": "filter",
-									"value": "account"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "$validate-code",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/ValueSet/%24validate-code?system=http://example.org/fhir/ValueSet/valueset-x&code=2028-9",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"ValueSet",
-								"%24validate-code"
-							],
-							"query": [
-								{
-									"key": "system",
-									"value": "http://example.org/fhir/ValueSet/valueset-x"
+									"value": "http://hl7.org/fhir/administrative-gender"
 								},
 								{
 									"key": "code",
-									"value": "2028-9"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "$validate-code (ID)",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4/ValueSet/account-status/%24validate-code?code=inactive&display=test",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4",
-								"ValueSet",
-								"account-status",
-								"%24validate-code"
-							],
-							"query": [
-								{
-									"key": "code",
-									"value": "inactive"
+									"value": "female"
 								},
 								{
 									"key": "display",
-									"value": "test"
+									"value": "Female"
 								}
 							]
-						}
+						},
+						"description": "Expected `result: true`."
 					},
 					"response": []
 				},
 				{
-					"name": "$validate-code",
+					"name": "Validate unknown AdministrativeGender code",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/CodeSystem/$validate-code?url=http://hl7.org/fhir/administrative-gender&code=woman",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"CodeSystem",
+								"$validate-code"
+							],
+							"query": [
+								{
+									"key": "url",
+									"value": "http://hl7.org/fhir/administrative-gender"
+								},
+								{
+									"key": "code",
+									"value": "woman"
+								}
+							]
+						},
+						"description": "Expected `result: false`."
+					},
+					"response": []
+				},
+				{
+					"name": "Lookup with children (condition-ver-status)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/CodeSystem/$lookup?system=http://terminology.hl7.org/CodeSystem/condition-ver-status&code=unconfirmed",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"CodeSystem",
+								"$lookup"
+							],
+							"query": [
+								{
+									"key": "system",
+									"value": "http://terminology.hl7.org/CodeSystem/condition-ver-status"
+								},
+								{
+									"key": "code",
+									"value": "unconfirmed"
+								}
+							]
+						},
+						"description": "`unconfirmed` has two children, `provisional` and `differential`, returned as `child` properties."
+					},
+					"response": []
+				},
+				{
+					"name": "$subsumes - subsumes",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/CodeSystem/$subsumes?system=http://terminology.hl7.org/CodeSystem/condition-ver-status&codeA=unconfirmed&codeB=provisional",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"CodeSystem",
+								"$subsumes"
+							],
+							"query": [
+								{
+									"key": "system",
+									"value": "http://terminology.hl7.org/CodeSystem/condition-ver-status"
+								},
+								{
+									"key": "codeA",
+									"value": "unconfirmed"
+								},
+								{
+									"key": "codeB",
+									"value": "provisional"
+								}
+							]
+						},
+						"description": "Expected `outcome: subsumes`."
+					},
+					"response": []
+				},
+				{
+					"name": "$subsumes - not-subsumed",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/CodeSystem/$subsumes?system=http://terminology.hl7.org/CodeSystem/condition-ver-status&codeA=confirmed&codeB=refuted",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"CodeSystem",
+								"$subsumes"
+							],
+							"query": [
+								{
+									"key": "system",
+									"value": "http://terminology.hl7.org/CodeSystem/condition-ver-status"
+								},
+								{
+									"key": "codeA",
+									"value": "confirmed"
+								},
+								{
+									"key": "codeB",
+									"value": "refuted"
+								}
+							]
+						},
+						"description": "Expected `outcome: not-subsumed`."
+					},
+					"response": []
+				},
+				{
+					"name": "Expand inline ValueSet (whole CodeSystem)",
 					"request": {
 						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\r\n  \"resourceType\": \"Parameters\",\r\n  \"meta\": {\r\n    \"profile\": [\"http://hl7.org/fhir/StructureDefinition/Parameters\"]\r\n  },\r\n  \"parameter\": [\r\n    {\r\n      \"name\": \"codeableConcept\",\r\n      \"valueCodeableConcept\": {\r\n        \"coding\": [\r\n          {\r\n            \"system\": \"http://hl7.org/fhir/account-status\",\r\n            \"code\": \"active\",\r\n            \"display\": \"Active\"\r\n          }\r\n        ],\r\n        \"text\": \"Active Account Status\"\r\n      }\r\n    },\r\n    {\r\n      \"name\": \"valueSet\",\r\n      \"resource\": {\r\n        \"resourceType\": \"ValueSet\",\r\n        \"id\": \"account-status\",\r\n        \"meta\": {\r\n          \"lastUpdated\": \"2019-11-01T09:29:23.356+11:00\",\r\n          \"profile\": [\r\n            \"http://hl7.org/fhir/StructureDefinition/shareablevalueset\"\r\n          ]\r\n        },\r\n        \"text\": {\r\n          \"status\": \"generated\",\r\n          \"div\": \"<div xmlns=\\\"http://www.w3.org/1999/xhtml\\\"><h2>AccountStatus</h2><div><p>Indicates whether the account is available to be used.</p>\\n</div><p>This value set includes codes from the following code systems:</p><ul><li>Include all codes defined in <a href=\\\"codesystem-account-status.html\\\"><code>http://hl7.org/fhir/account-status</code></a></li></ul></div>\"\r\n        },\r\n        \"extension\": [\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-wg\",\r\n            \"valueCode\": \"pa\"\r\n          },\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status\",\r\n            \"valueCode\": \"trial-use\"\r\n          },\r\n          {\r\n            \"url\": \"http://hl7.org/fhir/StructureDefinition/structuredefinition-fmm\",\r\n            \"valueInteger\": 2\r\n          }\r\n        ],\r\n        \"url\": \"http://hl7.org/fhir/ValueSet/account-status\",\r\n        \"identifier\": [\r\n          {\r\n            \"system\": \"urn:ietf:rfc:3986\",\r\n            \"value\": \"urn:oid:2.16.840.1.113883.4.642.3.726\"\r\n          }\r\n        ],\r\n        \"version\": \"4.0.1\",\r\n        \"name\": \"AccountStatus\",\r\n        \"title\": \"AccountStatus\",\r\n        \"status\": \"draft\",\r\n        \"experimental\": false,\r\n        \"date\": \"2019-11-01T09:29:23+11:00\",\r\n        \"publisher\": \"HL7 (FHIR Project)\",\r\n        \"contact\": [\r\n          {\r\n            \"telecom\": [\r\n              {\r\n                \"system\": \"url\",\r\n                \"value\": \"http://hl7.org/fhir\"\r\n              },\r\n              {\r\n                \"system\": \"email\",\r\n                \"value\": \"fhir@lists.hl7.org\"\r\n              }\r\n            ]\r\n          }\r\n        ],\r\n        \"description\": \"Indicates whether the account is available to be used.\",\r\n        \"immutable\": true,\r\n        \"compose\": {\r\n          \"include\": [\r\n            {\r\n              \"system\": \"http://hl7.org/fhir/account-status\"\r\n            }\r\n          ]\r\n        }\r\n      }\r\n    }\r\n  ]\r\n}\r\n",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
 							}
-						},
+						],
 						"url": {
-							"raw": "http://localhost:9089/fhir/r4/ValueSet/%24validate-code",
-							"protocol": "http",
+							"raw": "{{baseUrl}}/ValueSet/$expand",
 							"host": [
-								"localhost"
+								"{{baseUrl}}"
 							],
-							"port": "9089",
 							"path": [
-								"fhir",
-								"r4",
 								"ValueSet",
-								"%24validate-code"
+								"$expand"
 							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Batch Validation",
-					"request": {
-						"method": "POST",
-						"header": [],
+						},
+						"description": "Expands to all four AdministrativeGender codes.",
 						"body": {
 							"mode": "raw",
-							"raw": "{\r\n  \"resourceType\": \"Bundle\",\r\n  \"type\": \"batch\",\r\n  \"entry\": [\r\n    {\r\n      \"request\": {\r\n        \"method\": \"GET\",\r\n        \"url\": \"/%24validate-code?system=http://hl7.org/fhir/ValueSet/account-status&code=inactive\"\r\n      }\r\n    },\r\n    {\r\n      \"request\": {\r\n        \"method\": \"GET\",\r\n        \"url\": \"/%24validate-code?system=http://hl7.org/fhir/ValueSet/account-status&code=active\"\r\n      }\r\n    }\r\n  ]\r\n}\r\n",
+							"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"valueSet\",\n      \"resource\": {\n        \"resourceType\": \"ValueSet\",\n        \"status\": \"active\",\n        \"compose\": {\n          \"include\": [\n            {\n              \"system\": \"http://hl7.org/fhir/administrative-gender\"\n            }\n          ]\n        }\n      }\n    }\n  ]\n}",
 							"options": {
 								"raw": {
 									"language": "json"
 								}
 							}
-						},
-						"url": {
-							"raw": "http://localhost:9089/fhir/r4",
-							"protocol": "http",
-							"host": [
-								"localhost"
-							],
-							"port": "9089",
-							"path": [
-								"fhir",
-								"r4"
-							]
 						}
 					},
 					"response": []
 				},
 				{
-					"name": "Add",
+					"name": "Expand inline ValueSet with is-a filter",
 					"request": {
 						"method": "POST",
-						"header": [],
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/ValueSet/$expand",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ValueSet",
+								"$expand"
+							]
+						},
+						"description": "Expands to `unconfirmed` and its descendants.",
 						"body": {
 							"mode": "raw",
-							"raw": "{\r\n  \"resourceType\": \"ValueSet\",\r\n  \"id\": \"example-valueset-include-valueset\",\r\n  \"url\": \"http://example.org/fhir/ValueSet/example-include-valueset\",\r\n  \"version\": \"1.0.0\",\r\n  \"name\": \"ExampleIncludeValueSet\",\r\n  \"title\": \"Example ValueSet with Include ValueSet\",\r\n  \"status\": \"active\",\r\n  \"date\": \"2025-04-09\",\r\n  \"publisher\": \"Example Publisher\",\r\n  \"contact\": [\r\n    {\r\n      \"name\": \"Example Team\",\r\n      \"telecom\": [\r\n        {\r\n          \"system\": \"email\",\r\n          \"value\": \"support@example.org\"\r\n        }\r\n      ]\r\n    }\r\n  ],\r\n  \"description\": \"A ValueSet that includes other ValueSets using compose.include.valueSet.\",\r\n  \"compose\": {\r\n    \"include\": [\r\n      {\r\n        \"valueSet\": [\r\n          \"http://hl7.org/fhir/ValueSet/abstract-types\",\r\n          \"http://hl7.org/fhir/ValueSet/account-status\"\r\n        ]\r\n      }\r\n    ]\r\n  }\r\n}\r\n",
+							"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"valueSet\",\n      \"resource\": {\n        \"resourceType\": \"ValueSet\",\n        \"status\": \"active\",\n        \"compose\": {\n          \"include\": [\n            {\n              \"system\": \"http://terminology.hl7.org/CodeSystem/condition-ver-status\",\n              \"filter\": [\n                {\n                  \"property\": \"concept\",\n                  \"op\": \"is-a\",\n                  \"value\": \"unconfirmed\"\n                }\n              ]\n            }\n          ]\n        }\n      }\n    }\n  ]\n}",
 							"options": {
 								"raw": {
 									"language": "json"
 								}
 							}
-						},
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Validate code against inline ValueSet",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
 						"url": {
-							"raw": "http://localhost:9089/fhir/r4/ValueSet",
-							"protocol": "http",
+							"raw": "{{baseUrl}}/ValueSet/$validate-code",
 							"host": [
-								"localhost"
+								"{{baseUrl}}"
 							],
-							"port": "9089",
 							"path": [
-								"fhir",
-								"r4",
-								"ValueSet"
+								"ValueSet",
+								"$validate-code"
 							]
+						},
+						"description": "Expected `result: true`.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"coding\",\n      \"valueCoding\": {\n        \"system\": \"http://hl7.org/fhir/administrative-gender\",\n        \"code\": \"female\"\n      }\n    },\n    {\n      \"name\": \"valueSet\",\n      \"resource\": {\n        \"resourceType\": \"ValueSet\",\n        \"status\": \"active\",\n        \"compose\": {\n          \"include\": [\n            {\n              \"system\": \"http://hl7.org/fhir/administrative-gender\"\n            }\n          ]\n        }\n      }\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$closure",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/$closure",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"$closure"
+							]
+						},
+						"description": "Adds two concepts to the closure table `builtin-closure-demo` and returns the subsumption pair between them. Closure tables persist on the server, so running this again returns no new pairs.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"name\",\n      \"valueString\": \"builtin-closure-demo\"\n    },\n    {\n      \"name\": \"concept\",\n      \"valueCoding\": {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/condition-ver-status\",\n        \"code\": \"unconfirmed\"\n      }\n    },\n    {\n      \"name\": \"concept\",\n      \"valueCoding\": {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/condition-ver-status\",\n        \"code\": \"provisional\"\n      }\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						}
 					},
 					"response": []
@@ -652,168 +330,1976 @@
 			]
 		},
 		{
-			"name": "Upload FHIR",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "file",
-					"file": {
-						"src": "/C:/Users/Isuranga Sandun/Downloads/hl7.terminology.r4.zip"
-					}
+			"name": "01 Load Terminology ($upload)",
+			"description": "Bulk-load terminology content from zip archives. The `x-terminology-type` header selects the importer. Run whichever ones you have content for; the rest of the collection uses SNOMED CT, LOINC and ICD-10-CM codes.\n\nLOINC, SNOMED CT and ICD-10-CM releases are licensed content and must be obtained from their publishers.",
+			"item": [
+				{
+					"name": "Upload FHIR resources",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/zip"
+							},
+							{
+								"key": "x-terminology-type",
+								"value": "FHIR"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/%24upload",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"%24upload"
+							]
+						},
+						"description": "Upload a zip of FHIR `CodeSystem-*.json` / `ValueSet-*.json` files. Loaded synchronously.\n\nIn the **Body** tab, select the release zip (no file is bundled with this collection). The `$` must be sent percent-encoded as `%24upload` - see the README.",
+						"body": {
+							"mode": "file",
+							"file": {}
+						}
+					},
+					"response": []
 				},
-				"url": {
-					"raw": "http://localhost:9089/fhir/r4/upload",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "9089",
-					"path": [
-						"fhir",
-						"r4",
-						"upload"
-					]
+				{
+					"name": "Upload LOINC",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/zip"
+							},
+							{
+								"key": "x-terminology-type",
+								"value": "LOINC"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/%24upload?loinc-version=2.82",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"%24upload"
+							],
+							"query": [
+								{
+									"key": "loinc-version",
+									"value": "2.82"
+								}
+							]
+						},
+						"description": "Upload a LOINC release zip. Converted to a FHIR CodeSystem and loaded synchronously. `loinc-version` is optional.\n\nIn the **Body** tab, select the release zip (no file is bundled with this collection). The `$` must be sent percent-encoded as `%24upload` - see the README.",
+						"body": {
+							"mode": "file",
+							"file": {}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Upload SNOMED CT",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/zip"
+							},
+							{
+								"key": "x-terminology-type",
+								"value": "SNOMED"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/%24upload?snomed-version=20260401",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"%24upload"
+							],
+							"query": [
+								{
+									"key": "snomed-version",
+									"value": "20260401"
+								}
+							]
+						},
+						"description": "Upload a SNOMED CT RF2 **Snapshot** zip. `snomed-version` is the RF2 release date (`YYYYMMDD`).\n\nReturns `201` once the archive is extracted; the import continues in the background and takes several minutes. Watch the server logs for the completion summary.\n\nIn the **Body** tab, select the release zip (no file is bundled with this collection). The `$` must be sent percent-encoded as `%24upload` - see the README.",
+						"body": {
+							"mode": "file",
+							"file": {}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Upload ICD-10-CM",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/zip"
+							},
+							{
+								"key": "x-terminology-type",
+								"value": "ICD10"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/%24upload?icd10cm-version=2026",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"%24upload"
+							],
+							"query": [
+								{
+									"key": "icd10cm-version",
+									"value": "2026"
+								}
+							]
+						},
+						"description": "Upload a zip containing `icd10cm-tabular-<year>.xml` and `icd10cm-order-<year>.txt`. Imported in the background like SNOMED CT; a concurrent ICD-10-CM upload returns `409`.\n\nIn the **Body** tab, select the release zip (no file is bundled with this collection). The `$` must be sent percent-encoded as `%24upload` - see the README.",
+						"body": {
+							"mode": "file",
+							"file": {}
+						}
+					},
+					"response": []
 				}
-			},
-			"response": []
+			]
 		},
 		{
-			"name": "Upload LOINC",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "x-terminology-type",
-						"value": "LOINC",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "file",
-					"file": {
-						"src": "/C:/Users/Isuranga Sandun/Documents/Codes/LOINCtoFHIR/Loinc_2.80.zip"
-					}
-				},
-				"url": {
-					"raw": "http://localhost:9089/fhir/r4/upload?loinc-version=2.80",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "9089",
-					"path": [
-						"fhir",
-						"r4",
-						"upload"
-					],
-					"query": [
-						{
-							"key": "loinc-version",
-							"value": "2.80"
+			"name": "02 Create Example Resources",
+			"description": "Creates the example ValueSets, CodeSystem and ConceptMaps that later requests refer to. Run these once after loading terminology.",
+			"item": [
+				{
+					"name": "Create ValueSet - SNOMED diabetes",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/ValueSet",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ValueSet"
+							]
+						},
+						"description": "ValueSet with two SNOMED CT diabetes concepts. Used by the ValueSet requests.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"ValueSet\",\n  \"id\": \"snomed-diabetes-example\",\n  \"url\": \"http://example.org/fhir/ValueSet/snomed-diabetes-example\",\n  \"version\": \"1.0.0\",\n  \"name\": \"SnomedDiabetesExample\",\n  \"title\": \"SNOMED diabetes example\",\n  \"status\": \"active\",\n  \"compose\": {\n    \"include\": [\n      {\n        \"system\": \"http://snomed.info/sct\",\n        \"concept\": [\n          {\n            \"code\": \"73211009\"\n          },\n          {\n            \"code\": \"44054006\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						}
-					]
+					},
+					"response": []
+				},
+				{
+					"name": "Create ValueSet - ICD-10-CM diabetes",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/ValueSet",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ValueSet"
+							]
+						},
+						"description": "ValueSet with five ICD-10-CM diabetes codes.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"ValueSet\",\n  \"id\": \"icd10-diabetes-example\",\n  \"url\": \"http://example.org/fhir/ValueSet/icd10-diabetes-example\",\n  \"version\": \"1.0.0\",\n  \"name\": \"Icd10DiabetesExample\",\n  \"title\": \"ICD-10-CM diabetes example\",\n  \"status\": \"active\",\n  \"compose\": {\n    \"include\": [\n      {\n        \"system\": \"http://hl7.org/fhir/sid/icd-10-cm\",\n        \"concept\": [\n          {\n            \"code\": \"E11.9\"\n          },\n          {\n            \"code\": \"E10.9\"\n          },\n          {\n            \"code\": \"E11.65\"\n          },\n          {\n            \"code\": \"E11.21\"\n          },\n          {\n            \"code\": \"E08.9\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create CodeSystem - demo",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/CodeSystem",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"CodeSystem"
+							]
+						},
+						"description": "Small hand-made CodeSystem. Does not need any uploaded terminology, so it is a good first request to try. `version` is optional.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"CodeSystem\",\n  \"id\": \"demo-manual-codesystem\",\n  \"url\": \"http://example.org/fhir/CodeSystem/demo-manual-codesystem\",\n  \"version\": \"1.0.0\",\n  \"name\": \"DemoManualCodeSystem\",\n  \"title\": \"Demo CodeSystem created via plain POST\",\n  \"status\": \"active\",\n  \"content\": \"complete\",\n  \"caseSensitive\": true,\n  \"concept\": [\n    {\n      \"code\": \"A\",\n      \"display\": \"Concept A\"\n    },\n    {\n      \"code\": \"B\",\n      \"display\": \"Concept B\"\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create ConceptMap - SNOMED CT to LOINC",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/ConceptMap",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ConceptMap"
+							]
+						},
+						"description": "Maps SNOMED CT vital-sign observables to LOINC.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"ConceptMap\",\n  \"id\": \"snomed-to-loinc-vitals\",\n  \"url\": \"http://example.org/fhir/ConceptMap/snomed-to-loinc-vitals\",\n  \"version\": \"1.0.0\",\n  \"name\": \"SNOMEDtoLOINCVitals\",\n  \"title\": \"SNOMED CT to LOINC (vital sign observables)\",\n  \"status\": \"active\",\n  \"date\": \"2026-08-19\",\n  \"publisher\": \"WSO2 LLC.\",\n  \"description\": \"Mapping from SNOMED CT observable-entity concepts to their equivalent LOINC codes. Both pairs are well-known, widely-used equivalences.\",\n  \"sourceUri\": \"http://snomed.info/sct\",\n  \"targetUri\": \"http://loinc.org\",\n  \"group\": [\n    {\n      \"source\": \"http://snomed.info/sct\",\n      \"target\": \"http://loinc.org\",\n      \"element\": [\n        {\n          \"code\": \"271649006\",\n          \"display\": \"Systolic blood pressure\",\n          \"target\": [\n            {\n              \"code\": \"8480-6\",\n              \"display\": \"Systolic blood pressure\",\n              \"equivalence\": \"equivalent\"\n            }\n          ]\n        },\n        {\n          \"code\": \"386725007\",\n          \"display\": \"Body temperature\",\n          \"target\": [\n            {\n              \"code\": \"8310-5\",\n              \"display\": \"Body temperature\",\n              \"equivalence\": \"equivalent\"\n            }\n          ]\n        }\n      ]\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create ConceptMap - ICD-10-CM to SNOMED CT",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/ConceptMap",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ConceptMap"
+							]
+						},
+						"description": "Maps ICD-10-CM diabetes codes to SNOMED CT.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"ConceptMap\",\n  \"id\": \"icd10-to-snomed-diabetes-example\",\n  \"url\": \"http://example.org/fhir/ConceptMap/icd10-to-snomed-diabetes-example\",\n  \"version\": \"1.0.0\",\n  \"name\": \"Icd10ToSnomedDiabetesExample\",\n  \"status\": \"active\",\n  \"sourceUri\": \"http://hl7.org/fhir/sid/icd-10-cm\",\n  \"targetUri\": \"http://snomed.info/sct\",\n  \"group\": [\n    {\n      \"source\": \"http://hl7.org/fhir/sid/icd-10-cm\",\n      \"target\": \"http://snomed.info/sct\",\n      \"element\": [\n        {\n          \"code\": \"E11.9\",\n          \"display\": \"Type 2 diabetes mellitus without complications\",\n          \"target\": [\n            {\n              \"code\": \"44054006\",\n              \"display\": \"Type 2 diabetes mellitus\",\n              \"equivalence\": \"wider\"\n            }\n          ]\n        },\n        {\n          \"code\": \"E10.9\",\n          \"display\": \"Type 1 diabetes mellitus without complications\",\n          \"target\": [\n            {\n              \"code\": \"46635009\",\n              \"display\": \"Type 1 diabetes mellitus\",\n              \"equivalence\": \"wider\"\n            }\n          ]\n        }\n      ]\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
 				}
-			},
-			"response": []
+			]
 		},
 		{
-			"name": "$find-code",
-			"protocolProfileBehavior": {
-				"disableBodyPruning": true
-			},
-			"request": {
-				"method": "GET",
-				"header": [
-					{
-						"key": "x-terminology-type",
-						"value": "LOINC",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "file",
-					"file": {
-						"src": "/C:/Users/Isuranga Sandun/Documents/Codes/LOINCtoFHIR/Loinc_2.80.zip"
-					}
+			"name": "03 CodeSystem",
+			"description": "CodeSystem read/search and operations.",
+			"item": [
+				{
+					"name": "Read & Search",
+					"description": "",
+					"item": [
+						{
+							"name": "Read CodeSystem by id",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/demo-manual-codesystem",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"demo-manual-codesystem"
+									]
+								},
+								"description": "Read a CodeSystem by its resource id."
+							},
+							"response": []
+						},
+						{
+							"name": "Search CodeSystem by url",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem?url=http://loinc.org",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://loinc.org"
+										}
+									]
+								},
+								"description": "Search CodeSystems by canonical url."
+							},
+							"response": []
+						},
+						{
+							"name": "Search CodeSystems with paging",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem?status=active&_count=20&page=1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem"
+									],
+									"query": [
+										{
+											"key": "status",
+											"value": "active"
+										},
+										{
+											"key": "_count",
+											"value": "20"
+										},
+										{
+											"key": "page",
+											"value": "1"
+										}
+									]
+								},
+								"description": "`_count` is the page size and `page` is 1-based. Follow the Bundle's `next` link for the following page."
+							},
+							"response": []
+						}
+					]
 				},
-				"url": {
-					"raw": "http://localhost:9089/fhir/r4/%24find-code?filter=active&_count=2&_offset=1",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "9089",
-					"path": [
-						"fhir",
-						"r4",
-						"%24find-code"
-					],
-					"query": [
+				{
+					"name": "$lookup",
+					"description": "Look up a code's display, designations and properties. For SNOMED CT this includes parents, children and attribute relationships.",
+					"item": [
 						{
-							"key": "filter",
-							"value": "active"
+							"name": "Lookup LOINC (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$lookup?system=http://loinc.org&code=100011-6",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$lookup"
+									],
+									"query": [
+										{
+											"key": "system",
+											"value": "http://loinc.org"
+										},
+										{
+											"key": "code",
+											"value": "100011-6"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
 						},
 						{
-							"key": "_count",
-							"value": "2"
+							"name": "Lookup LOINC with version (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$lookup?system=http://loinc.org&code=100011-6&version=2.82",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$lookup"
+									],
+									"query": [
+										{
+											"key": "system",
+											"value": "http://loinc.org"
+										},
+										{
+											"key": "code",
+											"value": "100011-6"
+										},
+										{
+											"key": "version",
+											"value": "2.82"
+										}
+									]
+								},
+								"description": "`version` must match the version recorded at upload time."
+							},
+							"response": []
 						},
 						{
-							"key": "_offset",
-							"value": "1"
+							"name": "Lookup SNOMED CT (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$lookup?system=http://snomed.info/sct&code=73211009",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$lookup"
+									],
+									"query": [
+										{
+											"key": "system",
+											"value": "http://snomed.info/sct"
+										},
+										{
+											"key": "code",
+											"value": "73211009"
+										}
+									]
+								},
+								"description": "Diabetes mellitus. Returns `parent` / `child` properties and clinical attribute relationships such as Finding site."
+							},
+							"response": []
 						},
 						{
-							"key": "property",
-							"value": "display",
-							"disabled": true
+							"name": "Lookup ICD-10-CM (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$lookup?system=http://hl7.org/fhir/sid/icd-10-cm&code=E11.1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$lookup"
+									],
+									"query": [
+										{
+											"key": "system",
+											"value": "http://hl7.org/fhir/sid/icd-10-cm"
+										},
+										{
+											"key": "code",
+											"value": "E11.1"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "Lookup SNOMED CT with coding (POST)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/fhir+json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$lookup",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$lookup"
+									]
+								},
+								"description": "",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"coding\",\n      \"valueCoding\": {\n        \"system\": \"http://snomed.info/sct\",\n        \"code\": \"73211009\"\n      }\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Lookup LOINC with system + code (POST)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/fhir+json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$lookup",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$lookup"
+									]
+								},
+								"description": "",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"system\",\n      \"valueUri\": \"http://loinc.org\"\n    },\n    {\n      \"name\": \"code\",\n      \"valueCode\": \"100001-7\"\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "$validate-code",
+					"description": "Check whether a code exists in a CodeSystem, optionally checking its display.",
+					"item": [
+						{
+							"name": "Validate demo code (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$validate-code?url=http://example.org/fhir/CodeSystem/demo-manual-codesystem&code=A",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$validate-code"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://example.org/fhir/CodeSystem/demo-manual-codesystem"
+										},
+										{
+											"key": "code",
+											"value": "A"
+										}
+									]
+								},
+								"description": "Expected `result: true`."
+							},
+							"response": []
+						},
+						{
+							"name": "Validate unknown demo code (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$validate-code?url=http://example.org/fhir/CodeSystem/demo-manual-codesystem&code=does-not-exist",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$validate-code"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://example.org/fhir/CodeSystem/demo-manual-codesystem"
+										},
+										{
+											"key": "code",
+											"value": "does-not-exist"
+										}
+									]
+								},
+								"description": "Expected `result: false`."
+							},
+							"response": []
+						},
+						{
+							"name": "Validate SNOMED CT with display (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$validate-code?url=http://snomed.info/sct&code=181216001&display=Entire lung",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$validate-code"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://snomed.info/sct"
+										},
+										{
+											"key": "code",
+											"value": "181216001"
+										},
+										{
+											"key": "display",
+											"value": "Entire lung"
+										}
+									]
+								},
+								"description": "Synonyms count as a display match."
+							},
+							"response": []
+						},
+						{
+							"name": "Validate SNOMED CT with version (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$validate-code?url=http://snomed.info/sct&version=http://snomed.info/sct/900000000000207008/version/20260401&code=44029006&display=Left lung",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$validate-code"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://snomed.info/sct"
+										},
+										{
+											"key": "version",
+											"value": "http://snomed.info/sct/900000000000207008/version/20260401"
+										},
+										{
+											"key": "code",
+											"value": "44029006"
+										},
+										{
+											"key": "display",
+											"value": "Left lung"
+										}
+									]
+								},
+								"description": "SNOMED CT version URI. The date must match the `snomed-version` used at upload."
+							},
+							"response": []
+						},
+						{
+							"name": "Validate LOINC (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$validate-code?url=http://loinc.org&code=100011-6&display=No injury related to an electrical source",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$validate-code"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://loinc.org"
+										},
+										{
+											"key": "code",
+											"value": "100011-6"
+										},
+										{
+											"key": "display",
+											"value": "No injury related to an electrical source"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "Validate ICD-10-CM (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$validate-code?url=http://hl7.org/fhir/sid/icd-10-cm&code=E11.1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$validate-code"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://hl7.org/fhir/sid/icd-10-cm"
+										},
+										{
+											"key": "code",
+											"value": "E11.1"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "Validate invalid ICD-10-CM code (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$validate-code?url=http://hl7.org/fhir/sid/icd-10-cm&code=ZZZ.99",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$validate-code"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://hl7.org/fhir/sid/icd-10-cm"
+										},
+										{
+											"key": "code",
+											"value": "ZZZ.99"
+										}
+									]
+								},
+								"description": "Expected `result: false`."
+							},
+							"response": []
+						},
+						{
+							"name": "Validate SNOMED CT (POST)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/fhir+json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$validate-code",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$validate-code"
+									]
+								},
+								"description": "",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"url\",\n      \"valueUri\": \"http://snomed.info/sct\"\n    },\n    {\n      \"name\": \"code\",\n      \"valueCode\": \"181216001\"\n    },\n    {\n      \"name\": \"display\",\n      \"valueString\": \"Entire lung (body structure)\"\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Validate with display mismatch (POST)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/fhir+json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$validate-code",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$validate-code"
+									]
+								},
+								"description": "The display belongs to a different concept, so the result is `false` with a `message` explaining why.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"url\",\n      \"valueUri\": \"http://snomed.info/sct\"\n    },\n    {\n      \"name\": \"code\",\n      \"valueCode\": \"29001005\"\n    },\n    {\n      \"name\": \"display\",\n      \"valueString\": \"Entire lung (body structure)\"\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Validate against inline CodeSystem (POST)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/fhir+json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$validate-code",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$validate-code"
+									]
+								},
+								"description": "Validates against a CodeSystem passed in the request body, which does not need to be stored on the server.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"coding\",\n      \"valueCoding\": {\n        \"system\": \"http://example.org/fhir/CodeSystem/my-codes\",\n        \"code\": \"custom-code\"\n      }\n    },\n    {\n      \"name\": \"codeSystem\",\n      \"resource\": {\n        \"resourceType\": \"CodeSystem\",\n        \"url\": \"http://example.org/fhir/CodeSystem/my-codes\",\n        \"status\": \"active\",\n        \"content\": \"complete\",\n        \"concept\": [\n          {\n            \"code\": \"custom-code\",\n            \"display\": \"Custom Display\"\n          }\n        ]\n      }\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "$subsumes",
+					"description": "Test the hierarchical relationship between two codes. Returns `subsumes`, `subsumed-by`, `equivalent` or `not-subsumed`.",
+					"item": [
+						{
+							"name": "SNOMED CT subsumes (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$subsumes?system=http://snomed.info/sct&codeA=138875005&codeB=73211009",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$subsumes"
+									],
+									"query": [
+										{
+											"key": "system",
+											"value": "http://snomed.info/sct"
+										},
+										{
+											"key": "codeA",
+											"value": "138875005"
+										},
+										{
+											"key": "codeB",
+											"value": "73211009"
+										}
+									]
+								},
+								"description": "The SNOMED CT root concept subsumes Diabetes mellitus."
+							},
+							"response": []
+						},
+						{
+							"name": "SNOMED CT subsumed-by (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$subsumes?system=http://snomed.info/sct&codeA=73211009&codeB=138875005",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$subsumes"
+									],
+									"query": [
+										{
+											"key": "system",
+											"value": "http://snomed.info/sct"
+										},
+										{
+											"key": "codeA",
+											"value": "73211009"
+										},
+										{
+											"key": "codeB",
+											"value": "138875005"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "SNOMED CT equivalent (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$subsumes?system=http://snomed.info/sct&codeA=1776003&codeB=1776003",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$subsumes"
+									],
+									"query": [
+										{
+											"key": "system",
+											"value": "http://snomed.info/sct"
+										},
+										{
+											"key": "codeA",
+											"value": "1776003"
+										},
+										{
+											"key": "codeB",
+											"value": "1776003"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "ICD-10-CM subsumes (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$subsumes?system=http://hl7.org/fhir/sid/icd-10-cm&codeA=E11&codeB=E11.1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$subsumes"
+									],
+									"query": [
+										{
+											"key": "system",
+											"value": "http://hl7.org/fhir/sid/icd-10-cm"
+										},
+										{
+											"key": "codeA",
+											"value": "E11"
+										},
+										{
+											"key": "codeB",
+											"value": "E11.1"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "LOINC not-subsumed (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$subsumes?system=http://loinc.org&codeA=100011-6&codeB=100004-1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$subsumes"
+									],
+									"query": [
+										{
+											"key": "system",
+											"value": "http://loinc.org"
+										},
+										{
+											"key": "codeA",
+											"value": "100011-6"
+										},
+										{
+											"key": "codeB",
+											"value": "100004-1"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "LOINC with codings (POST)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/fhir+json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/CodeSystem/$subsumes",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"CodeSystem",
+										"$subsumes"
+									]
+								},
+								"description": "",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"system\",\n      \"valueUri\": \"http://loinc.org\"\n    },\n    {\n      \"name\": \"codingA\",\n      \"valueCoding\": {\n        \"system\": \"http://loinc.org\",\n        \"code\": \"100011-6\"\n      }\n    },\n    {\n      \"name\": \"codingB\",\n      \"valueCoding\": {\n        \"system\": \"http://loinc.org\",\n        \"code\": \"100016-5\"\n      }\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
 						}
 					]
 				}
-			},
-			"response": []
+			]
 		},
 		{
-			"name": "$find-code",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "x-terminology-type",
-						"value": "LOINC",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\r\n  \"parameter\": [\r\n    {\r\n      \"name\": \"filter\",\r\n      \"valueString\": \"active\"\r\n    },\r\n    {\r\n      \"name\": \"property\",\r\n      \"valueString\": \"display\"\r\n    },\r\n    {\r\n      \"name\": \"_count\",\r\n      \"valueInteger\": 2\r\n    },\r\n    {\r\n      \"name\": \"_offset\",\r\n      \"valueInteger\": 0\r\n    }\r\n  ]\r\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "http://localhost:9089/fhir/r4/%24find-code",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "9089",
-					"path": [
-						"fhir",
-						"r4",
-						"%24find-code"
-					],
-					"query": [
+			"name": "04 ValueSet",
+			"description": "ValueSet read/search and operations. Needs the example ValueSets from folder 02.",
+			"item": [
+				{
+					"name": "Read & Search",
+					"description": "",
+					"item": [
 						{
-							"key": "property",
-							"value": "display",
-							"disabled": true
+							"name": "Read ValueSet by id",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/snomed-diabetes-example",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"snomed-diabetes-example"
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "Search ValueSet by url",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet?url=http://example.org/fhir/ValueSet/snomed-diabetes-example",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://example.org/fhir/ValueSet/snomed-diabetes-example"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "$expand",
+					"description": "List the codes in a ValueSet.",
+					"item": [
+						{
+							"name": "Expand by url (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/$expand?url=http://example.org/fhir/ValueSet/snomed-diabetes-example",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"$expand"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://example.org/fhir/ValueSet/snomed-diabetes-example"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "Expand ICD-10-CM by url (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/$expand?url=http://example.org/fhir/ValueSet/icd10-diabetes-example",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"$expand"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://example.org/fhir/ValueSet/icd10-diabetes-example"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "Expand by id (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/snomed-diabetes-example/$expand",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"snomed-diabetes-example",
+										"$expand"
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "Expand with text filter (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/snomed-diabetes-example/$expand?filter=type",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"snomed-diabetes-example",
+										"$expand"
+									],
+									"query": [
+										{
+											"key": "filter",
+											"value": "type"
+										}
+									]
+								},
+								"description": "`filter` matches against the concept display."
+							},
+							"response": []
+						},
+						{
+							"name": "Expand with paging (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/$expand?url=http://example.org/fhir/ValueSet/snomed-diabetes-example&_count=1&_offset=0",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"$expand"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://example.org/fhir/ValueSet/snomed-diabetes-example"
+										},
+										{
+											"key": "_count",
+											"value": "1"
+										},
+										{
+											"key": "_offset",
+											"value": "0"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "Expand active only (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/$expand?url=http://example.org/fhir/ValueSet/snomed-diabetes-example&activeOnly=true",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"$expand"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://example.org/fhir/ValueSet/snomed-diabetes-example"
+										},
+										{
+											"key": "activeOnly",
+											"value": "true"
+										}
+									]
+								},
+								"description": "Drops inactive concepts and recomputes `expansion.total`."
+							},
+							"response": []
+						},
+						{
+							"name": "Expand by url (POST)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/fhir+json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/$expand",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"$expand"
+									]
+								},
+								"description": "",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"url\",\n      \"valueUri\": \"http://example.org/fhir/ValueSet/snomed-diabetes-example\"\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Expand inline ValueSet with is-a filter (POST)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/fhir+json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/$expand",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"$expand"
+									]
+								},
+								"description": "Expands a ValueSet passed in the body: every ICD-10-CM code under E11 (Type 2 diabetes mellitus). Needs ICD-10-CM to be loaded.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"valueSet\",\n      \"resource\": {\n        \"resourceType\": \"ValueSet\",\n        \"status\": \"active\",\n        \"compose\": {\n          \"include\": [\n            {\n              \"system\": \"http://hl7.org/fhir/sid/icd-10-cm\",\n              \"filter\": [\n                {\n                  \"property\": \"concept\",\n                  \"op\": \"is-a\",\n                  \"value\": \"E11\"\n                }\n              ]\n            }\n          ]\n        }\n      }\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "$validate-code",
+					"description": "Check whether a code is in a ValueSet.",
+					"item": [
+						{
+							"name": "Validate by url (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/$validate-code?url=http://example.org/fhir/ValueSet/snomed-diabetes-example&system=http://snomed.info/sct&code=73211009",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"$validate-code"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://example.org/fhir/ValueSet/snomed-diabetes-example"
+										},
+										{
+											"key": "system",
+											"value": "http://snomed.info/sct"
+										},
+										{
+											"key": "code",
+											"value": "73211009"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "Validate by id (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/snomed-diabetes-example/$validate-code?code=44054006",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"snomed-diabetes-example",
+										"$validate-code"
+									],
+									"query": [
+										{
+											"key": "code",
+											"value": "44054006"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "Validate code not in ValueSet (GET)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/$validate-code?url=http://example.org/fhir/ValueSet/snomed-diabetes-example&code=706008",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"$validate-code"
+									],
+									"query": [
+										{
+											"key": "url",
+											"value": "http://example.org/fhir/ValueSet/snomed-diabetes-example"
+										},
+										{
+											"key": "code",
+											"value": "706008"
+										}
+									]
+								},
+								"description": ""
+							},
+							"response": []
+						},
+						{
+							"name": "Validate coding by url (POST)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/fhir+json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/$validate-code",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"$validate-code"
+									]
+								},
+								"description": "",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"url\",\n      \"valueUri\": \"http://example.org/fhir/ValueSet/snomed-diabetes-example\"\n    },\n    {\n      \"name\": \"coding\",\n      \"valueCoding\": {\n        \"system\": \"http://snomed.info/sct\",\n        \"code\": \"44054006\"\n      }\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Validate ICD-10-CM coding by url (POST)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/fhir+json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/$validate-code",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"$validate-code"
+									]
+								},
+								"description": "",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"url\",\n      \"valueUri\": \"http://example.org/fhir/ValueSet/icd10-diabetes-example\"\n    },\n    {\n      \"name\": \"coding\",\n      \"valueCoding\": {\n        \"system\": \"http://hl7.org/fhir/sid/icd-10-cm\",\n        \"code\": \"E11.9\"\n      }\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Validate against inline ValueSet (POST)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/fhir+json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/ValueSet/$validate-code",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"ValueSet",
+										"$validate-code"
+									]
+								},
+								"description": "Validates against a ValueSet passed in the body, which does not need to be stored on the server.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"system\",\n      \"valueUri\": \"http://loinc.org\"\n    },\n    {\n      \"name\": \"code\",\n      \"valueCode\": \"100002-5\"\n    },\n    {\n      \"name\": \"valueSet\",\n      \"resource\": {\n        \"resourceType\": \"ValueSet\",\n        \"status\": \"active\",\n        \"compose\": {\n          \"include\": [\n            {\n              \"system\": \"http://loinc.org\"\n            }\n          ]\n        }\n      }\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
 						}
 					]
 				}
-			},
-			"response": []
+			]
+		},
+		{
+			"name": "05 ConceptMap",
+			"description": "`$translate` needs the example ConceptMaps from folder 02. `$closure` is called at the server base (`/$closure`), not under `/ConceptMap`.",
+			"item": [
+				{
+					"name": "Read ConceptMap by id",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ConceptMap/icd10-to-snomed-diabetes-example",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ConceptMap",
+								"icd10-to-snomed-diabetes-example"
+							]
+						},
+						"description": ""
+					},
+					"response": []
+				},
+				{
+					"name": "Search ConceptMaps",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ConceptMap",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ConceptMap"
+							]
+						},
+						"description": ""
+					},
+					"response": []
+				},
+				{
+					"name": "Translate SNOMED CT to LOINC (GET)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ConceptMap/$translate?source=http://snomed.info/sct&target=http://loinc.org&system=http://snomed.info/sct&code=271649006",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ConceptMap",
+								"$translate"
+							],
+							"query": [
+								{
+									"key": "source",
+									"value": "http://snomed.info/sct"
+								},
+								{
+									"key": "target",
+									"value": "http://loinc.org"
+								},
+								{
+									"key": "system",
+									"value": "http://snomed.info/sct"
+								},
+								{
+									"key": "code",
+									"value": "271649006"
+								}
+							]
+						},
+						"description": "Systolic blood pressure."
+					},
+					"response": []
+				},
+				{
+					"name": "Translate ICD-10-CM to SNOMED CT (GET)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ConceptMap/$translate?source=http://hl7.org/fhir/sid/icd-10-cm&target=http://snomed.info/sct&system=http://hl7.org/fhir/sid/icd-10-cm&code=E11.9",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ConceptMap",
+								"$translate"
+							],
+							"query": [
+								{
+									"key": "source",
+									"value": "http://hl7.org/fhir/sid/icd-10-cm"
+								},
+								{
+									"key": "target",
+									"value": "http://snomed.info/sct"
+								},
+								{
+									"key": "system",
+									"value": "http://hl7.org/fhir/sid/icd-10-cm"
+								},
+								{
+									"key": "code",
+									"value": "E11.9"
+								}
+							]
+						},
+						"description": ""
+					},
+					"response": []
+				},
+				{
+					"name": "Translate ICD-10-CM to SNOMED CT (POST)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/ConceptMap/$translate",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"ConceptMap",
+								"$translate"
+							]
+						},
+						"description": "",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"source\",\n      \"valueUri\": \"http://hl7.org/fhir/sid/icd-10-cm\"\n    },\n    {\n      \"name\": \"target\",\n      \"valueUri\": \"http://snomed.info/sct\"\n    },\n    {\n      \"name\": \"coding\",\n      \"valueCoding\": {\n        \"system\": \"http://hl7.org/fhir/sid/icd-10-cm\",\n        \"code\": \"E11.9\"\n      }\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$closure - start SNOMED CT table",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/$closure",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"$closure"
+							]
+						},
+						"description": "Adds a concept to the closure table named `demo-closure` and returns the new subsumption pairs. Each call only returns pairs not reported before for that name, so running it again returns nothing new.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"name\",\n      \"valueString\": \"demo-closure\"\n    },\n    {\n      \"name\": \"concept\",\n      \"valueCoding\": {\n        \"system\": \"http://snomed.info/sct\",\n        \"code\": \"65356002\"\n      }\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$closure - add to SNOMED CT table",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/$closure",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"$closure"
+							]
+						},
+						"description": "Adds another concept to `demo-closure`. Only the new pairs come back.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"name\",\n      \"valueString\": \"demo-closure\"\n    },\n    {\n      \"name\": \"concept\",\n      \"valueCoding\": {\n        \"system\": \"http://snomed.info/sct\",\n        \"code\": \"447809001\"\n      }\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "$closure - ICD-10-CM table",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/$closure",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"$closure"
+							]
+						},
+						"description": "",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"name\",\n      \"valueString\": \"icd10-diabetes-closure-demo\"\n    },\n    {\n      \"name\": \"concept\",\n      \"valueCoding\": {\n        \"system\": \"http://hl7.org/fhir/sid/icd-10-cm\",\n        \"code\": \"E11.9\"\n      }\n    },\n    {\n      \"name\": \"concept\",\n      \"valueCoding\": {\n        \"system\": \"http://hl7.org/fhir/sid/icd-10-cm\",\n        \"code\": \"E10.9\"\n      }\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "06 System Operations",
+			"description": "Operations at the server base url.",
+			"item": [
+				{
+					"name": "$find-code",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/$find-code?filter=procedure",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"$find-code"
+							],
+							"query": [
+								{
+									"key": "filter",
+									"value": "procedure"
+								}
+							]
+						},
+						"description": "Search for codes by text across CodeSystems and ValueSets."
+					},
+					"response": []
+				},
+				{
+					"name": "Batch validate",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/fhir+json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": []
+						},
+						"description": "A FHIR `batch` Bundle of ValueSet `$validate-code` calls.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resourceType\": \"Bundle\",\n  \"type\": \"batch\",\n  \"entry\": [\n    {\n      \"request\": {\n        \"method\": \"GET\",\n        \"url\": \"ValueSet/$validate-code?system=http://example.org/fhir/ValueSet/snomed-diabetes-example&code=73211009\"\n      }\n    },\n    {\n      \"request\": {\n        \"method\": \"GET\",\n        \"url\": \"ValueSet/$validate-code?system=http://example.org/fhir/ValueSet/snomed-diabetes-example&code=195967001\"\n      }\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "CapabilityStatement",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/metadata",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"metadata"
+							]
+						},
+						"description": ""
+					},
+					"response": []
+				},
+				{
+					"name": "TerminologyCapabilities",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/metadata?mode=terminology",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"metadata"
+							],
+							"query": [
+								{
+									"key": "mode",
+									"value": "terminology"
+								}
+							]
+						},
+						"description": ""
+					},
+					"response": []
+				},
+				{
+					"name": "$versions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/$versions",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"$versions"
+							]
+						},
+						"description": "FHIR versions supported by the server."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:9090/fhir/r4",
+			"type": "string"
 		}
 	]
 }
